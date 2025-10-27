@@ -1,0 +1,75 @@
+<!-- templates/dashboard.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>Welcome to Procure Flow</h2>
+    </div>
+    <div class="card-body">
+        <p>Hello, <strong>{{ session.username }}</strong>! You are logged in as <strong>{{ session.role }}</strong>.</p>
+        
+        {% if session.role == 'admin' %}
+        <div class="grid-2 mt-2">
+            <div class="card">
+                <h3><i class="fas fa-chart-line"></i> Quick Stats</h3>
+                <p>Total Tasks: <strong>{{ stats.total_tasks if stats else 0 }}</strong></p>
+                <p>Active Tasks: <strong>{{ stats.active_tasks if stats else 0 }}</strong></p>
+                <p>Total Suppliers: <strong>{{ stats.total_suppliers if stats else 0 }}</strong></p>
+            </div>
+            <div class="card">
+                <h3><i class="fas fa-rocket"></i> Quick Actions</h3>
+                <div class="d-flex gap-1 mt-1">
+                    <a href="{{ url_for('new_task') }}" class="btn btn-primary">
+                        <i class="fas fa-plus"></i> New Task
+                    </a>
+                    <a href="{{ url_for('suppliers') }}" class="btn btn-secondary">
+                        <i class="fas fa-users"></i> Manage Suppliers
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header">
+        <h2>Recent Tasks</h2>
+    </div>
+    <div class="card-body">
+        {% if recent_tasks %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Task Name</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for task in recent_tasks %}
+                <tr>
+                    <td>{{ task.task_name }}</td>
+                    <td>
+                        <span class="status-badge status-{{ task.status }}">
+                            {{ task.status.replace('_', ' ').title() }}
+                        </span>
+                    </td>
+                    <td>{{ task.created_at[:10] if task.created_at else 'N/A' }}</td>
+                    <td>
+                        <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-secondary">
+                            <i class="fas fa-edit"></i> Continue
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p class="text-center">No tasks yet. <a href="{{ url_for('new_task') }}">Create your first task!</a></p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

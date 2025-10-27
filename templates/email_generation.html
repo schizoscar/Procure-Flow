@@ -1,0 +1,90 @@
+<!-- templates/email_generation.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>Generate Email</h2>
+        <p>Step 3: Review and generate email for {{ task.task_name }}</p>
+    </div>
+    <div class="card-body">
+        <!-- Progress Steps -->
+        <div class="progress-steps">
+            <div class="progress-step completed">1</div>
+            <div class="progress-step completed">2</div>
+            <div class="progress-step active">3</div>
+            <div class="progress-step">4</div>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <h4>PR Items</h4>
+                <ul>
+                    {% for item in pr_items %}
+                    <li>
+                        <strong>{{ item.item_name }}</strong><br>
+                        Quantity: {{ item.quantity }}<br>
+                        Category: {{ item.item_category }}<br>
+                        {% if item.specification %}Specs: {{ item.specification }}<br>{% endif %}
+                        {% if item.brand %}Brand: {{ item.brand }}{% endif %}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="card">
+                <h4>Selected Suppliers</h4>
+                <ul>
+                    {% for supplier in suppliers %}
+                    <li>
+                        <strong>{{ supplier.name }}</strong><br>
+                        Contact: {{ supplier.contact_name or 'N/A' }}<br>
+                        Email: {{ supplier.email }}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <div class="card mt-2">
+            <h4>Email Preview</h4>
+            <div class="email-preview">
+                <p><strong>Subject:</strong> Procurement Inquiry - {{ task.task_name }}</p>
+                <div class="email-content">
+                    <p>Dear Supplier,</p>
+                    <p>We are inquiring about the following items for procurement:</p>
+                    <ul>
+                        {% for item in pr_items %}
+                        <li>
+                            <strong>Item:</strong> {{ item.item_name }}<br>
+                            <strong>Specification:</strong> {{ item.specification or 'N/A' }}<br>
+                            <strong>Brand:</strong> {{ item.brand or 'N/A' }}<br>
+                            <strong>Quantity:</strong> {{ item.quantity }}<br>
+                            <strong>Category:</strong> {{ item.item_category }}
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    <p>Please provide us with your quotation including:</p>
+                    <ul>
+                        <li>Unit price and total price</li>
+                        <li>Delivery timeline</li>
+                        <li>Warranty information</li>
+                        <li>Payment terms</li>
+                    </ul>
+                    <p>We look forward to your prompt response.</p>
+                    <p>Best regards,<br>Procurement Department</p>
+                </div>
+            </div>
+        </div>
+
+        <form method="POST">
+            <div class="d-flex gap-1 mt-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-envelope"></i> Generate Email & Continue
+                </button>
+                <a href="{{ url_for('supplier_selection', task_id=task.id) }}" class="btn btn-secondary">Back</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

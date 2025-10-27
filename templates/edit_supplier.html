@@ -1,0 +1,73 @@
+<!-- templates/edit_supplier.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>{% if supplier %}Edit Supplier{% else %}Add New Supplier{% endif %}</h2>
+    </div>
+    <div class="card-body">
+        <form method="POST">
+            <div class="grid-2">
+                <div class="form-group">
+                    <label class="form-label required">Supplier Name</label>
+                    <input type="text" class="form-control" name="name" 
+                           value="{{ supplier.name if supplier else '' }}" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Contact Person</label>
+                    <input type="text" class="form-control" name="contact_name" 
+                           value="{{ supplier.contact_name if supplier else '' }}">
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label required">Email</label>
+                    <input type="email" class="form-control" name="email" 
+                           value="{{ supplier.email if supplier else '' }}" required>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Phone Number</label>
+                    <input type="tel" class="form-control" name="contact_number" 
+                           value="{{ supplier.contact_number if supplier else '' }}"
+                           placeholder="e.g., 012-345 6789">
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Address</label>
+                <textarea class="form-control" name="address" rows="3">{{ supplier.address if supplier else '' }}</textarea>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Products/Services</label>
+                <textarea class="form-control" name="products_services" rows="3">{{ supplier.products_services if supplier else '' }}</textarea>
+            </div>
+            
+            <div class="form-group">
+                <label class="form-label">Categories</label>
+                <div class="grid-3">
+                    {% for category in categories %}
+                    <div class="checkbox-group">
+                        <input type="checkbox" class="checkbox-input" name="categories" 
+                               value="{{ category.id }}" id="category-{{ category.id }}"
+                               {% if supplier and category.id in supplier_category_ids %}checked{% endif %}>
+                        <label for="category-{{ category.id }}" class="form-label">
+                            {{ category.name }}
+                        </label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            
+            <div class="d-flex gap-1">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> {% if supplier %}Update{% else %}Add{% endif %} Supplier
+                </button>
+                <a href="{{ url_for('suppliers') }}" class="btn btn-secondary">Cancel</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

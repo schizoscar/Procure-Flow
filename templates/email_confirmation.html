@@ -1,0 +1,83 @@
+<!-- templates/email_confirmation.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>Confirm and Send Email</h2>
+        <p>Step 4: Confirm and send emails for {{ task.task_name }}</p>
+    </div>
+    <div class="card-body">
+        <!-- Progress Steps -->
+        <div class="progress-steps">
+            <div class="progress-step completed">1</div>
+            <div class="progress-step completed">2</div>
+            <div class="progress-step completed">3</div>
+            <div class="progress-step active">4</div>
+        </div>
+
+        <div class="alert alert-warning">
+            <p><i class="fas fa-exclamation-triangle"></i> You are about to send emails to {{ suppliers|length }} supplier(s).</p>
+        </div>
+
+        <div class="grid-2">
+            <div class="card">
+                <h4>PR Items</h4>
+                <ul>
+                    {% for item in pr_items %}
+                    <li>
+                        <strong>{{ item.item_name }}</strong><br>
+                        Quantity: {{ item.quantity }}<br>
+                        Category: {{ item.item_category }}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+
+            <div class="card">
+                <h4>Recipients</h4>
+                <ul>
+                    {% for supplier in suppliers %}
+                    <li>
+                        <strong>{{ supplier.name }}</strong><br>
+                        Email: {{ supplier.email }}<br>
+                        Contact: {{ supplier.contact_name or 'N/A' }}
+                    </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </div>
+
+        <form method="POST">
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <input type="checkbox" class="checkbox-input" id="confirmSend" required>
+                    <label for="confirmSend" class="form-label">
+                        I confirm that I want to send procurement inquiries to the selected suppliers
+                    </label>
+                </div>
+            </div>
+
+            <div class="d-flex gap-1">
+                <button type="submit" class="btn btn-success" id="sendButton" disabled>
+                    <i class="fas fa-paper-plane"></i> Send Emails
+                </button>
+                <a href="{{ url_for('email_generation', task_id=task.id) }}" class="btn btn-secondary">Back</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const confirmCheckbox = document.getElementById('confirmSend');
+    const sendButton = document.getElementById('sendButton');
+    
+    confirmCheckbox.addEventListener('change', function() {
+        sendButton.disabled = !this.checked;
+    });
+});
+</script>
+{% endblock %}

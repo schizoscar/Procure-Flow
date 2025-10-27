@@ -1,0 +1,214 @@
+<!-- templates/pr_form.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>{% if is_edit %}Edit{% else %}New{% endif %} Purchase Requisition</h2>
+        <p>Step 1: {% if is_edit %}Update{% else %}Fill out{% endif %} the purchase requisition form</p>
+    </div>
+    <div class="card-body">
+        <!-- Progress Steps -->
+        <div class="progress-steps">
+            <div class="progress-step active">1</div>
+            <div class="progress-step">2</div>
+            <div class="progress-step">3</div>
+            <div class="progress-step">4</div>
+        </div>
+
+        <form method="POST">
+            <div class="form-group">
+                <label class="form-label required">Task Name</label>
+                <input type="text" class="form-control" name="task_name" required 
+                       value="{{ task.task_name if task else '' }}"
+                       placeholder="Enter task name (e.g., Office Supplies Q4 2024)">
+            </div>
+
+            <div id="itemsContainer">
+                {% if existing_items %}
+                    {% for item in existing_items %}
+                    <div class="card mb-2 item-row">
+                        <div class="d-flex justify-between align-center">
+                            <h4>Item {{ loop.index }}</h4>
+                            {% if loop.index > 1 or existing_items|length > 1 %}
+                            <button type="button" class="btn btn-danger remove-item" onclick="this.parentElement.parentElement.remove()">
+                                <i class="fas fa-times"></i> Remove
+                            </button>
+                            {% endif %}
+                        </div>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label class="form-label required">Item Name</label>
+                                <input type="text" class="form-control" name="items[{{ loop.index0 }}][item_name]" 
+                                       value="{{ item.item_name }}" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label required">Quantity</label>
+                                <input type="number" class="form-control" name="items[{{ loop.index0 }}][quantity]" 
+                                       value="{{ item.quantity }}" min="1" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Specification</label>
+                                <input type="text" class="form-control" name="items[{{ loop.index0 }}][specification]" 
+                                       value="{{ item.specification or '' }}" placeholder="Technical specifications">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Brand</label>
+                                <input type="text" class="form-control" name="items[{{ loop.index0 }}][brand]" 
+                                       value="{{ item.brand or '' }}" placeholder="Preferred brand">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Balance Stock</label>
+                                <input type="number" class="form-control" name="items[{{ loop.index0 }}][balance_stock]" 
+                                       value="{{ item.balance_stock or 0 }}" min="0" placeholder="Current stock level">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label required">Item Category</label>
+                                <select class="form-control form-select" name="items[{{ loop.index0 }}][item_category]" required>
+                                    <option value="">Select Category</option>
+                                    {% for category in categories %}
+                                    <option value="{{ category.name }}" {% if item.item_category == category.name %}selected{% endif %}>
+                                        {{ category.name }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                <!-- First item row -->
+                <div class="card mb-2 item-row">
+                    <div class="d-flex justify-between align-center">
+                        <h4>Item 1</h4>
+                    </div>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label class="form-label required">Item Name</label>
+                            <input type="text" class="form-control" name="items[0][item_name]" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label required">Quantity</label>
+                            <input type="number" class="form-control" name="items[0][quantity]" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Specification</label>
+                            <input type="text" class="form-control" name="items[0][specification]" 
+                                   placeholder="Technical specifications">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Brand</label>
+                            <input type="text" class="form-control" name="items[0][brand]" 
+                                   placeholder="Preferred brand">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Balance Stock</label>
+                            <input type="number" class="form-control" name="items[0][balance_stock]" min="0" 
+                                   placeholder="Current stock level">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label required">Item Category</label>
+                            <select class="form-control form-select" name="items[0][item_category]" required>
+                                <option value="">Select Category</option>
+                                {% for category in categories %}
+                                <option value="{{ category.name }}">{{ category.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+
+            <button type="button" id="addItem" class="btn btn-secondary">
+                <i class="fas fa-plus"></i> Add Another Item
+            </button>
+
+            <div class="d-flex gap-1 mt-2">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i> {% if is_edit %}Save & Continue{% else %}Continue to Supplier Selection{% endif %}
+                </button>
+                {% if is_edit %}
+                <a href="{{ url_for('task_list') }}" class="btn btn-secondary">Cancel</a>
+                {% else %}
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancel</a>
+                {% endif %}
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        let itemCount = {{ existing_items| length if existing_items else 1
+    }};
+
+    document.getElementById('addItem').addEventListener('click', function () {
+        itemCount++;
+        const newItem = `
+            <div class="card mb-2 item-row">
+                <div class="d-flex justify-between align-center">
+                    <h4>Item ${itemCount}</h4>
+                    <button type="button" class="btn btn-danger remove-item">
+                        <i class="fas fa-times"></i> Remove
+                    </button>
+                </div>
+                <div class="grid-2">
+                    <div class="form-group">
+                        <label class="form-label required">Item Name</label>
+                        <input type="text" class="form-control" name="items[${itemCount - 1}][item_name]" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label required">Quantity</label>
+                        <input type="number" class="form-control" name="items[${itemCount - 1}][quantity]" min="1" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Specification</label>
+                        <input type="text" class="form-control" name="items[${itemCount - 1}][specification]">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Brand</label>
+                        <input type="text" class="form-control" name="items[${itemCount - 1}][brand]">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Balance Stock</label>
+                        <input type="number" class="form-control" name="items[${itemCount - 1}][balance_stock]" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label required">Item Category</label>
+                        <select class="form-control form-select" name="items[${itemCount - 1}][item_category]" required>
+                            <option value="">Select Category</option>
+                            {% for category in categories %}
+                            <option value="{{ category.name }}">{{ category.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </div>
+            </div>
+        `;
+        document.getElementById('itemsContainer').insertAdjacentHTML('beforeend', newItem);
+    });
+
+    // Add remove functionality for dynamically added items
+    document.addEventListener('click', function (e) {
+        if (e.target.classList.contains('remove-item') || e.target.closest('.remove-item')) {
+            const removeBtn = e.target.classList.contains('remove-item') ? e.target : e.target.closest('.remove-item');
+            removeBtn.closest('.item-row').remove();
+            updateItemNumbers();
+        }
+    });
+
+    function updateItemNumbers() {
+        const items = document.querySelectorAll('.item-row');
+        items.forEach((item, index) => {
+            const title = item.querySelector('h4');
+            if (title) {
+                title.textContent = `Item ${index + 1}`;
+            }
+        });
+    }
+});
+</script>
+{% endblock %}
