@@ -1,0 +1,446 @@
+<!-- templates/email_preview.html -->
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card">
+    <div class="card-header">
+        <h2>Edit & Preview Emails</h2>
+        <p>Step 3: Write and review emails for {{ task.task_name }}</p>
+    </div>
+    <div class="card-body">
+        <!-- Progress Steps -->
+        <div class="progress-steps">
+            <div class="progress-step completed">1</div>
+            <div class="progress-step completed">2</div>
+            <div class="progress-step active">3</div>
+            <div class="progress-step">4</div>
+        </div>
+
+        <div class="alert alert-info">
+            <h5><i class="fas fa-info-circle"></i> Write Once, Send to All</h5>
+            <p class="mb-0">Edit the email content below. All suppliers will receive the same message with their assigned items automatically included.</p>
+        </div>
+
+        <!-- Email Templates Preview -->
+        <div class="email-templates-preview mb-4">
+            {% for template_key, template in email_templates.items() %}
+            <div class="card mb-4">
+                <div class="card-header">
+                    <h4>
+                        <i class="fas fa-envelope"></i> 
+                        Email Template {{ loop.index }}
+                        <span class="badge">{{ template.suppliers|length }} recipient(s)</span>
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <div class="template-info mb-3">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <strong>Items included:</strong>
+                                {% if template_key == 'all' %}
+                                All {{ pr_items|length }} items
+                                {% else %}
+                                {{ template.items|length }} specific item(s)
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <strong>Recipients:</strong> {{ template.suppliers|length }} supplier(s)
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Recipients List -->
+                    <div class="recipients-section mb-4">
+                        <h5><i class="fas fa-users"></i> Recipients</h5>
+                        <div class="recipients-grid">
+                            {% for supplier in template.suppliers %}
+                            <div class="recipient-card">
+                                <div class="recipient-name">{{ supplier.name }}</div>
+                                <div class="recipient-email">{{ supplier.email }}</div>
+                                {% if supplier.contact_name %}
+                                <div class="recipient-contact">Contact: {{ supplier.contact_name }}</div>
+                                {% endif %}
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- Email Preview -->
+                    <div class="email-preview-section">
+                        <h5><i class="fas fa-eye"></i> Email Preview</h5>
+                        <div class="email-preview">
+                            <div class="email-header">
+                                <div><strong>To:</strong> [Supplier Name]</div>
+                                <div><strong>Subject:</strong> {{ email_subject or ("Procurement Inquiry - " + task.task_name) }}</div>
+                                <div><strong>From:</strong> Procurement Department</div>
+                            </div>
+                            <div class="email-body">
+                                {% if template.email_content %}
+                                    {{ template.email_content|replace('{supplier_name}', '<span class="placeholder">[Supplier Name]</span>')|replace('[Supplier Name]', '<span class="placeholder">[Supplier Name]</span>')|safe }}
+                                {% else %}
+                                    <p>Dear <span class="placeholder">[Supplier Name]</span>,</p>
+                                    
+                                    <p>We are inquiring about the following items for procurement:</p>
+                                    
+                                    <ul>
+                                        <li><em>Items will be automatically inserted here based on supplier assignments</em></li>
+                                    </ul>
+                                    
+                                    <p>Please provide us with your quotation including:</p>
+                                    <ul>
+                                        <li>Unit price and total price</li>
+                                        <li>Delivery timeline</li>
+                                        <li>Warranty information</li>
+                                        <li>Payment terms</li>
+                                    </ul>
+                                    
+                                    <p>We look forward to your prompt response.</p>
+                                    
+                                    <p>Best regards,<br>
+                                    Procurement Department</p>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Email Editor -->
+        <div class="card">
+            <div class="card-header">
+                <h4><i class="fas fa-edit"></i> Write Your Email</h4>
+            </div>
+            <div class="card-body">
+                <form method="POST" id="emailForm">
+                    <div class="form-group">
+                        <label class="form-label">Email Subject</label>
+                        <input type="text" class="form-control" name="email_subject" 
+                               value="{{ email_subject or 'Procurement Inquiry - ' + task.task_name }}" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Email Content</label>
+                        <div class="email-editor-help">
+                            <p class="text-muted mb-2">
+                                <i class="fas fa-lightbulb"></i> 
+                                <strong>Writing Tips:</strong> 
+                                Use <code>[Supplier Name]</code> where you want each supplier's name to appear.
+                            </p>
+                            <p class="text-muted mb-0">
+                                The items list will be automatically included for each supplier based on their assignments.
+                            </p>
+                        </div>
+                        
+                        <div class="email-editor-container">
+                            <div class="email-editor-toolbar">
+                                <button type="button" class="btn-tool" data-tag="strong" title="Bold">
+                                    <i class="fas fa-bold"></i>
+                                </button>
+                                <button type="button" class="btn-tool" data-tag="em" title="Italic">
+                                    <i class="fas fa-italic"></i>
+                                </button>
+                                <button type="button" class="btn-tool" data-tag="ul" title="Bullet List">
+                                    <i class="fas fa-list-ul"></i>
+                                </button>
+                                <button type="button" class="btn-tool" data-tag="ol" title="Numbered List">
+                                    <i class="fas fa-list-ol"></i>
+                                </button>
+                                <button type="button" class="btn-tool" data-insert="[Supplier Name]" title="Insert Supplier Name">
+                                    <i class="fas fa-user-tag"></i> Insert Supplier Name
+                                </button>
+                            </div>
+                            
+                            {% set template_list = email_templates.values()|list %}
+                            <textarea class="form-control email-editor" name="email_content" rows="12" required>
+{%- if template_list and template_list[0].email_content -%}
+{{ template_list[0].email_content }}
+{%- else -%}
+Dear [Supplier Name],
+
+We are inquiring about the following items for procurement:
+
+[Items will be automatically inserted here]
+
+Please provide us with your quotation including:
+• Unit price and total price
+• Delivery timeline  
+• Warranty information
+• Payment terms
+
+We look forward to your prompt response.
+
+Best regards,
+Procurement Department
+{%- endif -%}
+</textarea>
+                        </div>
+                    </div>
+
+                    <div class="preview-update-section">
+                        <div class="d-flex gap-1 justify-between align-center">
+                            <div>
+                                <button type="submit" name="action" value="update_preview" class="btn btn-primary">
+                                    <i class="fas fa-sync"></i> Update Preview
+                                </button>
+                                <small class="text-muted ml-2">Click to refresh the preview above</small>
+                            </div>
+                            <div class="d-flex gap-1">
+                                <a href="{{ url_for('supplier_selection', task_id=task.id) }}" class="btn btn-secondary">
+                                    <i class="fas fa-arrow-left"></i> Back to Suppliers
+                                </a>
+                                <button type="submit" name="action" value="send_emails" class="btn btn-success">
+                                    <i class="fas fa-paper-plane"></i> Send All Emails
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const emailEditor = document.querySelector('.email-editor');
+    const toolbarButtons = document.querySelectorAll('.btn-tool');
+    
+    // Toolbar functionality
+    toolbarButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const tag = this.dataset.tag;
+            const insertText = this.dataset.insert;
+            
+            if (insertText) {
+                // Insert placeholder text
+                insertAtCursor(emailEditor, insertText);
+            } else if (tag) {
+                // Wrap selection with HTML tag
+                wrapSelection(emailEditor, tag);
+            }
+        });
+    });
+    
+    function insertAtCursor(textarea, text) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const before = textarea.value.substring(0, start);
+        const after = textarea.value.substring(end, textarea.value.length);
+        
+        textarea.value = before + text + after;
+        textarea.selectionStart = textarea.selectionEnd = start + text.length;
+        textarea.focus();
+    }
+    
+    function wrapSelection(textarea, tag) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const selectedText = textarea.value.substring(start, end);
+        const before = textarea.value.substring(0, start);
+        const after = textarea.value.substring(end, textarea.value.length);
+        
+        let wrappedText = selectedText;
+        if (tag === 'strong') wrappedText = `<strong>${selectedText}</strong>`;
+        else if (tag === 'em') wrappedText = `<em>${selectedText}</em>`;
+        else if (tag === 'ul') wrappedText = `<ul>\n<li>${selectedText}</li>\n</ul>`;
+        else if (tag === 'ol') wrappedText = `<ol>\n<li>${selectedText}</li>\n</ol>`;
+        
+        textarea.value = before + wrappedText + after;
+        textarea.selectionStart = textarea.selectionEnd = start + wrappedText.length;
+        textarea.focus();
+    }
+    
+    // Auto-save draft every 30 seconds
+    let saveTimer;
+    emailEditor.addEventListener('input', function() {
+        clearTimeout(saveTimer);
+        saveTimer = setTimeout(() => {
+            localStorage.setItem('email_draft_{{ task.id }}', this.value);
+        }, 30000);
+    });
+    
+    // Load draft if exists
+    const draft = localStorage.getItem('email_draft_{{ task.id }}');
+    if (draft && !emailEditor.value) {
+        emailEditor.value = draft;
+    }
+});
+</script>
+
+<style>
+.email-templates-preview {
+    margin-bottom: 2rem;
+}
+
+.badge {
+    background: var(--dusty-purple);
+    color: white;
+    padding: 0.25rem 0.75rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    margin-left: 0.5rem;
+}
+
+.template-info {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 6px;
+    border-left: 4px solid var(--dusty-purple);
+}
+
+.recipients-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1rem;
+    margin-top: 0.75rem;
+}
+
+.recipient-card {
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 0.75rem;
+    background: white;
+}
+
+.recipient-name {
+    font-weight: 600;
+    color: var(--dusty-purple-dark);
+    margin-bottom: 0.25rem;
+}
+
+.recipient-email {
+    color: #666;
+    font-size: 0.9rem;
+    margin-bottom: 0.25rem;
+}
+
+.recipient-contact {
+    color: #888;
+    font-size: 0.85rem;
+}
+
+.email-preview {
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    background: white;
+    margin-top: 0.75rem;
+}
+
+.email-header {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-bottom: 1px solid #e9ecef;
+    font-size: 0.9rem;
+    line-height: 1.5;
+}
+
+.email-body {
+    padding: 1.5rem;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    line-height: 1.6;
+    color: #333;
+}
+
+.email-body h2 {
+    color: var(--dusty-purple-dark);
+    margin-bottom: 1rem;
+}
+
+.email-body p {
+    margin-bottom: 1rem;
+}
+
+.email-body ul, .email-body ol {
+    margin: 1rem 0;
+    padding-left: 1.5rem;
+}
+
+.email-body li {
+    margin-bottom: 0.5rem;
+    padding: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 4px;
+    border-left: 3px solid var(--dusty-purple);
+}
+
+.placeholder {
+    background: #fff3cd;
+    color: #856404;
+    padding: 0.1rem 0.3rem;
+    border-radius: 3px;
+    font-weight: 600;
+}
+
+/* Email Editor Styles */
+.email-editor-help {
+    background: #e3f2fd;
+    border: 1px solid #bbdefb;
+    border-radius: 6px;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.email-editor-container {
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.email-editor-toolbar {
+    background: #f8f9fa;
+    padding: 0.75rem;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.btn-tool {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-tool:hover {
+    background: var(--dusty-purple);
+    color: white;
+    border-color: var(--dusty-purple);
+}
+
+.email-editor {
+    border: none !important;
+    border-radius: 0 !important;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    font-size: 1rem;
+    line-height: 1.6;
+    resize: vertical;
+}
+
+.preview-update-section {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 6px;
+    margin-top: 1.5rem;
+}
+
+.justify-between {
+    justify-content: space-between;
+}
+
+.align-center {
+    align-items: center;
+}
+
+.ml-2 {
+    margin-left: 0.5rem;
+}
+</style>
+{% endblock %}

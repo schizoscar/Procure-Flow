@@ -24,7 +24,9 @@
   <ItemGroup>
     <Compile Include="app.py" />
     <Compile Include="config.py" />
+    <Compile Include="database\check_column.py" />
     <Compile Include="database\init_db.py" />
+    <Compile Include="database\reset_db.py" />
     <Compile Include="templates\create_user.html" />
     <Compile Include="utils\database_helpers.py" />
     <Compile Include="utils\email_handler.py" />
@@ -41,6 +43,7 @@
     <Content Include="templates\edit_supplier.html" />
     <Content Include="templates\email_confirmation.html" />
     <Content Include="templates\email_generation.html" />
+    <Content Include="templates\email_preview.html" />
     <Content Include="templates\index.html" />
     <Content Include="templates\login.html" />
     <Content Include="templates\pr_form.html" />

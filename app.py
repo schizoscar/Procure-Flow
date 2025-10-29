@@ -2,15 +2,39 @@
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
 import sqlite3
 import re
+from datetime import datetime
+import json
 from werkzeug.security import generate_password_hash, check_password_hash
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from datetime import datetime
 import os
 
 app = Flask(__name__)
 app.secret_key = 'procure-flow-secret-key-2024'
+
+# Initialize database on startup
+def init_database_on_startup():
+    try:
+        import database.init_db  
+        database.init_db.init_database()
+        print("✅ Database initialized successfully!")
+        
+        # Verify creation with correct path
+        import sqlite3
+        db_path = os.path.join('database', 'procure_flow.db')
+        conn = sqlite3.connect(db_path)
+        cursor = conn.cursor()
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
+        print(f"✅ Created tables: {[table[0] for table in tables]}")
+        conn.close()
+        
+    except Exception as e:
+        print(f"❌ Database initialization failed: {e}")
+
+# Call the initialization function
+init_database_on_startup()
 
 # Initialize database on startup
 def init_database_on_startup():
@@ -30,7 +54,11 @@ EMAIL_CONFIG = {
 
 # Database connection helper
 def get_db_connection():
-    conn = sqlite3.connect('procure_flow.db')  
+    # Use the database in the database folder
+    db_path = os.path.join('database', 'procure_flow.db')
+    print(f"🔗 Connecting to database at: {os.path.abspath(db_path)}")
+    
+    conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -53,6 +81,46 @@ def validate_password(password):
     if not any(char.isalpha() for char in password):
         return False
     return True
+
+def generate_email_content(pr_items, task_name):
+    items_html = "<ul>"
+    for item in pr_items:
+        items_html += f"""
+        <li>
+            <strong>Item:</strong> {item['item_name']}<br>
+            <strong>Specification:</strong> {item['specification'] or 'N/A'}<br>
+            <strong>Brand:</strong> {item['brand'] or 'N/A'}<br>
+            <strong>Quantity:</strong> {item['quantity']}<br>
+            <strong>Category:</strong> {item['item_category']}
+        </li>
+        """
+    items_html += "</ul>"
+    
+    return f"""
+    <html>
+    <body>
+        <h2>Procurement Inquiry</h2>
+        <p>Dear {{supplier_name}},</p>
+        
+        <p>We are inquiring about the following items for procurement:</p>
+        
+        {items_html}
+        
+        <p>Please provide us with your quotation including:</p>
+        <ul>
+            <li>Unit price and total price</li>
+            <li>Delivery timeline</li>
+            <li>Warranty information</li>
+            <li>Payment terms</li>
+        </ul>
+        
+        <p>We look forward to your prompt response.</p>
+        
+        <p>Best regards,<br>
+        Procurement Department</p>
+    </body>
+    </html>
+    """
 
 @app.route('/')
 def index():
@@ -238,6 +306,7 @@ def edit_task(task_id):
     else:
         return redirect(url_for('task_list'))
 
+"""
 @app.route('/task/<int:task_id>/email', methods=['GET', 'POST'])
 def email_generation(task_id):
     if 'user_id' not in session:
@@ -251,9 +320,10 @@ def email_generation(task_id):
         flash('Task not found or access denied', 'error')
         return redirect(url_for('task_list'))
     
-    # Get selected suppliers and PR items
+    # Get selected suppliers with their assigned items
     selected_suppliers = conn.execute('''
-        SELECT s.* FROM suppliers s
+        SELECT s.*, ts.assigned_items 
+        FROM suppliers s
         JOIN task_suppliers ts ON s.id = ts.supplier_id
         WHERE ts.task_id = ? AND ts.is_selected = 1
     ''', (task_id,)).fetchall()
@@ -263,23 +333,137 @@ def email_generation(task_id):
     ).fetchall()
     
     if request.method == 'POST':
-        # Update task status
-        conn.execute(
-            'UPDATE tasks SET status = ? WHERE id = ?',
-            ('generate_email', task_id)
-        )
-        conn.commit()
-        conn.close()
+        # Store email content in session for the next step
+        email_content = request.form.get('email_content', '')
+        session['email_content'] = email_content
         
-        flash('Email generated successfully!', 'success')
-        return redirect(url_for('email_confirmation', task_id=task_id))
+        conn.close()
+        return redirect(url_for('email_preview', task_id=task_id))
+    
+    # Group suppliers by their assigned items to create unique email templates
+    email_templates = {}
+    for supplier in selected_suppliers:
+        assigned_item_ids = None
+        if supplier['assigned_items']:
+            try:
+                assigned_item_ids = json.loads(supplier['assigned_items'])
+            except:
+                assigned_item_ids = None
+        
+        # Create a key based on the assigned items
+        if assigned_item_ids:
+            key = tuple(sorted(assigned_item_ids))
+        else:
+            key = 'all'
+        
+        if key not in email_templates:
+            email_templates[key] = {
+                'suppliers': [],
+                'items': assigned_item_ids if assigned_item_ids else [item['id'] for item in pr_items]
+            }
+        
+        email_templates[key]['suppliers'].append(supplier)
+    
+    # Generate default email content for the first template
+    default_template_key = next(iter(email_templates.keys()))
+    default_items = [item for item in pr_items if not email_templates[default_template_key]['items'] or item['id'] in email_templates[default_template_key]['items']]
+    default_email_content = generate_email_content(default_items, task['task_name'])
     
     conn.close()
     
     return render_template('email_generation.html',
                          task=task,
-                         suppliers=selected_suppliers,
-                         pr_items=pr_items)
+                         email_templates=email_templates,
+                         pr_items=pr_items,
+                         default_email_content=default_email_content)
+"""
+
+@app.route('/task/<int:task_id>/email-preview', methods=['GET', 'POST'])
+def email_preview(task_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    
+    # Verify task ownership
+    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
+        flash('Task not found or access denied', 'error')
+        return redirect(url_for('task_list'))
+    
+    # Get selected suppliers with their assigned items
+    selected_suppliers = conn.execute('''
+        SELECT s.*, ts.assigned_items 
+        FROM suppliers s
+        JOIN task_suppliers ts ON s.id = ts.supplier_id
+        WHERE ts.task_id = ? AND ts.is_selected = 1
+    ''', (task_id,)).fetchall()
+    
+    pr_items = conn.execute(
+        'SELECT * FROM pr_items WHERE task_id = ?', (task_id,)
+    ).fetchall()
+    
+    # Initialize email_subject here, outside the POST block
+    email_subject = session.get('email_subject', f"Procurement Inquiry - {task['task_name']}")
+    
+    if request.method == 'POST':
+        action = request.form.get('action')
+        email_content = request.form.get('email_content', '')
+        email_subject = request.form.get('email_subject', email_subject)  # Use form value or existing
+        
+        if action == 'update_preview':
+            # Just update the preview with new content
+            session['email_content'] = email_content
+            session['email_subject'] = email_subject
+            flash('Preview updated!', 'success')
+            
+        elif action == 'send_emails':
+            # Store final email content and proceed to confirmation
+            session['final_email_content'] = email_content
+            session['final_email_subject'] = email_subject
+            conn.close()
+            return redirect(url_for('email_confirmation', task_id=task_id))
+    
+    # Group suppliers by email template (based on assigned items)
+    email_templates = {}
+    for supplier in selected_suppliers:
+        assigned_item_ids = None
+        if supplier['assigned_items']:
+            try:
+                assigned_item_ids = json.loads(supplier['assigned_items'])
+            except:
+                assigned_item_ids = None
+        
+        # Create a key based on the assigned items
+        if assigned_item_ids:
+            key = tuple(sorted(assigned_item_ids))
+        else:
+            key = 'all'
+        
+        if key not in email_templates:
+            # Use session content if available, otherwise generate default
+            email_content = session.get('email_content')
+            if not email_content:
+                email_content = generate_email_content(
+                    [item for item in pr_items if not assigned_item_ids or item['id'] in assigned_item_ids],
+                    task['task_name']
+                )
+            
+            email_templates[key] = {
+                'suppliers': [],
+                'items': assigned_item_ids if assigned_item_ids else [item['id'] for item in pr_items],
+                'email_content': email_content
+            }
+        
+        email_templates[key]['suppliers'].append(supplier)
+    
+    conn.close()
+    
+    return render_template('email_preview.html',
+                         task=task,
+                         email_templates=email_templates,
+                         pr_items=pr_items,
+                         email_subject=email_subject)
 
 @app.route('/task/<int:task_id>/confirm-email', methods=['GET', 'POST'])
 def email_confirmation(task_id):
@@ -294,9 +478,10 @@ def email_confirmation(task_id):
         flash('Task not found or access denied', 'error')
         return redirect(url_for('task_list'))
     
-    # Get selected suppliers and PR items
+    # Get selected suppliers with their assigned items
     selected_suppliers = conn.execute('''
-        SELECT s.* FROM suppliers s
+        SELECT s.*, ts.assigned_items 
+        FROM suppliers s
         JOIN task_suppliers ts ON s.id = ts.supplier_id
         WHERE ts.task_id = ? AND ts.is_selected = 1
     ''', (task_id,)).fetchall()
@@ -306,10 +491,19 @@ def email_confirmation(task_id):
     ).fetchall()
     
     if request.method == 'POST':
-        # Send emails to all selected suppliers
+        final_email_content = session.get('final_email_content', '')
+        
+        # Send emails to all selected suppliers with their assigned items
         success_count = 0
         for supplier in selected_suppliers:
-            if send_procurement_email(supplier['email'], supplier['name'], pr_items, task['task_name']):
+            assigned_item_ids = None
+            if supplier['assigned_items']:
+                try:
+                    assigned_item_ids = json.loads(supplier['assigned_items'])
+                except:
+                    assigned_item_ids = None
+            
+            if send_procurement_email(supplier['email'], supplier['name'], pr_items, task['task_name'], assigned_item_ids, final_email_content):
                 success_count += 1
         
         # Update task status
@@ -319,6 +513,10 @@ def email_confirmation(task_id):
         )
         conn.commit()
         conn.close()
+        
+        # Clean up session data
+        session.pop('email_content', None)
+        session.pop('final_email_content', None)
         
         flash(f'Emails sent successfully! {success_count}/{len(selected_suppliers)} emails delivered.', 'success')
         return redirect(url_for('task_list'))
@@ -457,6 +655,9 @@ def add_supplier():
         products_services = request.form['products_services']
         selected_categories = request.form.getlist('categories')
         
+        print(f"🆕 Adding supplier: {name}, {email}")
+        print(f"📋 Categories selected: {selected_categories}")
+        
         # Validate email
         if not validate_email(email):
             flash('Invalid email format', 'error')
@@ -475,6 +676,7 @@ def add_supplier():
         ''', (name, contact_name, email, contact_number, address, products_services))
         
         supplier_id = cursor.lastrowid
+        print(f"✅ Supplier added with ID: {supplier_id}")
         
         # Add categories
         for category_id in selected_categories:
@@ -482,8 +684,18 @@ def add_supplier():
                 'INSERT INTO supplier_categories (supplier_id, category_id) VALUES (?, ?)',
                 (supplier_id, category_id)
             )
+            print(f"✅ Added category {category_id} to supplier {supplier_id}")
         
         conn.commit()
+        print("✅ Changes committed to database")
+        
+        # Verify the supplier was added
+        verify_supplier = conn.execute('SELECT * FROM suppliers WHERE id = ?', (supplier_id,)).fetchone()
+        if verify_supplier:
+            print(f"✅ Verification: Supplier found in database - {verify_supplier['name']}")
+        else:
+            print("❌ Verification: Supplier NOT found in database!")
+        
         conn.close()
         flash('Supplier added successfully!', 'success')
         return redirect(url_for('suppliers'))
@@ -524,50 +736,66 @@ def logout():
     return redirect(url_for('login'))
 
 # Email sending function
-def send_procurement_email(supplier_email, supplier_name, pr_items, task_name):
+def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, assigned_item_ids=None, custom_content=None):
     try:
-        # Create email content
+        # Filter items for this specific supplier
+        if assigned_item_ids:
+            # Convert string IDs to integers for comparison
+            assigned_ids = [int(item_id) for item_id in assigned_item_ids]
+            supplier_items = [item for item in pr_items if item['id'] in assigned_ids]
+        else:
+            # Send all items if no specific assignment
+            supplier_items = pr_items
+        
+        if not supplier_items:
+            print(f"No items assigned to {supplier_name}, skipping email")
+            return False
+        
         subject = f"Procurement Inquiry - {task_name}"
         
-        # Format PR items
-        items_html = "<ul>"
-        for item in pr_items:
-            items_html += f"""
-            <li>
-                <strong>Item:</strong> {item['item_name']}<br>
-                <strong>Specification:</strong> {item['specification'] or 'N/A'}<br>
-                <strong>Brand:</strong> {item['brand'] or 'N/A'}<br>
-                <strong>Quantity:</strong> {item['quantity']}<br>
-                <strong>Category:</strong> {item['item_category']}
-            </li>
+        if custom_content:
+            # Use the custom email content
+            body = custom_content.replace('{supplier_name}', supplier_name)
+        else:
+            # Generate default email content
+            items_html = "<ul>"
+            for item in supplier_items:
+                items_html += f"""
+                <li>
+                    <strong>Item:</strong> {item['item_name']}<br>
+                    <strong>Specification:</strong> {item['specification'] or 'N/A'}<br>
+                    <strong>Brand:</strong> {item['brand'] or 'N/A'}<br>
+                    <strong>Quantity:</strong> {item['quantity']}<br>
+                    <strong>Category:</strong> {item['item_category']}
+                </li>
+                """
+            items_html += "</ul>"
+            
+            body = f"""
+            <html>
+            <body>
+                <h2>Procurement Inquiry</h2>
+                <p>Dear {supplier_name},</p>
+                
+                <p>We are inquiring about the following items for procurement:</p>
+                
+                {items_html}
+                
+                <p>Please provide us with your quotation including:</p>
+                <ul>
+                    <li>Unit price and total price</li>
+                    <li>Delivery timeline</li>
+                    <li>Warranty information</li>
+                    <li>Payment terms</li>
+                </ul>
+                
+                <p>We look forward to your prompt response.</p>
+                
+                <p>Best regards,<br>
+                Procurement Department</p>
+            </body>
+            </html>
             """
-        items_html += "</ul>"
-        
-        body = f"""
-        <html>
-        <body>
-            <h2>Procurement Inquiry</h2>
-            <p>Dear {supplier_name},</p>
-            
-            <p>We are inquiring about the following items for procurement:</p>
-            
-            {items_html}
-            
-            <p>Please provide us with your quotation including:</p>
-            <ul>
-                <li>Unit price and total price</li>
-                <li>Delivery timeline</li>
-                <li>Warranty information</li>
-                <li>Payment terms</li>
-            </ul>
-            
-            <p>We look forward to your prompt response.</p>
-            
-            <p>Best regards,<br>
-            Procurement Department</p>
-        </body>
-        </html>
-        """
         
         # Create message
         msg = MIMEMultipart()
@@ -640,29 +868,25 @@ def supplier_selection(task_id):
         return redirect(url_for('task_list'))
     
     if request.method == 'POST':
-        # Handle the new matching system
+        # Process supplier-item assignments
         selected_suppliers = request.form.getlist('suppliers')
         item_assignments = {}
         
-        # Process item assignments
+        # Process which items go to which suppliers
         for key, value in request.form.items():
-            if key.startswith('item_'):
-                parts = key.split('_')
-                if len(parts) == 3 and parts[0] == 'item' and parts[2] == 'supplier':
-                    item_id = parts[1]
-                    supplier_id = value
-                    if supplier_id and supplier_id != 'none':
-                        if supplier_id not in item_assignments:
-                            item_assignments[supplier_id] = []
-                        item_assignments[supplier_id].append(item_id)
+            if key.startswith('supplier_') and key.endswith('_items'):
+                supplier_id = key.replace('supplier_', '').replace('_items', '')
+                assigned_items = request.form.getlist(key)
+                if assigned_items:
+                    item_assignments[supplier_id] = assigned_items
         
         # Clear existing selections
         conn.execute('DELETE FROM task_suppliers WHERE task_id = ?', (task_id,))
         
-        # Add supplier selections and item assignments
+        # Add supplier selections with assigned items
         for supplier_id in selected_suppliers:
-            items_for_supplier = item_assignments.get(supplier_id, [])
-            items_json = json.dumps(items_for_supplier) if items_for_supplier else None
+            assigned_items = item_assignments.get(supplier_id, [])
+            items_json = json.dumps(assigned_items) if assigned_items else None
             conn.execute(
                 'INSERT INTO task_suppliers (task_id, supplier_id, is_selected, assigned_items) VALUES (?, ?, ?, ?)',
                 (task_id, supplier_id, True, items_json)
@@ -677,7 +901,7 @@ def supplier_selection(task_id):
         conn.commit()
         conn.close()
         flash('Suppliers and item assignments saved successfully!', 'success')
-        return redirect(url_for('email_generation', task_id=task_id))
+        return redirect(url_for('email_preview', task_id=task_id))
     
     # Get PR items
     pr_items = conn.execute(
@@ -711,7 +935,7 @@ def supplier_selection(task_id):
     item_assignments = {}
     
     for data in selected_data:
-        supplier_id = data['supplier_id']
+        supplier_id = str(data['supplier_id'])
         selected_supplier_ids.append(supplier_id)
         if data['assigned_items']:
             try:
@@ -805,6 +1029,110 @@ def delete_category(category_id):
     
     conn.close()
     return redirect(url_for('categories'))
+
+# ==================================== DEBUG ====================================
+# Add this route to your app.py temporarily
+@app.route('/debug-db')
+def debug_db():
+    conn = get_db_connection()
+    
+    # Check all tables
+    cursor = conn.cursor()
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+    tables = cursor.fetchall()
+    
+    result = "<h1>Database Debug Info</h1>"
+    result += f"<p>Tables found: {[table[0] for table in tables]}</p>"
+    
+    # Check each table's structure and content
+    for table in tables:
+        table_name = table[0]
+        result += f"<h2>Table: {table_name}</h2>"
+        
+        # Get table structure
+        cursor.execute(f"PRAGMA table_info({table_name})")
+        columns = cursor.fetchall()
+        result += f"<p>Columns: {[col[1] for col in columns]}</p>"
+        
+        # Get table content
+        cursor.execute(f"SELECT * FROM {table_name}")
+        rows = cursor.fetchall()
+        result += f"<p>Row count: {len(rows)}</p>"
+        if rows:
+            result += "<ul>"
+            for row in rows:
+                result += f"<li>{row}</li>"
+            result += "</ul>"
+    
+    conn.close()
+    return result
+
+@app.route('/debug-info')
+def debug_info():
+    import os
+    import sqlite3
+    
+    current_dir = os.getcwd()
+    db_path = os.path.join(current_dir, 'procure_flow.db')
+    
+    info = f"""
+    <h1>Debug Information</h1>
+    <p>Current directory: {current_dir}</p>
+    <p>Database path: {db_path}</p>
+    <p>Database exists: {os.path.exists(db_path)}</p>
+    """
+    
+    if os.path.exists(db_path):
+        info += f"<p>Database size: {os.path.getsize(db_path)} bytes</p>"
+        
+        # Check tables and row counts
+        conn = sqlite3.connect('procure_flow.db')
+        cursor = conn.cursor()
+        
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
+        
+        info += "<h2>Tables and Row Counts:</h2>"
+        for table in tables:
+            table_name = table[0]
+            cursor.execute(f"SELECT COUNT(*) FROM {table_name}")
+            count = cursor.fetchone()[0]
+            info += f"<p>{table_name}: {count} rows</p>"
+        
+        conn.close()
+    
+    return info
+
+@app.route('/db-location')
+def db_location():
+    import os
+    import sqlite3
+    
+    current_dir = os.getcwd()
+    db_path = os.path.abspath('procure_flow.db')
+    
+    info = f"""
+    <h1>Database Location</h1>
+    <p><strong>Current working directory:</strong> {current_dir}</p>
+    <p><strong>Database absolute path:</strong> {db_path}</p>
+    <p><strong>Database exists:</strong> {os.path.exists(db_path)}</p>
+    """
+    
+    if os.path.exists(db_path):
+        # Show file properties
+        import datetime
+        stat = os.stat(db_path)
+        modified_time = datetime.datetime.fromtimestamp(stat.st_mtime)
+        
+        info += f"""
+        <p><strong>Database size:</strong> {stat.st_size} bytes</p>
+        <p><strong>Last modified:</strong> {modified_time}</p>
+        <p><strong>Full path to open in DB Browser:</strong></p>
+        <code>{db_path}</code>
+        """
+    
+    return info
+# ==================================== END OF DEBUG ====================================
 
 if __name__ == '__main__':
     print("Starting Procure Flow...")

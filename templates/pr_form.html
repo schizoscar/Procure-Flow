@@ -24,14 +24,14 @@
                        placeholder="Enter task name (e.g., Office Supplies Q4 2024)">
             </div>
 
-            <div id="itemsContainer">
+            <div class="items-container" id="itemsContainer" style="max-height: 60vh; overflow-y: auto; position: relative;">
                 {% if existing_items %}
                     {% for item in existing_items %}
                     <div class="card mb-2 item-row">
                         <div class="d-flex justify-between align-center">
                             <h4>Item {{ loop.index }}</h4>
-                            {% if loop.index > 1 or existing_items|length > 1 %}
-                            <button type="button" class="btn btn-danger remove-item" onclick="this.parentElement.parentElement.remove()">
+                            {% if existing_items|length > 1 %}
+                            <button type="button" class="btn btn-danger remove-item">
                                 <i class="fas fa-times"></i> Remove
                             </button>
                             {% endif %}
@@ -81,6 +81,7 @@
                 <div class="card mb-2 item-row">
                     <div class="d-flex justify-between align-center">
                         <h4>Item 1</h4>
+                        <!-- No remove button for the first item when there's only one -->
                     </div>
                     <div class="grid-2">
                         <div class="form-group">
@@ -141,74 +142,103 @@
 
 {% block scripts %}
 <script>
+    console.log('PR Form Script Loading...');
+
+    let initializationCount = 0;
+
     document.addEventListener('DOMContentLoaded', function () {
+        initializationCount++;
+        console.log('DOM Content Loaded - Initialization #:', initializationCount);
+
         let itemCount = {{ existing_items| length if existing_items else 1
     }};
+    console.log('Initial itemCount:', itemCount);
 
-    document.getElementById('addItem').addEventListener('click', function () {
-        itemCount++;
-        const newItem = `
-            <div class="card mb-2 item-row">
-                <div class="d-flex justify-between align-center">
-                    <h4>Item ${itemCount}</h4>
-                    <button type="button" class="btn btn-danger remove-item">
-                        <i class="fas fa-times"></i> Remove
-                    </button>
-                </div>
-                <div class="grid-2">
-                    <div class="form-group">
-                        <label class="form-label required">Item Name</label>
-                        <input type="text" class="form-control" name="items[${itemCount - 1}][item_name]" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label required">Quantity</label>
-                        <input type="number" class="form-control" name="items[${itemCount - 1}][quantity]" min="1" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Specification</label>
-                        <input type="text" class="form-control" name="items[${itemCount - 1}][specification]">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Brand</label>
-                        <input type="text" class="form-control" name="items[${itemCount - 1}][brand]">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Balance Stock</label>
-                        <input type="number" class="form-control" name="items[${itemCount - 1}][balance_stock]" min="0">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label required">Item Category</label>
-                        <select class="form-control form-select" name="items[${itemCount - 1}][item_category]" required>
-                            <option value="">Select Category</option>
-                            {% for category in categories %}
-                            <option value="{{ category.name }}">{{ category.name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                </div>
-            </div>
-        `;
-        document.getElementById('itemsContainer').insertAdjacentHTML('beforeend', newItem);
-    });
+    // Remove ALL existing event listeners from the add button
+    const addButton = document.getElementById('addItem');
+    if (addButton) {
+        console.log('Add button found, replacing it...');
+        const newAddButton = addButton.cloneNode(true);
+        addButton.parentNode.replaceChild(newAddButton, addButton);
 
-    // Add remove functionality for dynamically added items
-    document.addEventListener('click', function (e) {
-        if (e.target.classList.contains('remove-item') || e.target.closest('.remove-item')) {
-            const removeBtn = e.target.classList.contains('remove-item') ? e.target : e.target.closest('.remove-item');
-            removeBtn.closest('.item-row').remove();
+        let clickCount = 0;
+        newAddButton.addEventListener('click', function (e) {
+            clickCount++;
+            console.log('Add button clicked - Click #:', clickCount);
+            e.preventDefault();
+            e.stopPropagation();
+
+            itemCount++;
+            console.log('Adding item #:', itemCount);
+
+            let categoriesOptions = '<option value="">Select Category</option>';
+            {% for category in categories %}
+            categoriesOptions += '<option value="{{ category.name }}">{{ category.name }}</option>';
+            {% endfor %}
+
+            const newItem = `
+                <div class="card mb-2 item-row">
+                    <div class="d-flex justify-between align-center">
+                        <h4>Item ${itemCount}</h4>
+                        <button type="button" class="btn btn-danger remove-item">
+                            <i class="fas fa-times"></i> Remove
+                        </button>
+                    </div>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label class="form-label required">Item Name</label>
+                            <input type="text" class="form-control" name="items[${itemCount - 1}][item_name]" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label required">Quantity</label>
+                            <input type="number" class="form-control" name="items[${itemCount - 1}][quantity]" min="1" required>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Specification</label>
+                            <input type="text" class="form-control" name="items[${itemCount - 1}][specification]" 
+                                   placeholder="Technical specifications">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Brand</label>
+                            <input type="text" class="form-control" name="items[${itemCount - 1}][brand]" 
+                                   placeholder="Preferred brand">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Balance Stock</label>
+                            <input type="number" class="form-control" name="items[${itemCount - 1}][balance_stock]" min="0" 
+                                   placeholder="Current stock level">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label required">Item Category</label>
+                            <select class="form-control form-select" name="items[${itemCount - 1}][item_category]" required>
+                                ${categoriesOptions}
+                            </select>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('itemsContainer').insertAdjacentHTML('beforeend', newItem);
             updateItemNumbers();
-        }
-    });
-
-    function updateItemNumbers() {
-        const items = document.querySelectorAll('.item-row');
-        items.forEach((item, index) => {
-            const title = item.querySelector('h4');
-            if (title) {
-                title.textContent = `Item ${index + 1}`;
-            }
         });
     }
+
+    // Rest of your functions...
+    function updateItemNumbers() {
+        const items = document.querySelectorAll('.item-row');
+        console.log('Current items count:', items.length);
+        let currentCount = 0;
+        items.forEach((item) => {
+            currentCount++;
+            const title = item.querySelector('h4');
+            if (title) {
+                title.textContent = `Item ${currentCount}`;
+            }
+        });
+        itemCount = currentCount;
+    }
+
+    updateItemNumbers();
 });
 </script>
 {% endblock %}

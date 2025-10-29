@@ -4,8 +4,8 @@
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h2>Generate Email</h2>
-        <p>Step 3: Review and generate email for {{ task.task_name }}</p>
+        <h2>Generate Email Content</h2>
+        <p>Step 3: Customize email content for {{ task.task_name }}</p>
     </div>
     <div class="card-body">
         <!-- Progress Steps -->
@@ -16,75 +16,168 @@
             <div class="progress-step">4</div>
         </div>
 
-        <div class="grid-2">
-            <div class="card">
-                <h4>PR Items</h4>
-                <ul>
-                    {% for item in pr_items %}
-                    <li>
-                        <strong>{{ item.item_name }}</strong><br>
-                        Quantity: {{ item.quantity }}<br>
-                        Category: {{ item.item_category }}<br>
-                        {% if item.specification %}Specs: {{ item.specification }}<br>{% endif %}
-                        {% if item.brand %}Brand: {{ item.brand }}{% endif %}
-                    </li>
-                    {% endfor %}
-                </ul>
+        <!-- Email Templates Overview -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4><i class="fas fa-envelope"></i> Email Templates Overview</h4>
             </div>
-
-            <div class="card">
-                <h4>Selected Suppliers</h4>
-                <ul>
-                    {% for supplier in suppliers %}
-                    <li>
-                        <strong>{{ supplier.name }}</strong><br>
-                        Contact: {{ supplier.contact_name or 'N/A' }}<br>
-                        Email: {{ supplier.email }}
-                    </li>
+            <div class="card-body">
+                <p>Based on your supplier assignments, we've created <strong>{{ email_templates|length }}</strong> unique email template(s):</p>
+                
+                <div class="email-templates-overview">
+                    {% for template_key, template in email_templates.items() %}
+                    <div class="template-card">
+                        <div class="template-header">
+                            <h5>Template {{ loop.index }}</h5>
+                            <span class="badge">{{ template.suppliers|length }} supplier(s)</span>
+                        </div>
+                        <div class="template-details">
+                            <p><strong>Items included:</strong> 
+                                {% if template_key == 'all' %}
+                                All items
+                                {% else %}
+                                {{ template.items|length }} specific item(s)
+                                {% endif %}
+                            </p>
+                            <p><strong>Recipients:</strong></p>
+                            <ul class="supplier-list">
+                                {% for supplier in template.suppliers %}
+                                <li>{{ supplier.name }} ({{ supplier.email }})</li>
+                                {% endfor %}
+                            </ul>
+                        </div>
+                    </div>
                     {% endfor %}
-                </ul>
-            </div>
-        </div>
-
-        <div class="card mt-2">
-            <h4>Email Preview</h4>
-            <div class="email-preview">
-                <p><strong>Subject:</strong> Procurement Inquiry - {{ task.task_name }}</p>
-                <div class="email-content">
-                    <p>Dear Supplier,</p>
-                    <p>We are inquiring about the following items for procurement:</p>
-                    <ul>
-                        {% for item in pr_items %}
-                        <li>
-                            <strong>Item:</strong> {{ item.item_name }}<br>
-                            <strong>Specification:</strong> {{ item.specification or 'N/A' }}<br>
-                            <strong>Brand:</strong> {{ item.brand or 'N/A' }}<br>
-                            <strong>Quantity:</strong> {{ item.quantity }}<br>
-                            <strong>Category:</strong> {{ item.item_category }}
-                        </li>
-                        {% endfor %}
-                    </ul>
-                    <p>Please provide us with your quotation including:</p>
-                    <ul>
-                        <li>Unit price and total price</li>
-                        <li>Delivery timeline</li>
-                        <li>Warranty information</li>
-                        <li>Payment terms</li>
-                    </ul>
-                    <p>We look forward to your prompt response.</p>
-                    <p>Best regards,<br>Procurement Department</p>
                 </div>
             </div>
         </div>
 
+        <!-- Email Content Editor -->
         <form method="POST">
-            <div class="d-flex gap-1 mt-2">
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-envelope"></i> Generate Email & Continue
-                </button>
-                <a href="{{ url_for('supplier_selection', task_id=task.id) }}" class="btn btn-secondary">Back</a>
+            <div class="card">
+                <div class="card-header">
+                    <h4><i class="fas fa-edit"></i> Edit Email Content</h4>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">Email Template (All templates use the same content)</label>
+                        <p class="text-muted mb-3">
+                            <small>
+                                <i class="fas fa-info-circle"></i> 
+                                Use <code>{supplier_name}</code> to automatically insert the supplier's name. 
+                                All suppliers will receive emails with the same content but filtered for their assigned items.
+                            </small>
+                        </p>
+                        <textarea class="form-control" name="email_content" rows="20" required>{{ default_email_content }}</textarea>
+                    </div>
+
+                    <div class="email-preview-card">
+                        <h5><i class="fas fa-eye"></i> Quick Preview</h5>
+                        <div class="preview-content">
+                            <div class="preview-header">
+                                <strong>Subject:</strong> Procurement Inquiry - {{ task.task_name }}
+                            </div>
+                            <div class="preview-body">
+                                <p><strong>To:</strong> Supplier Name</p>
+                                <p><strong>Content:</strong> (Will be generated from your template above)</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-1 mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-eye"></i> Preview All Emails
+                        </button>
+                        <a href="{{ url_for('supplier_selection', task_id=task.id) }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to Supplier Selection
+                        </a>
+                    </div>
+                </div>
             </div>
         </form>
     </div>
 </div>
+{% endblock %}
+
+{% block scripts %}
+<style>
+.email-templates-overview {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.template-card {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    background: #f8f9fa;
+}
+
+.template-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.template-header h5 {
+    margin: 0;
+    color: var(--dusty-purple-dark);
+}
+
+.badge {
+    background: var(--dusty-purple);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 12px;
+    font-size: 0.8rem;
+}
+
+.supplier-list {
+    margin: 0.5rem 0;
+    padding-left: 1.5rem;
+    font-size: 0.9rem;
+}
+
+.supplier-list li {
+    margin-bottom: 0.25rem;
+}
+
+.email-preview-card {
+    background: #f8f9fa;
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    margin-top: 1rem;
+}
+
+.preview-content {
+    background: white;
+    border: 1px solid #dee2e6;
+    border-radius: 4px;
+    padding: 1rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+}
+
+.preview-header {
+    padding-bottom: 0.5rem;
+    margin-bottom: 0.5rem;
+    border-bottom: 1px solid #e9ecef;
+    color: var(--dusty-purple-dark);
+}
+
+.preview-body {
+    color: #666;
+}
+
+textarea.form-control {
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+}
+</style>
 {% endblock %}

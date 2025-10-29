@@ -4,8 +4,8 @@
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h2>Confirm and Send Email</h2>
-        <p>Step 4: Confirm and send emails for {{ task.task_name }}</p>
+        <h2>Send Emails</h2>
+        <p>Final Step: Confirm and send emails for {{ task.task_name }}</p>
     </div>
     <div class="card-body">
         <!-- Progress Steps -->
@@ -13,38 +13,43 @@
             <div class="progress-step completed">1</div>
             <div class="progress-step completed">2</div>
             <div class="progress-step completed">3</div>
-            <div class="progress-step active">4</div>
+            <div class="progress-step completed">4</div>
         </div>
 
         <div class="alert alert-warning">
-            <p><i class="fas fa-exclamation-triangle"></i> You are about to send emails to {{ suppliers|length }} supplier(s).</p>
+            <h5><i class="fas fa-exclamation-triangle"></i> Ready to Send Emails</h5>
+            <p class="mb-0">You are about to send procurement inquiries to {{ suppliers|length }} supplier(s).</p>
         </div>
 
-        <div class="grid-2">
-            <div class="card">
-                <h4>PR Items</h4>
-                <ul>
-                    {% for item in pr_items %}
-                    <li>
-                        <strong>{{ item.item_name }}</strong><br>
-                        Quantity: {{ item.quantity }}<br>
-                        Category: {{ item.item_category }}
-                    </li>
-                    {% endfor %}
-                </ul>
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4><i class="fas fa-paper-plane"></i> Email Summary</h4>
             </div>
-
-            <div class="card">
-                <h4>Recipients</h4>
-                <ul>
-                    {% for supplier in suppliers %}
-                    <li>
-                        <strong>{{ supplier.name }}</strong><br>
-                        Email: {{ supplier.email }}<br>
-                        Contact: {{ supplier.contact_name or 'N/A' }}
-                    </li>
-                    {% endfor %}
-                </ul>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>Recipients</h5>
+                        <ul class="recipient-list">
+                            {% for supplier in suppliers %}
+                            <li>
+                                <strong>{{ supplier.name }}</strong><br>
+                                <small>{{ supplier.email }}</small>
+                                {% if supplier.contact_name %}
+                                <br><small>Contact: {{ supplier.contact_name }}</small>
+                                {% endif %}
+                            </li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                    <div class="col-md-6">
+                        <h5>Items</h5>
+                        <ul>
+                            {% for item in pr_items %}
+                            <li>{{ item.item_name }} (Qty: {{ item.quantity }})</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -60,9 +65,11 @@
 
             <div class="d-flex gap-1">
                 <button type="submit" class="btn btn-success" id="sendButton" disabled>
-                    <i class="fas fa-paper-plane"></i> Send Emails
+                    <i class="fas fa-paper-plane"></i> Send Emails Now
                 </button>
-                <a href="{{ url_for('email_generation', task_id=task.id) }}" class="btn btn-secondary">Back</a>
+                <a href="{{ url_for('email_preview', task_id=task.id) }}" class="btn btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back to Preview
+                </a>
             </div>
         </form>
     </div>
@@ -71,13 +78,28 @@
 
 {% block scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    const confirmCheckbox = document.getElementById('confirmSend');
-    const sendButton = document.getElementById('sendButton');
-    
-    confirmCheckbox.addEventListener('change', function() {
-        sendButton.disabled = !this.checked;
+    document.addEventListener('DOMContentLoaded', function () {
+        const confirmCheckbox = document.getElementById('confirmSend');
+        const sendButton = document.getElementById('sendButton');
+
+        confirmCheckbox.addEventListener('change', function () {
+            sendButton.disabled = !this.checked;
+        });
     });
-});
 </script>
+
+<style>
+.recipient-list {
+    list-style: none;
+    padding: 0;
+}
+
+.recipient-list li {
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border-left: 3px solid var(--dusty-purple);
+}
+</style>
 {% endblock %}

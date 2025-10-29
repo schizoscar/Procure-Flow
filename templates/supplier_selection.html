@@ -4,8 +4,8 @@
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h2>Assign Suppliers to Items</h2>
-        <p>Step 2: Select suppliers and assign specific items for {{ task.task_name }}</p>
+        <h2>Assign Items to Suppliers</h2>
+        <p>Step 2: Select which suppliers receive which items for {{ task.task_name }}</p>
     </div>
     <div class="card-body">
         <!-- Progress Steps -->
@@ -16,68 +16,121 @@
             <div class="progress-step">4</div>
         </div>
 
-        <form method="POST" id="supplierForm">
-            <!-- Overview Section -->
-            <div class="card mb-3">
-                <div class="card-header">
-                    <h4><i class="fas fa-list"></i> PR Items Overview</h4>
-                </div>
-                <div class="card-body">
-                    <div class="grid-3">
-                        {% for item in pr_items %}
-                        <div class="card">
-                            <div class="card-header">
-                                <h5>Item {{ loop.index }}</h5>
-                            </div>
-                            <div class="card-body">
-                                <p><strong>{{ item.item_name }}</strong></p>
-                                <p>Qty: {{ item.quantity }}</p>
-                                <p>Category: {{ item.item_category }}</p>
-                                {% if item.specification %}<p>Specs: {{ item.specification }}</p>{% endif %}
-                            </div>
+        <!-- Items Overview -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h4><i class="fas fa-list"></i> Your Items</h4>
+            </div>
+            <div class="card-body">
+                <div class="items-overview">
+                    {% for item in pr_items %}
+                    <div class="item-card">
+                        <div class="item-header">
+                            <h5>Item {{ loop.index }}</h5>
+                            <span class="item-category">{{ item.item_category }}</span>
                         </div>
-                        {% endfor %}
+                        <div class="item-details">
+                            <p><strong>{{ item.item_name }}</strong></p>
+                            <p>Quantity: {{ item.quantity }}</p>
+                            {% if item.specification %}<p>Specs: {{ item.specification }}</p>{% endif %}
+                            {% if item.brand %}<p>Brand: {{ item.brand }}</p>{% endif %}
+                        </div>
                     </div>
+                    {% endfor %}
                 </div>
             </div>
+        </div>
 
-            <!-- Supplier Selection Section -->
-            <div class="card mb-3">
-                <div class="card-header d-flex justify-between align-center">
-                    <h4><i class="fas fa-users"></i> Available Suppliers</h4>
-                    <button type="button" id="selectAll" class="btn btn-secondary">
-                        <i class="fas fa-check"></i> Select All
-                    </button>
+        <form method="POST">
+            <div class="card">
+                <div class="card-header">
+                    <h4><i class="fas fa-users"></i> Assign Items to Compatible Suppliers</h4>
+                    <p class="mb-0">Select suppliers and choose which items they should quote on</p>
                 </div>
                 <div class="card-body">
                     {% if suppliers %}
-                    <div class="grid-2">
+                    <div class="compatibility-info mb-4 p-3 bg-info-light border-radius">
+                        <h5><i class="fas fa-info-circle"></i> Smart Assignment</h5>
+                        <p class="mb-0">Suppliers are filtered by your item categories. You can choose to send all items or specific items to each supplier.</p>
+                    </div>
+                    
+                    <div class="suppliers-assignment">
                         {% for supplier in suppliers %}
-                        <div class="card supplier-card">
-                            <div class="checkbox-group">
-                                <input type="checkbox" class="checkbox-input supplier-checkbox" 
-                                       name="suppliers" value="{{ supplier.id }}" 
-                                       id="supplier-{{ supplier.id }}"
-                                       {% if supplier.id in selected_supplier_ids %}checked{% endif %}>
-                                <label for="supplier-{{ supplier.id }}" class="form-label">
-                                    <strong>{{ supplier.name }}</strong>
-                                </label>
+                        <div class="supplier-assignment-card">
+                            <div class="supplier-main">
+                                <div class="supplier-selection">
+                                    <input type="checkbox" class="supplier-checkbox" 
+                                           name="suppliers" value="{{ supplier.id }}" 
+                                           id="supplier-{{ supplier.id }}"
+                                           {% if supplier.id|string in selected_supplier_ids %}checked{% endif %}>
+                                    <label for="supplier-{{ supplier.id }}" class="supplier-name">
+                                        <strong>{{ supplier.name }}</strong>
+                                    </label>
+                                </div>
+                                
+                                <div class="supplier-details">
+                                    <div class="detail-item">
+                                        <i class="fas fa-envelope"></i>
+                                        <span>{{ supplier.email }}</span>
+                                    </div>
+                                    <div class="detail-item">
+                                        <i class="fas fa-tags"></i>
+                                        <span><strong>Categories:</strong> {{ supplier.supplier_categories }}</span>
+                                    </div>
+                                </div>
                             </div>
                             
-                            <div class="supplier-details">
-                                <p><i class="fas fa-envelope"></i> {{ supplier.email }}</p>
-                                <p><i class="fas fa-phone"></i> {{ supplier.contact_number or 'N/A' }}</p>
-                                <p><i class="fas fa-tags"></i> {{ supplier.supplier_categories or 'N/A' }}</p>
-                                <p><i class="fas fa-box"></i> {{ supplier.products_services or 'N/A' }}</p>
+                            <div class="item-assignment">
+                                <h6>Assign specific items:</h6>
+                                <div class="assignment-options">
+                                    <div class="assignment-option">
+                                        <input type="radio" 
+                                               name="assignment_type_{{ supplier.id }}" 
+                                               value="all"
+                                               id="all_{{ supplier.id }}"
+                                               checked>
+                                        <label for="all_{{ supplier.id }}">All compatible items</label>
+                                    </div>
+                                    <div class="assignment-option">
+                                        <input type="radio" 
+                                               name="assignment_type_{{ supplier.id }}" 
+                                               value="specific"
+                                               id="specific_{{ supplier.id }}">
+                                        <label for="specific_{{ supplier.id }}">Select specific items:</label>
+                                    </div>
+                                </div>
+                                
+                                <div class="specific-items" style="display: none;">
+                                    {% for item in pr_items %}
+                                    <div class="item-checkbox">
+                                        <input type="checkbox" 
+                                               name="supplier_{{ supplier.id }}_items" 
+                                               value="{{ item.id }}"
+                                               id="item_{{ supplier.id }}_{{ item.id }}">
+                                        <label for="item_{{ supplier.id }}_{{ item.id }}">
+                                            Item {{ loop.index }}: {{ item.item_name }} ({{ item.item_category }})
+                                        </label>
+                                    </div>
+                                    {% endfor %}
+                                </div>
                             </div>
                         </div>
                         {% endfor %}
                     </div>
+
+                    <div class="d-flex gap-1 mt-4">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-arrow-right"></i> Save Assignments & Continue
+                        </button>
+                        <a href="{{ url_for('new_task', task_id=task.id) }}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Back to PR Form
+                        </a>
+                    </div>
                     {% else %}
                     <div class="alert alert-warning">
-                        <p>No suppliers found for the selected categories: {{ categories|join(', ') }}</p>
-                        <p>Please add suppliers with these categories or update your PR items.</p>
-                        <div class="d-flex gap-1 mt-2">
+                        <h5><i class="fas fa-exclamation-triangle"></i> No Compatible Suppliers Found</h5>
+                        <p>No suppliers found for your item categories: <strong>{{ categories|join(', ') }}</strong></p>
+                        <div class="d-flex gap-1 mt-3">
                             <a href="{{ url_for('new_task', task_id=task.id) }}" class="btn btn-primary">
                                 <i class="fas fa-edit"></i> Edit PR Items
                             </a>
@@ -91,105 +144,6 @@
                     {% endif %}
                 </div>
             </div>
-
-            <!-- Item Assignment Section -->
-            {% if suppliers %}
-            <div class="card mb-3">
-                <div class="card-header">
-                    <h4><i class="fas fa-tasks"></i> Assign Items to Suppliers</h4>
-                    <p class="mb-0">Drag items to suppliers or use dropdowns to assign specific items</p>
-                </div>
-                <div class="card-body">
-                    <div class="assignment-interface">
-                        <!-- Drag & Drop Area -->
-                        <div class="drag-drop-area mb-3" style="display: none;">
-                            <h5>Drag & Drop Assignment</h5>
-                            <div class="drag-container">
-                                <div class="items-pool">
-                                    <h6>Available Items</h6>
-                                    <div class="items-list" id="itemsPool">
-                                        {% for item in pr_items %}
-                                        <div class="draggable-item" data-item-id="{{ item.id }}" draggable="true">
-                                            <i class="fas fa-grip-vertical"></i>
-                                            Item {{ loop.index }}: {{ item.item_name }}
-                                        </div>
-                                        {% endfor %}
-                                    </div>
-                                </div>
-                                
-                                <div class="suppliers-assignment">
-                                    {% for supplier in suppliers %}
-                                    <div class="supplier-dropzone" data-supplier-id="{{ supplier.id }}">
-                                        <h6>{{ supplier.name }}</h6>
-                                        <div class="assigned-items" id="supplier-{{ supplier.id }}-items">
-                                            <!-- Assigned items will appear here -->
-                                        </div>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- Dropdown Assignment (Primary Method) -->
-                        <div class="dropdown-assignment">
-                            <h5>Assign Items Using Dropdowns</h5>
-                            <div class="assignment-table">
-                                <table class="table">
-                                    <thead>
-                                        <tr>
-                                            <th>Item</th>
-                                            <th>Category</th>
-                                            {% for supplier in suppliers %}
-                                            <th>{{ supplier.name }}</th>
-                                            {% endfor %}
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        {% for item in pr_items %}
-                                        <tr>
-                                            <td>
-                                                <strong>Item {{ loop.index }}</strong><br>
-                                                {{ item.item_name }}<br>
-                                                <small>Qty: {{ item.quantity }}</small>
-                                            </td>
-                                            <td>{{ item.item_category }}</td>
-                                            {% for supplier in suppliers %}
-                                            <td>
-                                                <div class="form-group">
-                                                    <div class="checkbox-group">
-                                                        <input type="checkbox" 
-                                                               name="item_{{ item.id }}_supplier" 
-                                                               value="{{ supplier.id }}"
-                                                               id="item{{ item.id }}_supplier{{ supplier.id }}"
-                                                               {% if supplier.id in selected_supplier_ids and item_assignments.get(supplier.id|string, [])|map('string')|list is containing item.id|string %}checked{% endif %}>
-                                                        <label for="item{{ item.id }}_supplier{{ supplier.id }}">
-                                                            Assign to {{ supplier.name }}
-                                                        </label>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            {% endfor %}
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
-
-            {% if suppliers %}
-            <div class="d-flex gap-1 mt-2">
-                <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-arrow-right"></i> Save Assignments & Continue
-                </button>
-                <a href="{{ url_for('new_task', task_id=task.id) }}" class="btn btn-secondary">
-                    <i class="fas fa-arrow-left"></i> Back to PR Form
-                </a>
-            </div>
-            {% endif %}
         </form>
     </div>
 </div>
@@ -198,114 +152,169 @@
 {% block scripts %}
 <script>
     document.addEventListener('DOMContentLoaded', function () {
-        // Select All functionality
-        const selectAllBtn = document.getElementById('selectAll');
-        const checkboxes = document.querySelectorAll('.supplier-checkbox');
+        // Handle assignment type changes
+        document.querySelectorAll('input[name^="assignment_type_"]').forEach(radio => {
+            radio.addEventListener('change', function () {
+                const supplierId = this.name.replace('assignment_type_', '');
+                const specificItems = this.closest('.supplier-assignment-card').querySelector('.specific-items');
 
-        if (selectAllBtn && checkboxes.length > 0) {
-            selectAllBtn.addEventListener('click', function () {
-                const isChecked = this.dataset.checked !== 'true';
-                checkboxes.forEach(checkbox => {
-                    checkbox.checked = isChecked;
-                });
-                this.dataset.checked = isChecked.toString();
-                this.innerHTML = isChecked ?
-                    '<i class="fas fa-times"></i> Deselect All' :
-                    '<i class="fas fa-check"></i> Select All';
+                if (this.value === 'specific') {
+                    specificItems.style.display = 'block';
+                } else {
+                    specificItems.style.display = 'none';
+                    // Uncheck all specific items when switching to "all"
+                    specificItems.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+                        cb.checked = false;
+                    });
+                }
             });
+        });
 
-            // Initialize button state
-            const allChecked = Array.from(checkboxes).every(checkbox => checkbox.checked);
-            selectAllBtn.dataset.checked = allChecked.toString();
-            selectAllBtn.innerHTML = allChecked ?
-                '<i class="fas fa-times"></i> Deselect All' :
-                '<i class="fas fa-check"></i> Select All';
-        }
-
-        // Simple assignment system - show which items are compatible
-        function highlightCompatibleItems() {
-            const items = document.querySelectorAll('.draggable-item');
-            items.forEach(item => {
-                // This would be enhanced with actual compatibility logic
-                item.classList.add('compatible');
-            });
-        }
-
-        // Initialize
-        highlightCompatibleItems();
+        // Initialize based on current state
+        document.querySelectorAll('input[name^="assignment_type_"]').forEach(radio => {
+            if (radio.checked) {
+                radio.dispatchEvent(new Event('change'));
+            }
+        });
     });
 </script>
 
 <style>
-.supplier-card {
+.suppliers-assignment {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.supplier-assignment-card {
+    border: 2px solid #e9ecef;
+    border-radius: 10px;
+    padding: 1.5rem;
+    background: white;
     transition: all 0.3s ease;
-    border-left: 4px solid var(--dusty-purple);
 }
 
-.supplier-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(139, 123, 158, 0.2);
+.supplier-assignment-card:hover {
+    border-color: var(--dusty-purple);
+    box-shadow: 0 2px 8px rgba(139, 123, 158, 0.1);
 }
 
-.draggable-item {
-    padding: 0.5rem;
-    margin: 0.25rem 0;
-    background: var(--gray-light);
-    border: 1px solid var(--gray-border);
-    border-radius: 4px;
-    cursor: grab;
+.supplier-main {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #f1f3f4;
+}
+
+.supplier-selection {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+}
+
+.supplier-selection input[type="checkbox"] {
+    width: 18px;
+    height: 18px;
+    accent-color: var(--dusty-purple);
+}
+
+.supplier-name {
+    font-size: 1.1rem;
+    color: var(--dusty-purple-dark);
+    cursor: pointer;
+    margin: 0;
+}
+
+.supplier-details {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+}
+
+.detail-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+}
+
+.detail-item i {
+    color: var(--dusty-purple);
+    width: 16px;
+}
+
+.item-assignment {
+    background: #f8f9fa;
+    padding: 1rem;
+    border-radius: 8px;
+}
+
+.assignment-options {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+.assignment-option {
     display: flex;
     align-items: center;
     gap: 0.5rem;
 }
 
-.draggable-item.compatible {
-    border-left: 3px solid var(--success);
+.assignment-option input[type="radio"] {
+    accent-color: var(--dusty-purple);
 }
 
-.draggable-item:active {
-    cursor: grabbing;
+.specific-items {
+    border-left: 3px solid var(--dusty-purple);
+    padding-left: 1rem;
 }
 
-.supplier-dropzone {
-    padding: 1rem;
-    border: 2px dashed var(--dusty-purple-light);
-    border-radius: 8px;
-    margin: 0.5rem 0;
-    min-height: 100px;
-    background: var(--dusty-purple-bg);
+.item-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
 }
 
-.supplier-dropzone.drag-over {
-    background: var(--dusty-purple-light);
-    border-color: var(--dusty-purple);
+.item-checkbox input[type="checkbox"] {
+    accent-color: var(--dusty-purple);
 }
 
-.assigned-items {
-    min-height: 50px;
-}
-
-.drag-container {
+.items-overview {
     display: grid;
-    grid-template-columns: 1fr 2fr;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
     gap: 1rem;
 }
 
-.assignment-table {
-    overflow-x: auto;
+.item-card {
+    border: 1px solid #e9ecef;
+    border-radius: 8px;
+    padding: 1rem;
+    background: white;
 }
 
-.assignment-table table {
-    min-width: 800px;
+.item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid #f1f3f4;
 }
 
-.assignment-table th {
-    background: var(--dusty-purple-bg);
-    font-weight: 600;
+.item-category {
+    background: var(--dusty-purple);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
 }
 
-.assignment-table td {
-    vertical-align: middle;
+.bg-info-light {
+    background-color: #e3f2fd;
+    border: 1px solid #2196f3;
 }
 </style>
 {% endblock %}
