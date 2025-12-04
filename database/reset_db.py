@@ -9,7 +9,7 @@ def reset_database():
     # Delete the database file if it exists
     if os.path.exists(db_path):
         os.remove(db_path)
-        print("🗑️  Deleted old database file")
+        print("Deleted old database file")
     
     # Ensure database directory exists
     os.makedirs('database', exist_ok=True)
@@ -118,8 +118,9 @@ def reset_database():
     conn.commit()
     conn.close()
     
-    print("🎉 Database reset completed successfully!")
-    print("📊 You can now open procure_flow.db in DB Browser")
+    print("Database reset completed successfully!")
+    print("You can now open procure_flow.db in DB Browser")
 
 if __name__ == '__main__':
     reset_database()
+
