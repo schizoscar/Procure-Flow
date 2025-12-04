@@ -11,53 +11,43 @@ from email.mime.multipart import MIMEMultipart
 import os
 
 app = Flask(__name__)
-app.secret_key = 'procure-flow-secret-key-2024'
+app.secret_key = os.getenv('APP_SECRET_KEY', 'procure-flow-secret-key-2024')
 
 # Initialize database on startup
 def init_database_on_startup():
+    """Ensure the SQLite database exists with expected tables."""
+    conn = None
     try:
-        import database.init_db  
+        import database.init_db
         database.init_db.init_database()
-        print("✅ Database initialized successfully!")
-        
-        # Verify creation with correct path
-        import sqlite3
+
         db_path = os.path.join('database', 'procure_flow.db')
         conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = cursor.fetchall()
-        print(f"✅ Created tables: {[table[0] for table in tables]}")
-        conn.close()
-        
+        tables = [table[0] for table in cursor.fetchall()]
+        print(f"Database initialized. Tables: {tables}")
     except Exception as e:
-        print(f"❌ Database initialization failed: {e}")
-
-# Call the initialization function
-init_database_on_startup()
-
-# Initialize database on startup
-def init_database_on_startup():
-    import database.init_db  
-    database.init_db.init_database()  
+        print(f"Database initialization failed: {e}")
+    finally:
+        if conn:
+            conn.close()
 
 # Call the initialization function
 init_database_on_startup()
 
 # Email Configuration
 EMAIL_CONFIG = {
-    'smtp_server': 'smtp.gmail.com',
-    'smtp_port': 587,
-    'sender_email': 'scarletsumirepoh@gmail.com',
-    'sender_password': 'ydaf mpur dpmk gsav'
+    'smtp_server': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
+    'smtp_port': int(os.getenv('SMTP_PORT', '587')),
+    'sender_email': os.getenv('SMTP_SENDER', 'scarletsumirepoh@gmail.com'),
+    'sender_password': os.getenv('SMTP_PASSWORD', 'ydaf mpur dpmk gsav')
 }
 
 # Database connection helper
 def get_db_connection():
-    # Use the database in the database folder
+    """Return SQLite connection with row factory."""
     db_path = os.path.join('database', 'procure_flow.db')
-    print(f"🔗 Connecting to database at: {os.path.abspath(db_path)}")
-    
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     return conn
@@ -489,9 +479,15 @@ def email_confirmation(task_id):
     pr_items = conn.execute(
         'SELECT * FROM pr_items WHERE task_id = ?', (task_id,)
     ).fetchall()
+
+    # Mark task as in email generation stage
+    if task['status'] != 'confirm_email':
+        conn.execute('UPDATE tasks SET status = ? WHERE id = ?', ('generate_email', task_id))
+        conn.commit()
     
     if request.method == 'POST':
         final_email_content = session.get('final_email_content', '')
+        final_email_subject = session.get('final_email_subject', f"Procurement Inquiry - {task['task_name']}")
         
         # Send emails to all selected suppliers with their assigned items
         success_count = 0
@@ -503,7 +499,15 @@ def email_confirmation(task_id):
                 except:
                     assigned_item_ids = None
             
-            if send_procurement_email(supplier['email'], supplier['name'], pr_items, task['task_name'], assigned_item_ids, final_email_content):
+            if send_procurement_email(
+                supplier['email'],
+                supplier['name'],
+                pr_items,
+                task['task_name'],
+                assigned_item_ids,
+                final_email_content,
+                final_email_subject
+            ):
                 success_count += 1
         
         # Update task status
@@ -517,6 +521,7 @@ def email_confirmation(task_id):
         # Clean up session data
         session.pop('email_content', None)
         session.pop('final_email_content', None)
+        session.pop('final_email_subject', None)
         
         flash(f'Emails sent successfully! {success_count}/{len(selected_suppliers)} emails delivered.', 'success')
         return redirect(url_for('task_list'))
@@ -655,8 +660,8 @@ def add_supplier():
         products_services = request.form['products_services']
         selected_categories = request.form.getlist('categories')
         
-        print(f"🆕 Adding supplier: {name}, {email}")
-        print(f"📋 Categories selected: {selected_categories}")
+        print(f"Adding supplier: {name}, {email}")
+        print(f"Categories selected: {selected_categories}")
         
         # Validate email
         if not validate_email(email):
@@ -676,7 +681,7 @@ def add_supplier():
         ''', (name, contact_name, email, contact_number, address, products_services))
         
         supplier_id = cursor.lastrowid
-        print(f"✅ Supplier added with ID: {supplier_id}")
+        print(f"Supplier added with ID: {supplier_id}")
         
         # Add categories
         for category_id in selected_categories:
@@ -684,17 +689,17 @@ def add_supplier():
                 'INSERT INTO supplier_categories (supplier_id, category_id) VALUES (?, ?)',
                 (supplier_id, category_id)
             )
-            print(f"✅ Added category {category_id} to supplier {supplier_id}")
+            print(f"Added category {category_id} to supplier {supplier_id}")
         
         conn.commit()
-        print("✅ Changes committed to database")
+        print("Changes committed to database")
         
         # Verify the supplier was added
         verify_supplier = conn.execute('SELECT * FROM suppliers WHERE id = ?', (supplier_id,)).fetchone()
         if verify_supplier:
-            print(f"✅ Verification: Supplier found in database - {verify_supplier['name']}")
+            print(f"Verification: Supplier found in database - {verify_supplier['name']}")
         else:
-            print("❌ Verification: Supplier NOT found in database!")
+            print("Verification: Supplier NOT found in database!")
         
         conn.close()
         flash('Supplier added successfully!', 'success')
@@ -736,7 +741,7 @@ def logout():
     return redirect(url_for('login'))
 
 # Email sending function
-def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, assigned_item_ids=None, custom_content=None):
+def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, assigned_item_ids=None, custom_content=None, subject=None):
     try:
         # Filter items for this specific supplier
         if assigned_item_ids:
@@ -751,7 +756,7 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
             print(f"No items assigned to {supplier_name}, skipping email")
             return False
         
-        subject = f"Procurement Inquiry - {task_name}"
+        subject = subject or f"Procurement Inquiry - {task_name}"
         
         if custom_content:
             # Use the custom email content
@@ -1034,6 +1039,9 @@ def delete_category(category_id):
 # Add this route to your app.py temporarily
 @app.route('/debug-db')
 def debug_db():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        return "Access denied", 403
+
     conn = get_db_connection()
     
     # Check all tables
@@ -1069,11 +1077,14 @@ def debug_db():
 
 @app.route('/debug-info')
 def debug_info():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        return "Access denied", 403
+
     import os
     import sqlite3
     
     current_dir = os.getcwd()
-    db_path = os.path.join(current_dir, 'procure_flow.db')
+    db_path = os.path.join(current_dir, 'database', 'procure_flow.db')
     
     info = f"""
     <h1>Debug Information</h1>
@@ -1086,7 +1097,7 @@ def debug_info():
         info += f"<p>Database size: {os.path.getsize(db_path)} bytes</p>"
         
         # Check tables and row counts
-        conn = sqlite3.connect('procure_flow.db')
+        conn = sqlite3.connect(db_path)
         cursor = conn.cursor()
         
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
@@ -1105,11 +1116,14 @@ def debug_info():
 
 @app.route('/db-location')
 def db_location():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        return "Access denied", 403
+
     import os
     import sqlite3
     
     current_dir = os.getcwd()
-    db_path = os.path.abspath('procure_flow.db')
+    db_path = os.path.abspath(os.path.join('database', 'procure_flow.db'))
     
     info = f"""
     <h1>Database Location</h1>
@@ -1139,3 +1153,7 @@ if __name__ == '__main__':
     print("Access the application at: http://localhost:5000")
     print("Default admin login: username='admin', password='admin123'")
     app.run(host='0.0.0.0', port=5000, debug=True)
+
+
+
+
