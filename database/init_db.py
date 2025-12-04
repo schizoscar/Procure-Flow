@@ -4,7 +4,7 @@ from werkzeug.security import generate_password_hash
 import os
 
 def init_database():
-    print("🔄 Initializing database...")
+    print("Initializing database...")
     
     # Ensure the database directory exists
     os.makedirs('database', exist_ok=True)
@@ -121,7 +121,10 @@ def init_database():
 
     conn.commit()
     conn.close()
-    print("✅ Database initialization completed!")
+    print("Database initialization completed.")
 
 if __name__ == '__main__':
     init_database()
+
+
+
