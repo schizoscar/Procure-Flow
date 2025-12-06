@@ -695,6 +695,7 @@ def follow_up(task_id):
 
         conn.commit()
         flash(f'Follow-up emails sent: {sent}/{len(pending_suppliers)}', 'success')
+        conn.close()
         return redirect(url_for('task_responses', task_id=task_id))
 
     conn.close()
