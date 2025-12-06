@@ -603,6 +603,7 @@ def follow_up(task_id):
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
     if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
         flash('Task not found or access denied', 'error')
+        conn.close()
         return redirect(url_for('task_list'))
 
     suppliers = conn.execute('''
@@ -1099,7 +1100,9 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
             """
 
         # Prefer SendGrid if configured
+        sendgrid_attempted = False
         if SENDGRID_API_KEY and SENDGRID_SENDER:
+            sendgrid_attempted = True
             resp = requests.post(
                 "https://api.sendgrid.com/v3/mail/send",
                 headers={
@@ -1116,11 +1119,10 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
                 },
                 timeout=10
             )
-            if resp.status_code >= 200 and resp.status_code < 300:
+            if 200 <= resp.status_code < 300:
                 return True
             else:
-                print(f"SendGrid failed with status {resp.status_code}: {resp.text}")
-                return False
+                print(f"SendGrid failed with status {resp.status_code}: {resp.text}; falling back to SMTP if configured")
 
         # SMTP fallback
         msg = MIMEMultipart()
