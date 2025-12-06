@@ -17,7 +17,7 @@ def reset_database():
     # Recreate database with proper structure in database folder
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     # Create all tables with the new schema
     tables_sql = [
         '''CREATE TABLE users (
@@ -83,8 +83,40 @@ def reset_database():
             supplier_id INTEGER,
             is_selected BOOLEAN DEFAULT TRUE,
             assigned_items TEXT,
+            initial_sent_at TIMESTAMP,
+            followup_sent_at TIMESTAMP,
+            replied_at TIMESTAMP,
             FOREIGN KEY (task_id) REFERENCES tasks (id),
             FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+        )''',
+        
+        '''CREATE TABLE email_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER,
+            supplier_id INTEGER,
+            email_type TEXT,
+            subject TEXT,
+            body TEXT,
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT,
+            error TEXT,
+            FOREIGN KEY (task_id) REFERENCES tasks (id),
+            FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+        )''',
+        
+        '''CREATE TABLE supplier_quotes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            supplier_id INTEGER NOT NULL,
+            pr_item_id INTEGER NOT NULL,
+            unit_price REAL,
+            total_price REAL,
+            lead_time TEXT,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES tasks (id),
+            FOREIGN KEY (supplier_id) REFERENCES suppliers (id),
+            FOREIGN KEY (pr_item_id) REFERENCES pr_items (id)
         )'''
     ]
     
