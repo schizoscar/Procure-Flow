@@ -505,7 +505,7 @@ def email_confirmation(task_id):
                 except:
                     assigned_item_ids = None
             
-            if send_procurement_email(
+            sent_ok = send_procurement_email(
                 supplier['email'],
                 supplier['name'],
                 pr_items,
@@ -513,27 +513,38 @@ def email_confirmation(task_id):
                 assigned_item_ids,
                 final_email_content,
                 final_email_subject
-            ):
+            )
+            if sent_ok:
                 success_count += 1
-                conn.execute(
-                    'UPDATE task_suppliers SET initial_sent_at = COALESCE(initial_sent_at, CURRENT_TIMESTAMP) WHERE task_id = ? AND supplier_id = ?',
-                    (task_id, supplier['id'])
-                )
-                conn.execute(
-                    '''
-                    INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ''',
-                    (task_id, supplier['id'], 'initial', final_email_subject, final_email_content, 'sent')
-                )
+                try:
+                    conn.execute(
+                        'UPDATE task_suppliers SET initial_sent_at = COALESCE(initial_sent_at, CURRENT_TIMESTAMP) WHERE task_id = ? AND supplier_id = ?',
+                        (task_id, supplier['id'])
+                    )
+                    conn.execute(
+                        '''
+                        INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ''',
+                        (task_id, supplier['id'], 'initial', final_email_subject, final_email_content, 'sent')
+                    )
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Logging/flag update failed for supplier {supplier['id']}: {e}")
             else:
-                conn.execute(
-                    '''
-                    INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status, error)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''',
-                    (task_id, supplier['id'], 'initial', final_email_subject, final_email_content, 'failed', 'send_failed')
-                )
+                try:
+                    conn.execute(
+                        '''
+                        INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status, error)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''',
+                        (task_id, supplier['id'], 'initial', final_email_subject, final_email_content, 'failed', 'send_failed')
+                    )
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Failed to log failed email for supplier {supplier['id']}: {e}")
         
         # Update task status
         conn.execute(
