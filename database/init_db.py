@@ -97,10 +97,59 @@ def init_database():
             supplier_id INTEGER,
             is_selected BOOLEAN DEFAULT TRUE,
             assigned_items TEXT,
+            initial_sent_at TIMESTAMP,
+            followup_sent_at TIMESTAMP,
+            replied_at TIMESTAMP,
             FOREIGN KEY (task_id) REFERENCES tasks (id),
             FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
         )
     ''')
+
+    # Email logs per supplier per task
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS email_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER,
+            supplier_id INTEGER,
+            email_type TEXT,
+            subject TEXT,
+            body TEXT,
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT,
+            error TEXT,
+            FOREIGN KEY (task_id) REFERENCES tasks (id),
+            FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+        )
+    ''')
+
+    # Quotes captured per supplier per item
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS supplier_quotes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            supplier_id INTEGER NOT NULL,
+            pr_item_id INTEGER NOT NULL,
+            unit_price REAL,
+            total_price REAL,
+            lead_time TEXT,
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES tasks (id),
+            FOREIGN KEY (supplier_id) REFERENCES suppliers (id),
+            FOREIGN KEY (pr_item_id) REFERENCES pr_items (id)
+        )
+    ''')
+
+    # Backfill missing columns on existing task_suppliers table
+    def ensure_column(table, column, col_type):
+        cursor.execute(f"PRAGMA table_info({table})")
+        cols = [col[1] for col in cursor.fetchall()]
+        if column not in cols:
+            cursor.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+
+    ensure_column('task_suppliers', 'initial_sent_at', 'TIMESTAMP')
+    ensure_column('task_suppliers', 'followup_sent_at', 'TIMESTAMP')
+    ensure_column('task_suppliers', 'replied_at', 'TIMESTAMP')
     
 
     # Insert default admin user
