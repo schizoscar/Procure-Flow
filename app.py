@@ -652,7 +652,7 @@ def follow_up(task_id):
                 except:
                     assigned_item_ids = None
 
-            if send_procurement_email(
+            sent_ok = send_procurement_email(
                 supplier['email'],
                 supplier['name'],
                 pr_items,
@@ -660,27 +660,38 @@ def follow_up(task_id):
                 assigned_item_ids,
                 body,
                 subject
-            ):
+            )
+            if sent_ok:
                 sent += 1
-                conn.execute(
-                    'UPDATE task_suppliers SET followup_sent_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
-                    (task_id, supplier['id'])
-                )
-                conn.execute(
-                    '''
-                    INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ''',
-                    (task_id, supplier['id'], 'followup', subject, body, 'sent')
-                )
+                try:
+                    conn.execute(
+                        'UPDATE task_suppliers SET followup_sent_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
+                        (task_id, supplier['id'])
+                    )
+                    conn.execute(
+                        '''
+                        INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ''',
+                        (task_id, supplier['id'], 'followup', subject, body, 'sent')
+                    )
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Logging follow-up failed for supplier {supplier['id']}: {e}")
             else:
-                conn.execute(
-                    '''
-                    INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status, error)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                    ''',
-                    (task_id, supplier['id'], 'followup', subject, body, 'failed', 'send_failed')
-                )
+                try:
+                    conn.execute(
+                        '''
+                        INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status, error)
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                        ''',
+                        (task_id, supplier['id'], 'followup', subject, body, 'failed', 'send_failed')
+                    )
+                    conn.commit()
+                except Exception as e:
+                    conn.rollback()
+                    print(f"Failed to log failed follow-up for supplier {supplier['id']}: {e}")
 
         conn.commit()
         flash(f'Follow-up emails sent: {sent}/{len(pending_suppliers)}', 'success')
@@ -1039,6 +1050,8 @@ def delete_task(task_id):
     # Delete task and related records
     conn.execute('DELETE FROM pr_items WHERE task_id = ?', (task_id,))
     conn.execute('DELETE FROM task_suppliers WHERE task_id = ?', (task_id,))
+    conn.execute('DELETE FROM email_logs WHERE task_id = ?', (task_id,))
+    conn.execute('DELETE FROM supplier_quotes WHERE task_id = ?', (task_id,))
     conn.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
     
     conn.commit()
