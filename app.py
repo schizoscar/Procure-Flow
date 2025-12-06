@@ -203,6 +203,7 @@ def new_task(task_id=None):
         task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
         if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
             flash('Task not found or access denied', 'error')
+            conn.close()
             return redirect(url_for('task_list'))
         
         # Get existing items
@@ -286,6 +287,7 @@ def edit_task(task_id):
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
     if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
         flash('Task not found or access denied', 'error')
+        conn.close()
         return redirect(url_for('task_list'))
     
     conn.close()
@@ -314,6 +316,7 @@ def email_generation(task_id):
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
     if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
         flash('Task not found or access denied', 'error')
+        conn.close()
         return redirect(url_for('task_list'))
     
     # Get selected suppliers with their assigned items
