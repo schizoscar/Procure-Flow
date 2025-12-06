@@ -1,5 +1,5 @@
 # app.py
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file
 import sqlite3
 import re
 from datetime import datetime
@@ -9,11 +9,12 @@ import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import os
+import requests
+import io
 
 app = Flask(__name__)
 app.secret_key = os.getenv('APP_SECRET_KEY', 'procure-flow-secret-key-2024')
 
-# Initialize database on startup
 def init_database_on_startup():
     """Ensure the SQLite database exists with expected tables."""
     conn = None
@@ -43,6 +44,8 @@ EMAIL_CONFIG = {
     'sender_email': os.getenv('SMTP_SENDER', 'scarletsumirepoh@gmail.com'),
     'sender_password': os.getenv('SMTP_PASSWORD', 'ydaf mpur dpmk gsav')
 }
+SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY')
+SENDGRID_SENDER = os.getenv('SENDGRID_SENDER', EMAIL_CONFIG['sender_email'])
 
 # Database connection helper
 def get_db_connection():
@@ -509,6 +512,25 @@ def email_confirmation(task_id):
                 final_email_subject
             ):
                 success_count += 1
+                conn.execute(
+                    'UPDATE task_suppliers SET initial_sent_at = COALESCE(initial_sent_at, CURRENT_TIMESTAMP) WHERE task_id = ? AND supplier_id = ?',
+                    (task_id, supplier['id'])
+                )
+                conn.execute(
+                    '''
+                    INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ''',
+                    (task_id, supplier['id'], 'initial', final_email_subject, final_email_content, 'sent')
+                )
+            else:
+                conn.execute(
+                    '''
+                    INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status, error)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''',
+                    (task_id, supplier['id'], 'initial', final_email_subject, final_email_content, 'failed', 'send_failed')
+                )
         
         # Update task status
         conn.execute(
@@ -539,7 +561,7 @@ def task_list():
         return redirect(url_for('login'))
     
     conn = get_db_connection()
-    
+
     if session['role'] == 'admin':
         # Admin sees all tasks
         all_tasks = conn.execute('''
@@ -567,6 +589,281 @@ def task_list():
         
         conn.close()
         return render_template('task_list.html', my_tasks=my_tasks)
+
+@app.route('/task/<int:task_id>/follow-up', methods=['GET', 'POST'])
+def follow_up(task_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+
+    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
+        flash('Task not found or access denied', 'error')
+        return redirect(url_for('task_list'))
+
+    suppliers = conn.execute('''
+        SELECT s.*, ts.assigned_items, ts.initial_sent_at, ts.followup_sent_at, ts.replied_at
+        FROM suppliers s
+        JOIN task_suppliers ts ON s.id = ts.supplier_id
+        WHERE ts.task_id = ? AND ts.is_selected = 1
+    ''', (task_id,)).fetchall()
+
+    pr_items = conn.execute(
+        'SELECT * FROM pr_items WHERE task_id = ?', (task_id,)
+    ).fetchall()
+
+    # Suppliers eligible for follow-up: initial sent, not replied
+    pending_suppliers = [s for s in suppliers if s['initial_sent_at'] and not s['replied_at']]
+
+    default_body = session.get('followup_email_content') or """
+    <p>Dear {supplier_name},</p>
+    <p>This is a friendly follow-up regarding our procurement inquiry.</p>
+    <p>Please share your quotation, lead time, and warranty terms at your earliest convenience.</p>
+    <p>Thank you.</p>
+    """
+    default_subject = session.get('followup_email_subject') or f"Follow-up: Procurement Inquiry - {task['task_name']}"
+
+    if request.method == 'POST':
+        body = request.form.get('email_content', default_body)
+        subject = request.form.get('email_subject', default_subject)
+
+        sent = 0
+        for supplier in pending_suppliers:
+            assigned_item_ids = None
+            if supplier['assigned_items']:
+                try:
+                    assigned_item_ids = json.loads(supplier['assigned_items'])
+                except:
+                    assigned_item_ids = None
+
+            if send_procurement_email(
+                supplier['email'],
+                supplier['name'],
+                pr_items,
+                task['task_name'],
+                assigned_item_ids,
+                body,
+                subject
+            ):
+                sent += 1
+                conn.execute(
+                    'UPDATE task_suppliers SET followup_sent_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
+                    (task_id, supplier['id'])
+                )
+                conn.execute(
+                    '''
+                    INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ''',
+                    (task_id, supplier['id'], 'followup', subject, body, 'sent')
+                )
+            else:
+                conn.execute(
+                    '''
+                    INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status, error)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''',
+                    (task_id, supplier['id'], 'followup', subject, body, 'failed', 'send_failed')
+                )
+
+        conn.commit()
+        flash(f'Follow-up emails sent: {sent}/{len(pending_suppliers)}', 'success')
+        return redirect(url_for('task_responses', task_id=task_id))
+
+    conn.close()
+    return render_template('follow_up.html',
+                           task=task,
+                           pending_suppliers=pending_suppliers,
+                           email_subject=default_subject,
+                           email_content=default_body)
+
+@app.route('/task/<int:task_id>/responses', methods=['GET', 'POST'])
+def task_responses(task_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
+        flash('Task not found or access denied', 'error')
+        conn.close()
+        return redirect(url_for('task_list'))
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        supplier_id = request.form.get('supplier_id')
+        if action == 'mark_replied' and supplier_id:
+            conn.execute(
+                'UPDATE task_suppliers SET replied_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
+                (task_id, supplier_id)
+            )
+        elif action == 'mark_pending' and supplier_id:
+            conn.execute(
+                'UPDATE task_suppliers SET replied_at = NULL WHERE task_id = ? AND supplier_id = ?',
+                (task_id, supplier_id)
+            )
+        conn.commit()
+
+    suppliers = conn.execute('''
+        SELECT s.*, ts.assigned_items, ts.initial_sent_at, ts.followup_sent_at, ts.replied_at
+        FROM suppliers s
+        JOIN task_suppliers ts ON s.id = ts.supplier_id
+        WHERE ts.task_id = ? AND ts.is_selected = 1
+    ''', (task_id,)).fetchall()
+
+    conn.close()
+    return render_template('responses.html', task=task, suppliers=suppliers)
+
+@app.route('/task/<int:task_id>/quotes/<int:supplier_id>', methods=['GET', 'POST'])
+def capture_quotes(task_id, supplier_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    supplier = conn.execute('SELECT * FROM suppliers WHERE id = ?', (supplier_id,)).fetchone()
+    if not task or not supplier or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
+        flash('Task or supplier not found, or access denied', 'error')
+        conn.close()
+        return redirect(url_for('task_list'))
+
+    pr_items = conn.execute('SELECT * FROM pr_items WHERE task_id = ?', (task_id,)).fetchall()
+
+    existing_quotes = conn.execute(
+        'SELECT * FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
+        (task_id, supplier_id)
+    ).fetchall()
+    quotes_map = {(q['pr_item_id']): q for q in existing_quotes}
+
+    if request.method == 'POST':
+        # Replace existing quotes for this supplier/task
+        conn.execute('DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id))
+
+        for item in pr_items:
+            uid = str(item['id'])
+            unit_price = request.form.get(f'unit_price_{uid}') or None
+            total_price = request.form.get(f'total_price_{uid}') or None
+            lead_time = request.form.get(f'lead_time_{uid}') or None
+            notes = request.form.get(f'notes_{uid}') or None
+
+            if any([unit_price, total_price, lead_time, notes]):
+                conn.execute(
+                    '''
+                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, total_price, lead_time, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ''',
+                    (task_id, supplier_id, item['id'], unit_price, total_price, lead_time, notes)
+                )
+
+        # Mark replied when quotes captured
+        conn.execute(
+            'UPDATE task_suppliers SET replied_at = COALESCE(replied_at, CURRENT_TIMESTAMP) WHERE task_id = ? AND supplier_id = ?',
+            (task_id, supplier_id)
+        )
+        conn.commit()
+        conn.close()
+        flash('Quotes saved.', 'success')
+        return redirect(url_for('task_responses', task_id=task_id))
+
+    conn.close()
+    return render_template('quotes_form.html',
+                           task=task,
+                           supplier=supplier,
+                           pr_items=pr_items,
+                           quotes_map=quotes_map)
+
+@app.route('/task/<int:task_id>/export-comparison')
+def export_comparison(task_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+
+    conn = get_db_connection()
+    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
+        flash('Task not found or access denied', 'error')
+        conn.close()
+        return redirect(url_for('task_list'))
+
+    pr_items = conn.execute('SELECT * FROM pr_items WHERE task_id = ?', (task_id,)).fetchall()
+    quotes = conn.execute('''
+        SELECT q.*, s.name as supplier_name
+        FROM supplier_quotes q
+        JOIN suppliers s ON q.supplier_id = s.id
+        WHERE q.task_id = ?
+    ''', (task_id,)).fetchall()
+    conn.close()
+
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Comparison"
+
+    headers = [
+        "Item Name", "Specification", "Brand", "Quantity", "Category",
+        "Supplier", "Unit Price", "Total Price", "Lead Time", "Notes", "Best Price"
+    ]
+    ws.append(headers)
+
+    # Determine best total per item
+    best_totals = {}
+    for q in quotes:
+        if q['total_price'] is None:
+            continue
+        pid = q['pr_item_id']
+        if pid not in best_totals or (q['total_price'] < best_totals[pid]):
+            best_totals[pid] = q['total_price']
+
+    for item in pr_items:
+        item_quotes = [q for q in quotes if q['pr_item_id'] == item['id']]
+        if not item_quotes:
+            ws.append([
+                item['item_name'], item['specification'], item['brand'],
+                item['quantity'], item['item_category'],
+                "", "", "", "", "", ""
+            ])
+            continue
+
+        for q in item_quotes:
+            is_best = ""
+            if q['total_price'] is not None and item['id'] in best_totals and q['total_price'] == best_totals[item['id']]:
+                is_best = "BEST"
+            ws.append([
+                item['item_name'],
+                item['specification'],
+                item['brand'],
+                item['quantity'],
+                item['item_category'],
+                q['supplier_name'],
+                q['unit_price'] if q['unit_price'] is not None else "",
+                q['total_price'] if q['total_price'] is not None else "",
+                q['lead_time'] or "",
+                q['notes'] or "",
+                is_best
+            ])
+
+    bold = Font(bold=True)
+    for cell in ws[1]:
+        cell.font = bold
+    fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+    for row in ws.iter_rows(min_row=2, min_col=11, max_col=11):
+        for cell in row:
+            if cell.value == "BEST":
+                cell.fill = fill
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+
+    from flask import send_file
+    return send_file(
+        output,
+        as_attachment=True,
+        download_name=f"comparison_task_{task_id}.xlsx",
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
 
 @app.route('/suppliers')
 def suppliers():
@@ -745,11 +1042,9 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
     try:
         # Filter items for this specific supplier
         if assigned_item_ids:
-            # Convert string IDs to integers for comparison
             assigned_ids = [int(item_id) for item_id in assigned_item_ids]
             supplier_items = [item for item in pr_items if item['id'] in assigned_ids]
         else:
-            # Send all items if no specific assignment
             supplier_items = pr_items
         
         if not supplier_items:
@@ -759,10 +1054,8 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
         subject = subject or f"Procurement Inquiry - {task_name}"
         
         if custom_content:
-            # Use the custom email content
             body = custom_content.replace('{supplier_name}', supplier_name)
         else:
-            # Generate default email content
             items_html = "<ul>"
             for item in supplier_items:
                 items_html += f"""
@@ -801,15 +1094,38 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
             </body>
             </html>
             """
-        
-        # Create message
+
+        # Prefer SendGrid if configured
+        if SENDGRID_API_KEY and SENDGRID_SENDER:
+            resp = requests.post(
+                "https://api.sendgrid.com/v3/mail/send",
+                headers={
+                    "Authorization": f"Bearer {SENDGRID_API_KEY}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "personalizations": [{
+                        "to": [{"email": supplier_email, "name": supplier_name}],
+                        "subject": subject
+                    }],
+                    "from": {"email": SENDGRID_SENDER, "name": "Procurement"},
+                    "content": [{"type": "text/html", "value": body}]
+                },
+                timeout=10
+            )
+            if resp.status_code >= 200 and resp.status_code < 300:
+                return True
+            else:
+                print(f"SendGrid failed with status {resp.status_code}: {resp.text}")
+                return False
+
+        # SMTP fallback
         msg = MIMEMultipart()
         msg['From'] = EMAIL_CONFIG['sender_email']
         msg['To'] = supplier_email
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'html'))
         
-        # Send email
         server = smtplib.SMTP(EMAIL_CONFIG['smtp_server'], EMAIL_CONFIG['smtp_port'])
         server.starttls()
         server.login(EMAIL_CONFIG['sender_email'], EMAIL_CONFIG['sender_password'])
