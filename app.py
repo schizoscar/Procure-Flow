@@ -475,6 +475,7 @@ def email_confirmation(task_id):
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
     if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
         flash('Task not found or access denied', 'error')
+        conn.close()
         return redirect(url_for('task_list'))
     
     # Get selected suppliers with their assigned items
@@ -1525,7 +1526,6 @@ if __name__ == '__main__':
     print("Access the application at: http://localhost:5000")
     print("Default admin login: username='admin', password='admin123'")
     app.run(host='0.0.0.0', port=5000, debug=True)
-
 
 
 
