@@ -833,18 +833,31 @@ def export_comparison(task_id):
 
     headers = [
         "Item Name", "Specification", "Brand", "Quantity", "Category",
-        "Supplier", "Unit Price", "Total Price", "Lead Time", "Notes", "Best Price"
+        "Supplier", "Unit Price", "Total Price", "Lead Time", "Notes", "Best Price", "Best Lead Time"
     ]
     ws.append(headers)
 
-    # Determine best total per item
+    # Determine best total per item and best lead time (parse numeric days if possible)
     best_totals = {}
+    best_lead_days = {}
+    def lead_time_to_days(lead_time_value):
+        if not lead_time_value:
+            return None
+        s = str(lead_time_value).lower()
+        digits = ''.join(ch for ch in s if ch.isdigit())
+        return int(digits) if digits else None
+
     for q in quotes:
-        if q['total_price'] is None:
-            continue
         pid = q['pr_item_id']
-        if pid not in best_totals or (q['total_price'] < best_totals[pid]):
-            best_totals[pid] = q['total_price']
+        # best total
+        if q['total_price'] is not None:
+            if pid not in best_totals or (q['total_price'] < best_totals[pid]):
+                best_totals[pid] = q['total_price']
+        # best lead time
+        lt_days = lead_time_to_days(q['lead_time'])
+        if lt_days is not None:
+            if pid not in best_lead_days or lt_days < best_lead_days[pid]:
+                best_lead_days[pid] = lt_days
 
     for item in pr_items:
         item_quotes = [q for q in quotes if q['pr_item_id'] == item['id']]
@@ -852,7 +865,7 @@ def export_comparison(task_id):
             ws.append([
                 item['item_name'], item['specification'], item['brand'],
                 item['quantity'], item['item_category'],
-                "", "", "", "", "", ""
+                "", "", "", "", "", "", ""
             ])
             continue
 
@@ -860,6 +873,10 @@ def export_comparison(task_id):
             is_best = ""
             if q['total_price'] is not None and item['id'] in best_totals and q['total_price'] == best_totals[item['id']]:
                 is_best = "BEST"
+            is_fastest = ""
+            lt_days = lead_time_to_days(q['lead_time'])
+            if lt_days is not None and item['id'] in best_lead_days and lt_days == best_lead_days[item['id']]:
+                is_fastest = "FASTEST"
             ws.append([
                 item['item_name'],
                 item['specification'],
@@ -871,17 +888,23 @@ def export_comparison(task_id):
                 q['total_price'] if q['total_price'] is not None else "",
                 q['lead_time'] or "",
                 q['notes'] or "",
-                is_best
+                is_best,
+                is_fastest
             ])
 
     bold = Font(bold=True)
     for cell in ws[1]:
         cell.font = bold
     fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
+    fast_fill = PatternFill(start_color="C9DAF8", end_color="C9DAF8", fill_type="solid")
     for row in ws.iter_rows(min_row=2, min_col=11, max_col=11):
         for cell in row:
             if cell.value == "BEST":
                 cell.fill = fill
+    for row in ws.iter_rows(min_row=2, min_col=12, max_col=12):
+        for cell in row:
+            if cell.value == "FASTEST":
+                cell.fill = fast_fill
 
     output = io.BytesIO()
     wb.save(output)
