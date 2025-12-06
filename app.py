@@ -11,6 +11,9 @@ from email.mime.multipart import MIMEMultipart
 import os
 import requests
 import io
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('APP_SECRET_KEY', 'procure-flow-secret-key-2024')
@@ -293,7 +296,7 @@ def edit_task(task_id):
     elif task['status'] == 'select_suppliers':
         return redirect(url_for('supplier_selection', task_id=task_id))
     elif task['status'] == 'generate_email':
-        return redirect(url_for('email_generation', task_id=task_id))
+        return redirect(url_for('email_preview', task_id=task_id))
     elif task['status'] == 'confirm_email':
         return redirect(url_for('email_confirmation', task_id=task_id))
     else:
