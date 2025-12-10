@@ -362,3 +362,10 @@ MigrationBackup/
 # Fody - auto-generated XML schema
 FodyWeavers.xsd
 .env
+
+# Python virtual environment
+env/
+venv/
+ENV/
+.venv/
+
