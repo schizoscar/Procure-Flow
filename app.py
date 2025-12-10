@@ -12,6 +12,11 @@ import os
 import requests
 import io
 from dotenv import load_dotenv
+import imaplib
+import email
+from email.header import decode_header
+from email.utils import parsedate_to_datetime
+
 
 load_dotenv()
 
@@ -44,11 +49,26 @@ init_database_on_startup()
 EMAIL_CONFIG = {
     'smtp_server': os.getenv('SMTP_SERVER', 'smtp.gmail.com'),
     'smtp_port': int(os.getenv('SMTP_PORT', '587')),
-    'sender_email': os.getenv('SMTP_SENDER', 'scarletsumirepoh@gmail.com'),
-    'sender_password': os.getenv('SMTP_PASSWORD', 'ydaf mpur dpmk gsav')
+    'sender_email': os.getenv('SMTP_SENDER'),
+    'sender_password': os.getenv('SMTP_PASSWORD')
 }
-SENDGRID_API_KEY = os.getenv('SENDGRID_API_KEY')
-SENDGRID_SENDER = os.getenv('SENDGRID_SENDER', EMAIL_CONFIG['sender_email'])
+SENDGRID_API_KEY = None
+SENDGRID_SENDER = None
+
+# IMAP configuration (for inbox polling)
+IMAP_SERVER = os.getenv('IMAP_SERVER', 'imap.gmail.com')
+IMAP_PORT = int(os.getenv('IMAP_PORT', '993'))
+IMAP_USERNAME = os.getenv('IMAP_USERNAME', EMAIL_CONFIG['sender_email'])
+IMAP_PASSWORD = os.getenv('IMAP_PASSWORD', EMAIL_CONFIG['sender_password'])
+
+print("=== DEBUG FROM APP STARTUP ===")
+print("SMTP_SENDER env:", os.getenv('SMTP_SENDER'))
+print("EMAIL_CONFIG sender_email:", EMAIL_CONFIG['sender_email'])
+print("APP_SECRET_KEY env:", os.getenv('APP_SECRET_KEY'))
+
+print("EMAIL_CONFIG sender_email:", IMAP_USERNAME)
+print("EMAIL_CONFIG sender_email:", IMAP_PASSWORD)
+print("=== END DEBUG ===")
 
 # Database connection helper
 def get_db_connection():
@@ -1152,29 +1172,29 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
             """
 
         # Prefer SendGrid if configured
-        sendgrid_attempted = False
-        if SENDGRID_API_KEY and SENDGRID_SENDER:
-            sendgrid_attempted = True
-            resp = requests.post(
-                "https://api.sendgrid.com/v3/mail/send",
-                headers={
-                    "Authorization": f"Bearer {SENDGRID_API_KEY}",
-                    "Content-Type": "application/json"
-                },
-                json={
-                    "personalizations": [{
-                        "to": [{"email": supplier_email, "name": supplier_name}],
-                        "subject": subject
-                    }],
-                    "from": {"email": SENDGRID_SENDER, "name": "Procurement"},
-                    "content": [{"type": "text/html", "value": body}]
-                },
-                timeout=10
-            )
-            if 200 <= resp.status_code < 300:
-                return True
-            else:
-                print(f"SendGrid failed with status {resp.status_code}: {resp.text}; falling back to SMTP if configured")
+        # sendgrid_attempted = False
+        # if SENDGRID_API_KEY and SENDGRID_SENDER:
+        #     sendgrid_attempted = True
+        #     resp = requests.post(
+        #         "https://api.sendgrid.com/v3/mail/send",
+        #         headers={
+        #             "Authorization": f"Bearer {SENDGRID_API_KEY}",
+        #             "Content-Type": "application/json"
+        #         },
+        #         json={
+        #             "personalizations": [{
+        #                 "to": [{"email": supplier_email, "name": supplier_name}],
+        #                 "subject": subject
+        #             }],
+        #             "from": {"email": SENDGRID_SENDER, "name": "Procurement"},
+        #             "content": [{"type": "text/html", "value": body}]
+        #         },
+        #         timeout=10
+        #     )
+        #     if 200 <= resp.status_code < 300:
+        #         return True
+        #     else:
+        #         print(f"SendGrid failed with status {resp.status_code}: {resp.text}; falling back to SMTP if configured")
 
         # SMTP fallback
         msg = MIMEMultipart()
@@ -1407,6 +1427,186 @@ def delete_category(category_id):
     
     conn.close()
     return redirect(url_for('categories'))
+
+def get_email_body(msg):
+    """Extract text/plain part (or fallback) from an email.message.Message."""
+    if msg.is_multipart():
+        for part in msg.walk():
+            ctype = part.get_content_type()
+            disp = str(part.get("Content-Disposition") or "")
+            if ctype == "text/plain" and "attachment" not in disp:
+                charset = part.get_content_charset() or "utf-8"
+                return part.get_payload(decode=True).decode(charset, errors="ignore")
+        # Fallback: no text/plain found
+        for part in msg.walk():
+            if part.get_content_type().startswith("text/"):
+                charset = part.get_content_charset() or "utf-8"
+                return part.get_payload(decode=True).decode(charset, errors="ignore")
+        return ""
+    else:
+        charset = msg.get_content_charset() or "utf-8"
+        try:
+            return msg.get_payload(decode=True).decode(charset, errors="ignore")
+        except Exception:
+            return str(msg.get_payload())
+
+def check_inbox_and_mark_replies():
+    """
+    Connect to the inbox via IMAP, find unread emails,
+    match them by sender email to suppliers, and mark
+    task_suppliers.replied_at for any pending tasks.
+    Returns number of suppliers/tasks updated.
+    """
+    processed = 0
+
+    print("=== IMAP CHECK START ===")
+    print("IMAP_SERVER:", IMAP_SERVER)
+    print("IMAP_USERNAME:", IMAP_USERNAME)
+
+
+    # 1. Connect to IMAP
+    try:
+        mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+        mail.login(IMAP_USERNAME, IMAP_PASSWORD)
+    except Exception as e:
+        print(f"[IMAP] Login failed: {e}")
+        return 0
+
+    try:
+        mail.select("INBOX")
+        status, messages = mail.search(None, '(UNSEEN)')
+        if status != "OK":
+            print("[IMAP] Search failed")
+            mail.logout()
+            return 0
+
+        conn = get_db_connection()
+
+        for num in messages[0].split():
+            status, data = mail.fetch(num, "(RFC822)")
+            if status != "OK":
+                continue
+
+            raw_email = data[0][1]
+            msg = email.message_from_bytes(raw_email)
+
+            # Decode subject (not essential for matching, but useful for logs)
+            raw_subject = msg.get("Subject", "")
+            decoded = decode_header(raw_subject)
+            subject_parts = []
+            for part, enc in decoded:
+                if isinstance(part, bytes):
+                    subject_parts.append(part.decode(enc or "utf-8", errors="ignore"))
+                else:
+                    subject_parts.append(part)
+            subject = "".join(subject_parts)
+
+            from_addr = email.utils.parseaddr(msg.get("From"))[1].strip().lower()
+            print(f"[IMAP] New email from {from_addr} subject={subject!r}")
+
+            # ----- FIND SUPPLIER BY EMAIL -----
+            supplier = conn.execute(
+                "SELECT id FROM suppliers WHERE LOWER(email) = ?",
+                (from_addr,)
+            ).fetchone()
+
+            if not supplier:
+                # Not from a known supplier; mark seen & skip
+                mail.store(num, '+FLAGS', '\\Seen')
+                continue
+
+            supplier_id = supplier['id']
+
+            # ----- FIND ALL PENDING TASKS FOR THIS SUPPLIER -----
+            pending_rows = conn.execute(
+                """
+                SELECT task_id FROM task_suppliers
+                WHERE supplier_id = ? AND replied_at IS NULL
+                """,
+                (supplier_id,)
+            ).fetchall()
+
+            if not pending_rows:
+                # Nothing to update; just mark seen
+                mail.store(num, '+FLAGS', '\\Seen')
+                continue
+
+            # Parse Date header -> replied_at timestamp string
+            raw_date = msg.get("Date")
+            reply_dt_str = None
+            if raw_date:
+                try:
+                    dt = parsedate_to_datetime(raw_date)
+                    dt = dt.replace(tzinfo=None)  # store naive local-ish time
+                    reply_dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+                except Exception as e:
+                    print(f"[IMAP] Failed to parse Date header {raw_date!r}: {e}")
+
+            if not reply_dt_str:
+                # Fallback to current time
+                now = datetime.now()
+                reply_dt_str = now.strftime("%Y-%m-%d %H:%M:%S")
+
+            body_text = get_email_body(msg)
+            print(body_text)
+
+            try:
+                # For each pending task for this supplier, mark replied_at
+                for row in pending_rows:
+                    task_id = row['task_id']
+
+                    # This is the AUTO version of:
+                    # UPDATE task_suppliers SET replied_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?
+                    conn.execute(
+                        '''
+                        UPDATE task_suppliers
+                        SET replied_at = ?
+                        WHERE task_id = ? AND supplier_id = ?
+                        ''',
+                        (reply_dt_str, task_id, supplier_id)
+                    )
+
+                    # Log the reply (optional but consistent with your logging table)
+                    conn.execute(
+                        '''
+                        INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
+                        VALUES (?, ?, ?, ?, ?, ?)
+                        ''',
+                        (task_id, supplier_id, 'reply', subject, body_text, 'received')
+                    )
+
+                    processed += 1
+                    print(f"[IMAP] Marked replied: task_id={task_id}, supplier_id={supplier_id}, at {reply_dt_str}")
+
+                conn.commit()
+            except Exception as e:
+                print(f"[IMAP] DB update failed for supplier {supplier_id}: {e}")
+                conn.rollback()
+
+            # Mark this email as seen so we don't process it again
+            mail.store(num, '+FLAGS', '\\Seen')
+
+        conn.close()
+    finally:
+        try:
+            mail.logout()
+        except Exception:
+            pass
+
+    return processed
+
+print(check_inbox_and_mark_replies())
+    
+@app.route('/admin/check-replies')
+def admin_check_replies():
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('index'))
+
+    processed = check_inbox_and_mark_replies()
+    flash(f'Inbox checked. Auto-marked {processed} reply entries.', 'success')
+    return redirect(url_for('task_list'))
+    
 
 # ==================================== DEBUG ====================================
 # Add this route to your app.py temporarily
