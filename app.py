@@ -16,6 +16,9 @@ import imaplib
 import email
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
+import threading
+import time
+import re
 
 
 load_dotenv()
@@ -61,6 +64,10 @@ IMAP_PORT = int(os.getenv('IMAP_PORT', '993'))
 IMAP_USERNAME = os.getenv('IMAP_USERNAME', EMAIL_CONFIG['sender_email'])
 IMAP_PASSWORD = os.getenv('IMAP_PASSWORD', EMAIL_CONFIG['sender_password'])
 
+# Poll interval in seconds. Set `IMAP_POLL_INTERVAL` env var to change.
+# Setting to 0 disables automatic polling.
+IMAP_POLL_INTERVAL = int(os.getenv('IMAP_POLL_INTERVAL', '60'))
+
 print("=== DEBUG FROM APP STARTUP ===")
 print("SMTP_SENDER env:", os.getenv('SMTP_SENDER'))
 print("EMAIL_CONFIG sender_email:", EMAIL_CONFIG['sender_email'])
@@ -68,6 +75,7 @@ print("APP_SECRET_KEY env:", os.getenv('APP_SECRET_KEY'))
 
 print("EMAIL_CONFIG sender_email:", IMAP_USERNAME)
 print("EMAIL_CONFIG sender_email:", IMAP_PASSWORD)
+print("EMAIL_CONFIG sender_email:", IMAP_SERVER)
 print("=== END DEBUG ===")
 
 # Database connection helper
@@ -789,6 +797,15 @@ def capture_quotes(task_id, supplier_id):
 
     if request.method == 'POST':
         # Replace existing quotes for this supplier/task
+        app.logger.info('capture_quotes POST received for task %s supplier %s', task_id, supplier_id)
+        # Log raw form keys/values (useful to debug duplicate-value issues)
+        try:
+            app.logger.debug('Form data keys: %s', list(request.form.keys()))
+            # For readability, convert to a normal dict (note: duplicates will be collapsed)
+            app.logger.debug('Form data snapshot: %s', {k: request.form.get(k) for k in request.form.keys()})
+        except Exception:
+            pass
+
         conn.execute('DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id))
 
         for item in pr_items:
@@ -797,6 +814,10 @@ def capture_quotes(task_id, supplier_id):
             total_price = request.form.get(f'total_price_{uid}') or None
             lead_time = request.form.get(f'lead_time_{uid}') or None
             notes = request.form.get(f'notes_{uid}') or None
+
+            # Log each parsed item value before insert
+            app.logger.info('Captured quote values for item %s: unit_price=%s total_price=%s lead_time=%s notes=%s',
+                            uid, unit_price, total_price, lead_time, notes)
 
             if any([unit_price, total_price, lead_time, notes]):
                 conn.execute(
@@ -807,9 +828,9 @@ def capture_quotes(task_id, supplier_id):
                     (task_id, supplier_id, item['id'], unit_price, total_price, lead_time, notes)
                 )
 
-        # Mark replied when quotes captured
+        # Mark replied when quotes captured (always update to current time)
         conn.execute(
-            'UPDATE task_suppliers SET replied_at = COALESCE(replied_at, CURRENT_TIMESTAMP) WHERE task_id = ? AND supplier_id = ?',
+            'UPDATE task_suppliers SET replied_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
             (task_id, supplier_id)
         )
         conn.commit()
@@ -823,6 +844,19 @@ def capture_quotes(task_id, supplier_id):
                            supplier=supplier,
                            pr_items=pr_items,
                            quotes_map=quotes_map)
+
+
+@app.route('/debug/quotes/<int:task_id>/<int:supplier_id>', methods=['GET'])
+def debug_quotes(task_id, supplier_id):
+    """Return JSON dump of supplier_quotes for debugging (task+supplier)."""
+    if 'user_id' not in session:
+        return jsonify({'error': 'login required'}), 403
+
+    conn = get_db_connection()
+    rows = conn.execute('SELECT * FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id)).fetchall()
+    conn.close()
+    quotes = [dict(r) for r in rows]
+    return jsonify(quotes)
 
 @app.route('/task/<int:task_id>/export-comparison')
 def export_comparison(task_id):
@@ -838,9 +872,10 @@ def export_comparison(task_id):
 
     pr_items = conn.execute('SELECT * FROM pr_items WHERE task_id = ?', (task_id,)).fetchall()
     quotes = conn.execute('''
-        SELECT q.*, s.name as supplier_name
+        SELECT q.*, s.name as supplier_name, ts.replied_at as replied_at
         FROM supplier_quotes q
         JOIN suppliers s ON q.supplier_id = s.id
+        LEFT JOIN task_suppliers ts ON ts.supplier_id = q.supplier_id AND ts.task_id = q.task_id
         WHERE q.task_id = ?
     ''', (task_id,)).fetchall()
     conn.close()
@@ -854,7 +889,7 @@ def export_comparison(task_id):
 
     headers = [
         "Item Name", "Specification", "Brand", "Quantity", "Category",
-        "Supplier", "Unit Price", "Total Price", "Lead Time", "Notes", "Best Price", "Best Lead Time"
+        "Supplier", "Replied At", "Unit Price", "Total Price", "Lead Time", "Notes", "Best Price", "Best Lead Time"
     ]
     ws.append(headers)
 
@@ -905,6 +940,7 @@ def export_comparison(task_id):
                 item['quantity'],
                 item['item_category'],
                 q['supplier_name'],
+                q['replied_at'] or "",
                 q['unit_price'] if q['unit_price'] is not None else "",
                 q['total_price'] if q['total_price'] is not None else "",
                 q['lead_time'] or "",
@@ -918,11 +954,13 @@ def export_comparison(task_id):
         cell.font = bold
     fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
     fast_fill = PatternFill(start_color="C9DAF8", end_color="C9DAF8", fill_type="solid")
-    for row in ws.iter_rows(min_row=2, min_col=11, max_col=11):
+    # Best Price is now column 12 (after adding Replied At)
+    for row in ws.iter_rows(min_row=2, min_col=12, max_col=12):
         for cell in row:
             if cell.value == "BEST":
                 cell.fill = fill
-    for row in ws.iter_rows(min_row=2, min_col=12, max_col=12):
+    # Best Lead Time is now column 13
+    for row in ws.iter_rows(min_row=2, min_col=13, max_col=13):
         for cell in row:
             if cell.value == "FASTEST":
                 cell.fill = fast_fill
@@ -1428,6 +1466,52 @@ def delete_category(category_id):
     conn.close()
     return redirect(url_for('categories'))
 
+def parse_reply_fields(body_text):
+    """
+    Try to extract:
+      - unit price
+      - total price
+      - delivery timeline / lead time
+      - warranty info
+      - payment terms
+    from a reasonably structured reply.
+
+    Expected style (case-insensitive, flexible about spaces):
+        Unit price: ...
+        Total price: ...
+        Delivery timeline: ...
+        Warranty information: ...
+        Payment terms: ...
+    """
+    # Normalize line endings a bit
+    text = body_text.replace('\r\n', '\n').replace('\r', '\n')
+
+    def extract(pattern):
+        """
+        Return the first capture group for regex `pattern` in text,
+        or None if not found.
+        """
+        m = re.search(pattern, text, re.IGNORECASE)
+        if not m:
+            return None
+        return m.group(1).strip()
+
+    unit_price = extract(r"unit\s+price\s*[:\-]\s*([^\n\r]+)")
+    total_price = extract(r"total\s+price\s*[:\-]\s*([^\n\r]+)")
+    # Support both "Delivery timeline" and "Lead time"
+    lead_time = extract(r"(?:delivery\s+timeline|lead\s+time)\s*[:\-]\s*([^\n\r]+)")
+    warranty = extract(r"warranty\s+information\s*[:\-]\s*([^\n\r]+)")
+    payment_terms = extract(r"payment\s+terms\s*[:\-]\s*([^\n\r]+)")
+
+    return {
+        "unit_price": unit_price,
+        "total_price": total_price,
+        "lead_time": lead_time,
+        "warranty": warranty,
+        "payment_terms": payment_terms,
+    }
+
+
 def get_email_body(msg):
     """Extract text/plain part (or fallback) from an email.message.Message."""
     if msg.is_multipart():
@@ -1512,16 +1596,18 @@ def check_inbox_and_mark_replies():
 
             if not supplier:
                 # Not from a known supplier; mark seen & skip
-                mail.store(num, '+FLAGS', '\\Seen')
+                # mail.store(num, '+FLAGS', '\\Seen')
                 continue
 
             supplier_id = supplier['id']
 
             # ----- FIND ALL PENDING TASKS FOR THIS SUPPLIER -----
+            # Find all tasks for this supplier. We will update replied_at on every reply
+            # so do not filter by replied_at NULL here (Option A)
             pending_rows = conn.execute(
                 """
                 SELECT task_id FROM task_suppliers
-                WHERE supplier_id = ? AND replied_at IS NULL
+                WHERE supplier_id = ?
                 """,
                 (supplier_id,)
             ).fetchall()
@@ -1550,13 +1636,16 @@ def check_inbox_and_mark_replies():
             body_text = get_email_body(msg)
             print(body_text)
 
+            # ✨ NEW: try to parse structured quote from body
+            parsed = parse_reply_fields(body_text)
+            print("[IMAP PARSE FIELDS]", parsed)
+
             try:
                 # For each pending task for this supplier, mark replied_at
                 for row in pending_rows:
                     task_id = row['task_id']
 
-                    # This is the AUTO version of:
-                    # UPDATE task_suppliers SET replied_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?
+                    # 1) Mark replied_at (update every time a reply is seen)
                     conn.execute(
                         '''
                         UPDATE task_suppliers
@@ -1566,7 +1655,7 @@ def check_inbox_and_mark_replies():
                         (reply_dt_str, task_id, supplier_id)
                     )
 
-                    # Log the reply (optional but consistent with your logging table)
+                    # 2) Log the reply (same as before)
                     conn.execute(
                         '''
                         INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
@@ -1575,6 +1664,55 @@ def check_inbox_and_mark_replies():
                         (task_id, supplier_id, 'reply', subject, body_text, 'received')
                     )
 
+                    # 3) If we successfully parsed anything, auto-populate supplier_quotes
+                    if parsed and any(parsed.values()):
+                        # Check if there are already quotes; don't overwrite user's manual input
+                        existing = conn.execute(
+                            '''
+                            SELECT 1 FROM supplier_quotes
+                            WHERE task_id = ? AND supplier_id = ?
+                            LIMIT 1
+                            ''',
+                            (task_id, supplier_id)
+                        ).fetchone()
+
+                        if not existing:
+                            # Get all PR items for this task
+                            pr_items = conn.execute(
+                                'SELECT id FROM pr_items WHERE task_id = ?',
+                                (task_id,)
+                            ).fetchall()
+
+                            # Build a notes field from warranty + payment terms
+                            notes_parts = []
+                            if parsed.get("warranty"):
+                                notes_parts.append(f"Warranty: {parsed['warranty']}")
+                            if parsed.get("payment_terms"):
+                                notes_parts.append(f"Payment terms: {parsed['payment_terms']}")
+                            notes = "\n".join(notes_parts) if notes_parts else None
+
+                            for item in pr_items:
+                                pr_item_id = item['id']
+                                conn.execute(
+                                    '''
+                                    INSERT INTO supplier_quotes
+                                        (task_id, supplier_id, pr_item_id,
+                                         unit_price, total_price, lead_time, notes)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                    ''',
+                                    (
+                                        task_id,
+                                        supplier_id,
+                                        pr_item_id,
+                                        parsed.get("unit_price"),
+                                        parsed.get("total_price"),
+                                        parsed.get("lead_time"),
+                                        notes
+                                    )
+                                )
+
+                            print(f"[IMAP] Auto-captured quotes for task_id={task_id}, supplier_id={supplier_id}")
+
                     processed += 1
                     print(f"[IMAP] Marked replied: task_id={task_id}, supplier_id={supplier_id}, at {reply_dt_str}")
 
@@ -1582,6 +1720,7 @@ def check_inbox_and_mark_replies():
             except Exception as e:
                 print(f"[IMAP] DB update failed for supplier {supplier_id}: {e}")
                 conn.rollback()
+
 
             # Mark this email as seen so we don't process it again
             mail.store(num, '+FLAGS', '\\Seen')
@@ -1594,8 +1733,31 @@ def check_inbox_and_mark_replies():
             pass
 
     return processed
+# background polling helpers
+def _inbox_polling_loop(interval):
+    if interval <= 0:
+        print(f"[IMAP Poll] Disabled (interval={interval})")
+        return
+    print(f"[IMAP Poll] Loop starting with interval={interval} seconds")
+    while True:
+        try:
+            processed = check_inbox_and_mark_replies()
+            if processed:
+                print(f"[IMAP Poll] Processed {processed} replies")
+        except Exception as e:
+            print(f"[IMAP Poll] Error while polling: {e}")
+        time.sleep(interval)
 
-print(check_inbox_and_mark_replies())
+def start_inbox_polling(interval):
+    t = threading.Thread(target=_inbox_polling_loop, args=(interval,), daemon=True, name="IMAPPoller")
+    t.start()
+    print(f"[IMAP Poll] Started background thread (daemon) polling every {interval} seconds")
+
+# Do not run inbox checks at import time. This was causing side-effects
+# during the Flask debug reloader (multiple Python processes) and could
+# result in older code/state appearing to run. Use the admin route
+# `/admin/check-replies` or a scheduled job to trigger inbox checks.
+# print(check_inbox_and_mark_replies())
     
 @app.route('/admin/check-replies')
 def admin_check_replies():
@@ -1725,6 +1887,17 @@ if __name__ == '__main__':
     print("Starting Procure Flow...")
     print("Access the application at: http://localhost:5000")
     print("Default admin login: username='admin', password='admin123'")
+    # Start the inbox poller only in the actual Flask child process when
+    # the reloader is active. WERKZEUG_RUN_MAIN is set to 'true' in the
+    # reloader's child process. This prevents duplicate polling threads.
+    try:
+        if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
+            # Start polling in background if configured (interval > 0)
+            if IMAP_POLL_INTERVAL > 0:
+                start_inbox_polling(IMAP_POLL_INTERVAL)
+    except Exception as e:
+        print(f"[IMAP Poll] Failed to start poller: {e}")
+
     app.run(host='0.0.0.0', port=5000, debug=True)
 
 
