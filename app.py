@@ -938,9 +938,9 @@ def export_comparison(task_id):
     ws = wb.active
     ws.title = "Comparison"
 
-    # Row 1: Main headers with merged cells for Dimensions and Suppliers
-    # Add two spacer columns after 'Dimensions' so supplier headers begin at column 8
-    row1 = ["Item Name", "Brand", "Quantity", "Category", "Dimensions", "", ""]
+    # Row 1: Main headers with merged cells for Dimensions, Quantity, Weight, and Suppliers
+    # Column structure: Item Name (1), Brand (2), Category (3), Dimensions (4-6), Quantity (7), Weight (8), Suppliers (9+)
+    row1 = ["Item Name", "Brand", "Category", "Dimensions", "", "", "Quantity", "Weight (in Kg)"]
     for supplier_id, supplier_name in suppliers_list:
         row1.append(supplier_name)
         row1.append("")  # Blank for alignment with 4 columns per supplier
@@ -949,7 +949,7 @@ def export_comparison(task_id):
     ws.append(row1)
 
     # Row 2: Sub-headers (W, L, Thk for Dimensions; Unit Price, Total Price, Lead Time, Notes for each supplier)
-    row2 = ["", "", "", "", "W"]  # blank for Item Name, Brand, Quantity, Category; W under Dimensions
+    row2 = ["", "", "", "W", "L", "Thk"]  # blank for Item Name, Brand, Category; W under Dimensions; blank for Quantity, Weight
     row2.extend(["L", "Thk"])  # L and Thk under Dimensions
     for supplier_id, supplier_name in suppliers_list:
         row2.extend(["Unit Price", "Total Price", "Lead Time", "Notes"])
@@ -959,27 +959,34 @@ def export_comparison(task_id):
     bold = Font(bold=True)
     center = Alignment(horizontal="center", vertical="center")
     
-    # Merge and center Item Name, Brand, Quantity, Category (columns 1-4, rows 1-2)
-    for col in range(1, 5):
+    # Merge and center Item Name, Brand, Category (columns 1-3, rows 1-2)
+    for col in range(1, 4):
         ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
         cell = ws.cell(row=1, column=col)
         cell.font = bold
         cell.alignment = center
     
-    # Merge and center Dimensions (columns 5-7, row 1)
-    ws.merge_cells(start_row=1, start_column=5, end_row=1, end_column=7)
-    cell = ws.cell(row=1, column=5)
+    # Merge and center Dimensions (columns 4-6, row 1)
+    ws.merge_cells(start_row=1, start_column=4, end_row=1, end_column=6)
+    cell = ws.cell(row=1, column=4)
     cell.font = bold
     cell.alignment = center
     
-    # Center W, L, Thk in row 2
-    for col in range(5, 8):
+    # Center W, L, Thk in row 2 (columns 4-6)
+    for col in range(4, 7):
         cell = ws.cell(row=2, column=col)
         cell.font = bold
         cell.alignment = center
     
+    # Merge and center Quantity and Weight (columns 7-8, rows 1-2)
+    for col in range(7, 9):
+        ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
+        cell = ws.cell(row=1, column=col)
+        cell.font = bold
+        cell.alignment = center
+    
     # Merge and center each supplier name (4 columns each)
-    col_idx = 8  # Start after Dimensions (which occupies 5-7)
+    col_idx = 9  # Start after Quantity and Weight (columns 7-8)
     for supplier_id, supplier_name in suppliers_list:
         ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=col_idx + 3)
         cell = ws.cell(row=1, column=col_idx)
@@ -1003,14 +1010,28 @@ def export_comparison(task_id):
     # One row per item (starting from row 3)
     for item in pr_items:
         w, l, thk = parse_dimensions(item['specification'])
+        
+        # Calculate weight (in Kg) using formula: (W*L*Thk)*(12*25.4*12*25.4)/1000*7.85/1000
+        # If any dimension is missing, weight is empty
+        weight = ""
+        if w and l and thk:
+            try:
+                w_val = float(w)
+                l_val = float(l)
+                thk_val = float(thk)
+                weight = round((w_val * l_val * thk_val) * (12 * 25.4 * 12 * 25.4) / 1000 * 7.85 / 1000, 2)
+            except (ValueError, TypeError):
+                weight = ""
+        
         row = [
             item['item_name'],
             item['brand'] or "",
-            item['quantity'] or "",
             item['item_category'] or "",
             w or "",
             l or "",
-            thk or ""
+            thk or "",
+            item['quantity'] or "",
+            weight
         ]
 
         # Add supplier quote columns
