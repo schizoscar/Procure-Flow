@@ -251,7 +251,10 @@ def new_task(task_id=None):
         while f'items[{item_index}][item_name]' in request.form:
             items.append({
                 'item_name': request.form[f'items[{item_index}][item_name]'],
-                'specification': request.form[f'items[{item_index}][specification]'],
+                'specification': request.form.get(f'items[{item_index}][specification]') or None,
+                'width': request.form.get(f'items[{item_index}][width]') or None,
+                'length': request.form.get(f'items[{item_index}][length]') or None,
+                'thickness': request.form.get(f'items[{item_index}][thickness]') or None,
                 'brand': request.form[f'items[{item_index}][brand]'],
                 'balance_stock': request.form.get(f'items[{item_index}][balance_stock]', 0) or 0,
                 'quantity': request.form[f'items[{item_index}][quantity]'],
@@ -276,15 +279,18 @@ def new_task(task_id=None):
             task_id_to_use = cursor.lastrowid
             flash('Task created successfully!', 'success')
         
-        # Add PR items
+        # Add PR items (store width/length/thickness if provided)
         for item_data in items:
             conn.execute('''
-                INSERT INTO pr_items (task_id, item_name, specification, brand, balance_stock, quantity, item_category)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO pr_items (task_id, item_name, specification, width, length, thickness, brand, balance_stock, quantity, item_category)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 task_id_to_use,
                 item_data['item_name'],
                 item_data['specification'],
+                item_data.get('width'),
+                item_data.get('length'),
+                item_data.get('thickness'),
                 item_data['brand'],
                 item_data['balance_stock'],
                 item_data['quantity'],
@@ -881,89 +887,202 @@ def export_comparison(task_id):
     conn.close()
 
     from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill
+    from openpyxl.styles import Font, PatternFill, Border, Side
+
+    from openpyxl.utils import get_column_letter
+    from openpyxl.styles import Alignment
+    
+    # Parse specification string (e.g., "5x8.20mm" -> W=5, L=8, Thk=20)
+    def parse_dimensions(spec_str):
+        """Parse spec like '5x8.20mm' into (width, length, thickness)."""
+        if not spec_str:
+            return None, None, None
+        spec_str = str(spec_str).lower().replace('mm', '').strip()
+        # Split by 'x' to get [W, L.Thk] (accepts variations like '8.20', '8,20', '8 . 20')
+        parts = spec_str.split('x')
+        w = parts[0].strip() if len(parts) > 0 else None
+
+        # For L and Thk, try splitting parts[1] by common separators
+        l = None
+        thk = None
+        if len(parts) > 1:
+            rhs = parts[1].strip()
+            # Normalize separators and whitespace
+            rhs = rhs.replace(' ', '')
+            # Try '.' separator first
+            if '.' in rhs:
+                l_thk = rhs.split('.')
+            elif ',' in rhs:
+                # Some specs use comma as separator e.g., '8,20'
+                l_thk = rhs.split(',')
+            else:
+                # No clear separator; treat entire rhs as length
+                l_thk = [rhs]
+
+            l = l_thk[0].strip() if len(l_thk) > 0 else None
+            thk = l_thk[1].strip() if len(l_thk) > 1 else None
+        
+        return w, l, thk
+
+    # Get unique suppliers for this task (sorted by supplier name for consistent ordering)
+    suppliers = {}
+    for q in quotes:
+        if q['supplier_id'] not in suppliers:
+            suppliers[q['supplier_id']] = q['supplier_name']
+    suppliers_list = sorted(suppliers.items(), key=lambda x: x[1])  # Sort by supplier name
+    
+    # Debug: log suppliers found
+    app.logger.info(f"export_comparison task_id={task_id}: found {len(suppliers_list)} suppliers: {suppliers_list}")
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Comparison"
 
-    headers = [
-        "Item Name", "Specification", "Brand", "Quantity", "Category",
-        "Supplier", "Replied At", "Unit Price", "Total Price", "Lead Time", "Notes", "Best Price", "Best Lead Time"
-    ]
-    ws.append(headers)
+    # Row 1: Main headers with merged cells for Dimensions and Suppliers
+    # Add two spacer columns after 'Dimensions' so supplier headers begin at column 8
+    row1 = ["Item Name", "Brand", "Quantity", "Category", "Dimensions", "", ""]
+    for supplier_id, supplier_name in suppliers_list:
+        row1.append(supplier_name)
+        row1.append("")  # Blank for alignment with 4 columns per supplier
+        row1.append("")  # Blank for alignment
+        row1.append("")  # Blank for alignment
+    ws.append(row1)
 
-    # Determine best total per item and best lead time (parse numeric days if possible)
-    best_totals = {}
-    best_lead_days = {}
-    def lead_time_to_days(lead_time_value):
-        if not lead_time_value:
-            return None
-        s = str(lead_time_value).lower()
-        digits = ''.join(ch for ch in s if ch.isdigit())
-        return int(digits) if digits else None
+    # Row 2: Sub-headers (W, L, Thk for Dimensions; Unit Price, Total Price, Lead Time, Notes for each supplier)
+    row2 = ["", "", "", "", "W"]  # blank for Item Name, Brand, Quantity, Category; W under Dimensions
+    row2.extend(["L", "Thk"])  # L and Thk under Dimensions
+    for supplier_id, supplier_name in suppliers_list:
+        row2.extend(["Unit Price", "Total Price", "Lead Time", "Notes"])
+    ws.append(row2)
 
-    for q in quotes:
-        pid = q['pr_item_id']
-        # best total
-        if q['total_price'] is not None:
-            if pid not in best_totals or (q['total_price'] < best_totals[pid]):
-                best_totals[pid] = q['total_price']
-        # best lead time
-        lt_days = lead_time_to_days(q['lead_time'])
-        if lt_days is not None:
-            if pid not in best_lead_days or lt_days < best_lead_days[pid]:
-                best_lead_days[pid] = lt_days
-
-    for item in pr_items:
-        item_quotes = [q for q in quotes if q['pr_item_id'] == item['id']]
-        if not item_quotes:
-            ws.append([
-                item['item_name'], item['specification'], item['brand'],
-                item['quantity'], item['item_category'],
-                "", "", "", "", "", "", ""
-            ])
-            continue
-
-        for q in item_quotes:
-            is_best = ""
-            if q['total_price'] is not None and item['id'] in best_totals and q['total_price'] == best_totals[item['id']]:
-                is_best = "BEST"
-            is_fastest = ""
-            lt_days = lead_time_to_days(q['lead_time'])
-            if lt_days is not None and item['id'] in best_lead_days and lt_days == best_lead_days[item['id']]:
-                is_fastest = "FASTEST"
-            ws.append([
-                item['item_name'],
-                item['specification'],
-                item['brand'],
-                item['quantity'],
-                item['item_category'],
-                q['supplier_name'],
-                q['replied_at'] or "",
-                q['unit_price'] if q['unit_price'] is not None else "",
-                q['total_price'] if q['total_price'] is not None else "",
-                q['lead_time'] or "",
-                q['notes'] or "",
-                is_best,
-                is_fastest
-            ])
-
+    # Merge cells and apply formatting
     bold = Font(bold=True)
-    for cell in ws[1]:
+    center = Alignment(horizontal="center", vertical="center")
+    
+    # Merge and center Item Name, Brand, Quantity, Category (columns 1-4, rows 1-2)
+    for col in range(1, 5):
+        ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
+        cell = ws.cell(row=1, column=col)
         cell.font = bold
-    fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")
-    fast_fill = PatternFill(start_color="C9DAF8", end_color="C9DAF8", fill_type="solid")
-    # Best Price is now column 12 (after adding Replied At)
-    for row in ws.iter_rows(min_row=2, min_col=12, max_col=12):
-        for cell in row:
-            if cell.value == "BEST":
-                cell.fill = fill
-    # Best Lead Time is now column 13
-    for row in ws.iter_rows(min_row=2, min_col=13, max_col=13):
-        for cell in row:
-            if cell.value == "FASTEST":
-                cell.fill = fast_fill
+        cell.alignment = center
+    
+    # Merge and center Dimensions (columns 5-7, row 1)
+    ws.merge_cells(start_row=1, start_column=5, end_row=1, end_column=7)
+    cell = ws.cell(row=1, column=5)
+    cell.font = bold
+    cell.alignment = center
+    
+    # Center W, L, Thk in row 2
+    for col in range(5, 8):
+        cell = ws.cell(row=2, column=col)
+        cell.font = bold
+        cell.alignment = center
+    
+    # Merge and center each supplier name (4 columns each)
+    col_idx = 8  # Start after Dimensions (which occupies 5-7)
+    for supplier_id, supplier_name in suppliers_list:
+        ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=col_idx + 3)
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = bold
+        cell.alignment = center
+        col_idx += 4
+
+    # Format row 2 as bold and centered
+    for cell in ws[2]:
+        cell.font = bold
+        cell.alignment = center
+
+    # Build a lookup: item_id -> {supplier_id -> quote_row}
+    quotes_by_item = {}
+    for q in quotes:
+        item_id = q['pr_item_id']
+        if item_id not in quotes_by_item:
+            quotes_by_item[item_id] = {}
+        quotes_by_item[item_id][q['supplier_id']] = q
+
+    # One row per item (starting from row 3)
+    for item in pr_items:
+        w, l, thk = parse_dimensions(item['specification'])
+        row = [
+            item['item_name'],
+            item['brand'] or "",
+            item['quantity'] or "",
+            item['item_category'] or "",
+            w or "",
+            l or "",
+            thk or ""
+        ]
+
+        # Add supplier quote columns
+        for supplier_id, supplier_name in suppliers_list:
+            q = quotes_by_item.get(item['id'], {}).get(supplier_id)
+            if q:
+                row.extend([
+                    q['unit_price'] if q['unit_price'] is not None else "",
+                    q['total_price'] if q['total_price'] is not None else "",
+                    q['lead_time'] or "",
+                    q['notes'] or ""
+                ])
+            else:
+                # No quote from this supplier for this item
+                row.extend(["", "", "", ""])
+
+        ws.append(row)
+
+    # --- Formatting: borders, autofit columns, adjust row heights ---
+    # Apply thin border to all used cells
+    thin_side = Side(border_style="thin", color="000000")
+    table_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
+
+    max_col = ws.max_column
+    max_row = ws.max_row
+
+    # Track max length per column for width calculation
+    col_max_length = [0] * (max_col + 1)
+
+    for r in range(1, max_row + 1):
+        # Estimate row height by counting line breaks in the row
+        max_lines = 1
+        for c in range(1, max_col + 1):
+            cell = ws.cell(row=r, column=c)
+            # Apply border
+            cell.border = table_border
+            # Ensure vertical centering and wrap
+            try:
+                cell.alignment = Alignment(horizontal=(cell.alignment.horizontal or "left"), vertical="center", wrap_text=True)
+            except Exception:
+                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+
+            value = cell.value if cell.value is not None else ""
+            text = str(value)
+            # Update max length for this column
+            if len(text) > col_max_length[c]:
+                col_max_length[c] = len(text)
+            # Count lines for row height estimation
+            lines = text.count("\n") + 1
+            if lines > max_lines:
+                max_lines = lines
+
+        # Set an approximate row height (15pt per line)
+        ws.row_dimensions[r].height = max(15, max_lines * 15)
+
+    # Set column widths based on max content length
+    for col_idx in range(1, max_col + 1):
+        col_letter = get_column_letter(col_idx)
+        # Add some padding
+        width = int(col_max_length[col_idx] * 1.2) + 2
+        # Clamp reasonable bounds
+        if width < 8:
+            width = 8
+        if width > 60:
+            width = 60
+        ws.column_dimensions[col_letter].width = width
+
+    # Make header rows slightly taller
+    if max_row >= 1:
+        ws.row_dimensions[1].height = 28
+    if max_row >= 2:
+        ws.row_dimensions[2].height = 20
 
     output = io.BytesIO()
     wb.save(output)
