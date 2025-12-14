@@ -70,10 +70,14 @@ def reset_database():
             task_id INTEGER,
             item_name TEXT NOT NULL,
             specification TEXT,
+            width TEXT,
+            length TEXT,
+            thickness TEXT,
             brand TEXT,
             balance_stock INTEGER,
             quantity INTEGER NOT NULL,
             item_category TEXT NOT NULL,
+            payment_terms TEXT,
             FOREIGN KEY (task_id) REFERENCES tasks (id)
         )''',
         
@@ -112,6 +116,8 @@ def reset_database():
             unit_price REAL,
             total_price REAL,
             lead_time TEXT,
+            payment_terms TEXT,
+            ono BOOLEAN DEFAULT 0,
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (task_id) REFERENCES tasks (id),
@@ -155,4 +161,3 @@ def reset_database():
 
 if __name__ == '__main__':
     reset_database()
-

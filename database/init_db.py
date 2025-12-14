@@ -81,10 +81,14 @@ def init_database():
             task_id INTEGER,
             item_name TEXT NOT NULL,
             specification TEXT,
+            width TEXT,
+            length TEXT,
+            thickness TEXT,
             brand TEXT,
             balance_stock INTEGER,
             quantity INTEGER NOT NULL,
             item_category TEXT NOT NULL,
+            payment_terms TEXT,
             FOREIGN KEY (task_id) REFERENCES tasks (id)
         )
     ''')
@@ -132,6 +136,8 @@ def init_database():
             unit_price REAL,
             total_price REAL,
             lead_time TEXT,
+            payment_terms TEXT,
+            ono BOOLEAN DEFAULT 0,
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (task_id) REFERENCES tasks (id),
@@ -150,6 +156,12 @@ def init_database():
     ensure_column('task_suppliers', 'initial_sent_at', 'TIMESTAMP')
     ensure_column('task_suppliers', 'followup_sent_at', 'TIMESTAMP')
     ensure_column('task_suppliers', 'replied_at', 'TIMESTAMP')
+    ensure_column('pr_items', 'width', 'TEXT')
+    ensure_column('pr_items', 'length', 'TEXT')
+    ensure_column('pr_items', 'thickness', 'TEXT')
+    ensure_column('pr_items', 'payment_terms', 'TEXT')
+    ensure_column('supplier_quotes', 'payment_terms', 'TEXT')
+    ensure_column('supplier_quotes', 'ono', 'BOOLEAN')
     
 
     # Insert default admin user
@@ -174,6 +186,5 @@ def init_database():
 
 if __name__ == '__main__':
     init_database()
-
 
 

@@ -18,13 +18,16 @@ from email.header import decode_header
 from email.utils import parsedate_to_datetime
 import threading
 import time
-import re
+from itsdangerous import URLSafeSerializer, BadSignature
 
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('APP_SECRET_KEY', 'procure-flow-secret-key-2024')
+
+def get_quote_serializer():
+    return URLSafeSerializer(app.secret_key, salt="supplier-quote")
 
 def init_database_on_startup():
     """Ensure the SQLite database exists with expected tables."""
@@ -255,6 +258,7 @@ def new_task(task_id=None):
                 'width': request.form.get(f'items[{item_index}][width]') or None,
                 'length': request.form.get(f'items[{item_index}][length]') or None,
                 'thickness': request.form.get(f'items[{item_index}][thickness]') or None,
+                'payment_terms': request.form.get(f'items[{item_index}][payment_terms]') or None,
                 'brand': request.form[f'items[{item_index}][brand]'],
                 'balance_stock': request.form.get(f'items[{item_index}][balance_stock]', 0) or 0,
                 'quantity': request.form[f'items[{item_index}][quantity]'],
@@ -282,8 +286,8 @@ def new_task(task_id=None):
         # Add PR items (store width/length/thickness if provided)
         for item_data in items:
             conn.execute('''
-                INSERT INTO pr_items (task_id, item_name, specification, width, length, thickness, brand, balance_stock, quantity, item_category)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO pr_items (task_id, item_name, specification, width, length, thickness, brand, balance_stock, quantity, item_category, payment_terms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 task_id_to_use,
                 item_data['item_name'],
@@ -294,7 +298,8 @@ def new_task(task_id=None):
                 item_data['brand'],
                 item_data['balance_stock'],
                 item_data['quantity'],
-                item_data['item_category']
+                item_data['item_category'],
+                item_data.get('payment_terms')
             ))
         
         conn.commit()
@@ -777,8 +782,13 @@ def task_responses(task_id):
         WHERE ts.task_id = ? AND ts.is_selected = 1
     ''', (task_id,)).fetchall()
 
+    form_links = {}
+    for s in suppliers:
+        token = get_quote_serializer().dumps({'task_id': task_id, 'supplier_id': s['id']})
+        form_links[s['id']] = url_for('supplier_quote_form', token=token, _external=True)
+
     conn.close()
-    return render_template('responses.html', task=task, suppliers=suppliers)
+    return render_template('responses.html', task=task, suppliers=suppliers, form_links=form_links)
 
 @app.route('/task/<int:task_id>/quotes/<int:supplier_id>', methods=['GET', 'POST'])
 def capture_quotes(task_id, supplier_id):
@@ -819,19 +829,21 @@ def capture_quotes(task_id, supplier_id):
             unit_price = request.form.get(f'unit_price_{uid}') or None
             total_price = request.form.get(f'total_price_{uid}') or None
             lead_time = request.form.get(f'lead_time_{uid}') or None
+            payment_terms = request.form.get(f'payment_terms_{uid}') or None
             notes = request.form.get(f'notes_{uid}') or None
+            ono = 1 if request.form.get(f'ono_{uid}') else 0
 
             # Log each parsed item value before insert
-            app.logger.info('Captured quote values for item %s: unit_price=%s total_price=%s lead_time=%s notes=%s',
-                            uid, unit_price, total_price, lead_time, notes)
+            app.logger.info('Captured quote values for item %s: unit_price=%s total_price=%s lead_time=%s payment_terms=%s ono=%s notes=%s',
+                            uid, unit_price, total_price, lead_time, payment_terms, ono, notes)
 
-            if any([unit_price, total_price, lead_time, notes]):
+            if any([unit_price, total_price, lead_time, payment_terms, notes, ono]):
                 conn.execute(
                     '''
-                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, total_price, lead_time, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, total_price, lead_time, payment_terms, ono, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''',
-                    (task_id, supplier_id, item['id'], unit_price, total_price, lead_time, notes)
+                    (task_id, supplier_id, item['id'], unit_price, total_price, lead_time, payment_terms, ono, notes)
                 )
 
         # Mark replied when quotes captured (always update to current time)
@@ -850,6 +862,79 @@ def capture_quotes(task_id, supplier_id):
                            supplier=supplier,
                            pr_items=pr_items,
                            quotes_map=quotes_map)
+
+@app.route('/supplier/quote-form/<token>', methods=['GET', 'POST'])
+def supplier_quote_form(token):
+    try:
+        data = get_quote_serializer().loads(token)
+        task_id = data.get('task_id')
+        supplier_id = data.get('supplier_id')
+    except BadSignature:
+        return "Invalid or expired link", 400
+
+    conn = get_db_connection()
+    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    supplier = conn.execute('SELECT * FROM suppliers WHERE id = ?', (supplier_id,)).fetchone()
+    if not task or not supplier:
+        conn.close()
+        return "Task or supplier not found", 404
+
+    ts_row = conn.execute(
+        'SELECT assigned_items FROM task_suppliers WHERE task_id = ? AND supplier_id = ?',
+        (task_id, supplier_id)
+    ).fetchone()
+    assigned_ids = None
+    if ts_row and ts_row['assigned_items']:
+        try:
+            assigned_ids = [int(x) for x in json.loads(ts_row['assigned_items'])]
+        except Exception:
+            assigned_ids = None
+
+    pr_items = conn.execute('SELECT * FROM pr_items WHERE task_id = ?', (task_id,)).fetchall()
+    if assigned_ids:
+        pr_items = [item for item in pr_items if item['id'] in assigned_ids]
+
+    if request.method == 'POST':
+        conn.execute('DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id))
+        for item in pr_items:
+            uid = str(item['id'])
+            unit_price = request.form.get(f'unit_price_{uid}') or None
+            total_price = request.form.get(f'total_price_{uid}') or None
+            lead_time = request.form.get(f'lead_time_{uid}') or None
+            payment_terms = request.form.get(f'payment_terms_{uid}') or None
+            notes = request.form.get(f'notes_{uid}') or None
+            ono = 1 if request.form.get(f'ono_{uid}') else 0
+
+            if any([unit_price, total_price, lead_time, payment_terms, notes, ono]):
+                conn.execute(
+                    '''
+                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, total_price, lead_time, payment_terms, ono, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ''',
+                    (task_id, supplier_id, item['id'], unit_price, total_price, lead_time, payment_terms, ono, notes)
+                )
+
+        # mark replied and log
+        conn.execute(
+            'UPDATE task_suppliers SET replied_at = COALESCE(replied_at, CURRENT_TIMESTAMP) WHERE task_id = ? AND supplier_id = ?',
+            (task_id, supplier_id)
+        )
+        conn.execute(
+            '''
+            INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ''',
+            (task_id, supplier_id, 'supplier_form', f'Quote submitted by {supplier["name"]}', None, 'received')
+        )
+        conn.commit()
+        conn.close()
+        return render_template('supplier_form_success.html', supplier=supplier, task=task)
+
+    conn.close()
+    return render_template('supplier_public_quote.html',
+                           task=task,
+                           supplier=supplier,
+                           pr_items=pr_items)
 
 
 @app.route('/debug/quotes/<int:task_id>/<int:supplier_id>', methods=['GET'])
@@ -942,17 +1027,13 @@ def export_comparison(task_id):
     # Column structure: Item Name (1), Brand (2), Category (3), Dimensions (4-6), Quantity (7), Weight (8), Suppliers (9+)
     row1 = ["Item Name", "Brand", "Category", "Dimensions", "", "", "Quantity", "Weight (in Kg)"]
     for supplier_id, supplier_name in suppliers_list:
-        row1.append(supplier_name)
-        row1.append("")  # Blank for alignment with 4 columns per supplier
-        row1.append("")  # Blank for alignment
-        row1.append("")  # Blank for alignment
+        row1.extend([supplier_name, "", "", "", "", ""])
     ws.append(row1)
 
-    # Row 2: Sub-headers (W, L, Thk for Dimensions; Unit Price, Total Price, Lead Time, Notes for each supplier)
-    row2 = ["", "", "", "W", "L", "Thk"]  # blank for Item Name, Brand, Category; W under Dimensions; blank for Quantity, Weight
-    row2.extend(["L", "Thk"])  # L and Thk under Dimensions
+    # Row 2: Sub-headers (W, L, Thk for Dimensions; Quoted prices/terms per supplier)
+    row2 = ["", "", "", "W", "L", "Thk", "", ""]  # placeholders for quantity/weight
     for supplier_id, supplier_name in suppliers_list:
-        row2.extend(["Unit Price", "Total Price", "Lead Time", "Notes"])
+        row2.extend(["Quoted Unit Price", "Quoted Total Price", "Lead Time", "Payment Terms", "O.N.O.", "Notes"])
     ws.append(row2)
 
     # Merge cells and apply formatting
@@ -985,14 +1066,14 @@ def export_comparison(task_id):
         cell.font = bold
         cell.alignment = center
     
-    # Merge and center each supplier name (4 columns each)
+    # Merge and center each supplier name (6 columns each)
     col_idx = 9  # Start after Quantity and Weight (columns 7-8)
     for supplier_id, supplier_name in suppliers_list:
-        ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=col_idx + 3)
+        ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=col_idx + 5)
         cell = ws.cell(row=1, column=col_idx)
         cell.font = bold
         cell.alignment = center
-        col_idx += 4
+        col_idx += 6
 
     # Format row 2 as bold and centered
     for cell in ws[2]:
@@ -1009,7 +1090,14 @@ def export_comparison(task_id):
 
     # One row per item (starting from row 3)
     for item in pr_items:
-        w, l, thk = parse_dimensions(item['specification'])
+        w = item['width'] or None
+        l = item['length'] or None
+        thk = item['thickness'] or None
+        if not (w and l and thk):
+            parsed_w, parsed_l, parsed_thk = parse_dimensions(item['specification'])
+            w = w or parsed_w
+            l = l or parsed_l
+            thk = thk or parsed_thk
         
         # Calculate weight (in Kg) using formula: (W*L*Thk)*(12*25.4*12*25.4)/1000*7.85/1000
         # If any dimension is missing, weight is empty
@@ -1038,15 +1126,19 @@ def export_comparison(task_id):
         for supplier_id, supplier_name in suppliers_list:
             q = quotes_by_item.get(item['id'], {}).get(supplier_id)
             if q:
+                ono_val = q['ono'] if 'ono' in q.keys() else q.get('ono')
+                ono_display = "O.N.O." if ono_val else ""
                 row.extend([
                     q['unit_price'] if q['unit_price'] is not None else "",
                     q['total_price'] if q['total_price'] is not None else "",
                     q['lead_time'] or "",
+                    q.get('payment_terms') or "",
+                    ono_display,
                     q['notes'] or ""
                 ])
             else:
                 # No quote from this supplier for this item
-                row.extend(["", "", "", ""])
+                row.extend(["", "", "", "", "", ""])
 
         ws.append(row)
 
@@ -1753,8 +1845,7 @@ def check_inbox_and_mark_replies():
             ).fetchall()
 
             if not pending_rows:
-                # Nothing to update; just mark seen
-                mail.store(num, '+FLAGS', '\\Seen')
+                # Nothing to update; leave unread
                 continue
 
             # Parse Date header -> replied_at timestamp string
@@ -1837,8 +1928,8 @@ def check_inbox_and_mark_replies():
                                     '''
                                     INSERT INTO supplier_quotes
                                         (task_id, supplier_id, pr_item_id,
-                                         unit_price, total_price, lead_time, notes)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                                         unit_price, total_price, lead_time, payment_terms, ono, notes)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                                     ''',
                                     (
                                         task_id,
@@ -1847,6 +1938,8 @@ def check_inbox_and_mark_replies():
                                         parsed.get("unit_price"),
                                         parsed.get("total_price"),
                                         parsed.get("lead_time"),
+                                        parsed.get("payment_terms"),
+                                        0,
                                         notes
                                     )
                                 )
@@ -2039,6 +2132,3 @@ if __name__ == '__main__':
         print(f"[IMAP Poll] Failed to start poller: {e}")
 
     app.run(host='0.0.0.0', port=5000, debug=True)
-
-
-
