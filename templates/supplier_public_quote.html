@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit Quote - {{ task.task_name }}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="container" style="padding:2rem; max-width: 900px; margin: 0 auto;">
+        <div class="card">
+            <div class="card-header">
+                <h2>Submit Quote</h2>
+                <p>Task: {{ task.task_name }} | Supplier: {{ supplier.name }}</p>
+            </div>
+            <div class="card-body">
+                <form method="POST">
+                    {% for item in pr_items %}
+                    <div class="card mb-2" style="border:1px solid #e0e0e0;">
+                        <div class="card-header">
+                            <h4>Item {{ loop.index }}: {{ item.item_name }}</h4>
+                            <p class="text-muted">
+                                {{ item.specification or '' }}
+                                {% if item.width or item.length or item.thickness %}
+                                    <br>Dims: {{ item.width or '-' }} x {{ item.length or '-' }} x {{ item.thickness or '-' }}
+                                {% endif %}
+                            </p>
+                        </div>
+                        <div class="card-body grid-2">
+                            <div class="form-group">
+                                <label class="form-label">Quoted Unit Price</label>
+                                <input type="number" step="0.01" class="form-control" name="unit_price_{{ item.id }}">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Quoted Total Price</label>
+                                <input type="number" step="0.01" class="form-control" name="total_price_{{ item.id }}">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Lead Time</label>
+                                <input type="text" class="form-control" name="lead_time_{{ item.id }}" placeholder="e.g. 14 days">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Payment Terms</label>
+                                <input type="text" class="form-control" name="payment_terms_{{ item.id }}" placeholder="e.g., 30 days credit">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">O.N.O.</label>
+                                <div style="display:flex;align-items:center;gap:0.5rem;">
+                                    <input type="checkbox" name="ono_{{ item.id }}">
+                                    <span>On Nearest Offer</span>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Notes</label>
+                                <input type="text" class="form-control" name="notes_{{ item.id }}">
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Submit Quote</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
