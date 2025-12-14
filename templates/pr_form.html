@@ -53,6 +53,21 @@
                                        value="{{ item.specification or '' }}" placeholder="Technical specifications">
                             </div>
                             <div class="form-group">
+                                <label class="form-label">Width</label>
+                                <input type="text" class="form-control" name="items[{{ loop.index0 }}][width]" 
+                                       value="{{ item.width or '' }}" placeholder="e.g., 10mm">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Length</label>
+                                <input type="text" class="form-control" name="items[{{ loop.index0 }}][length]" 
+                                       value="{{ item.length or '' }}" placeholder="e.g., 100cm">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Thickness</label>
+                                <input type="text" class="form-control" name="items[{{ loop.index0 }}][thickness]" 
+                                       value="{{ item.thickness or '' }}" placeholder="e.g., 5mm">
+                            </div>
+                            <div class="form-group">
                                 <label class="form-label">Brand</label>
                                 <input type="text" class="form-control" name="items[{{ loop.index0 }}][brand]" 
                                        value="{{ item.brand or '' }}" placeholder="Preferred brand">
@@ -61,6 +76,11 @@
                                 <label class="form-label">Balance Stock</label>
                                 <input type="number" class="form-control" name="items[{{ loop.index0 }}][balance_stock]" 
                                        value="{{ item.balance_stock or 0 }}" min="0" placeholder="Current stock level">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Payment Terms</label>
+                                <input type="text" class="form-control" name="items[{{ loop.index0 }}][payment_terms]" 
+                                       value="{{ item.payment_terms or '' }}" placeholder="e.g., 30 days credit">
                             </div>
                             <div class="form-group">
                                 <label class="form-label required">Item Category</label>
@@ -98,6 +118,21 @@
                                    placeholder="Technical specifications">
                         </div>
                         <div class="form-group">
+                            <label class="form-label">Width</label>
+                            <input type="text" class="form-control" name="items[0][width]" 
+                                   placeholder="e.g., 10mm">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Length</label>
+                            <input type="text" class="form-control" name="items[0][length]" 
+                                   placeholder="e.g., 100cm">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Thickness</label>
+                            <input type="text" class="form-control" name="items[0][thickness]" 
+                                   placeholder="e.g., 5mm">
+                        </div>
+                        <div class="form-group">
                             <label class="form-label">Brand</label>
                             <input type="text" class="form-control" name="items[0][brand]" 
                                    placeholder="Preferred brand">
@@ -106,6 +141,11 @@
                             <label class="form-label">Balance Stock</label>
                             <input type="number" class="form-control" name="items[0][balance_stock]" min="0" 
                                    placeholder="Current stock level">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Payment Terms</label>
+                            <input type="text" class="form-control" name="items[0][payment_terms]" 
+                                   placeholder="e.g., 30 days credit">
                         </div>
                         <div class="form-group">
                             <label class="form-label required">Item Category</label>
@@ -199,6 +239,21 @@
                                    placeholder="Technical specifications">
                         </div>
                         <div class="form-group">
+                            <label class="form-label">Width</label>
+                            <input type="text" class="form-control" name="items[${itemCount - 1}][width]" 
+                                   placeholder="e.g., 10mm">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Length</label>
+                            <input type="text" class="form-control" name="items[${itemCount - 1}][length]" 
+                                   placeholder="e.g., 100cm">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Thickness</label>
+                            <input type="text" class="form-control" name="items[${itemCount - 1}][thickness]" 
+                                   placeholder="e.g., 5mm">
+                        </div>
+                        <div class="form-group">
                             <label class="form-label">Brand</label>
                             <input type="text" class="form-control" name="items[${itemCount - 1}][brand]" 
                                    placeholder="Preferred brand">
@@ -207,6 +262,11 @@
                             <label class="form-label">Balance Stock</label>
                             <input type="number" class="form-control" name="items[${itemCount - 1}][balance_stock]" min="0" 
                                    placeholder="Current stock level">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Payment Terms</label>
+                            <input type="text" class="form-control" name="items[${itemCount - 1}][payment_terms]" 
+                                   placeholder="e.g., 30 days credit">
                         </div>
                         <div class="form-group">
                             <label class="form-label required">Item Category</label>
@@ -224,6 +284,17 @@
     }
 
     // Rest of your functions...
+    document.getElementById('itemsContainer').addEventListener('click', function(e) {
+        if (e.target.closest('.remove-item')) {
+            e.preventDefault();
+            const row = e.target.closest('.item-row');
+            if (row) {
+                row.remove();
+                updateItemNumbers();
+            }
+        }
+    });
+
     function updateItemNumbers() {
         const items = document.querySelectorAll('.item-row');
         console.log('Current items count:', items.length);

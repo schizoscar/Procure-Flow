@@ -22,6 +22,7 @@
                     <th>Initial Sent</th>
                     <th>Follow-up Sent</th>
                     <th>Replied</th>
+                    <th>Supplier Form</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -33,6 +34,11 @@
                     <td>{{ s.initial_sent_at or '—' }}</td>
                     <td>{{ s.followup_sent_at or '—' }}</td>
                     <td>{{ s.replied_at or 'No' }}</td>
+                    <td>
+                        {% if form_links and form_links.get(s.id) %}
+                        <a href="{{ form_links.get(s.id) }}" target="_blank">Open Form</a>
+                        {% else %}—{% endif %}
+                    </td>
                     <td>
                         <form method="POST" class="d-flex gap-1" style="align-items:center;">
                             <input type="hidden" name="supplier_id" value="{{ s.id }}">
