@@ -81,9 +81,9 @@ def init_database():
             task_id INTEGER,
             item_name TEXT NOT NULL,
             specification TEXT,
-            width TEXT,
-            length TEXT,
-            thickness TEXT,
+            width INTEGER,
+            length INTEGER,
+            thickness INTEGER,
             brand TEXT,
             balance_stock INTEGER,
             quantity INTEGER NOT NULL,
@@ -156,9 +156,9 @@ def init_database():
     ensure_column('task_suppliers', 'initial_sent_at', 'TIMESTAMP')
     ensure_column('task_suppliers', 'followup_sent_at', 'TIMESTAMP')
     ensure_column('task_suppliers', 'replied_at', 'TIMESTAMP')
-    ensure_column('pr_items', 'width', 'TEXT')
-    ensure_column('pr_items', 'length', 'TEXT')
-    ensure_column('pr_items', 'thickness', 'TEXT')
+    ensure_column('pr_items', 'width', 'INTEGER')
+    ensure_column('pr_items', 'length', 'INTEGER')
+    ensure_column('pr_items', 'thickness', 'INTEGER')
     ensure_column('pr_items', 'payment_terms', 'TEXT')
     ensure_column('supplier_quotes', 'payment_terms', 'TEXT')
     ensure_column('supplier_quotes', 'ono', 'BOOLEAN')
