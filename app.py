@@ -115,10 +115,9 @@ def generate_email_content(pr_items, task_name):
         items_html += f"""
         <li>
             <strong>Item:</strong> {item['item_name']}<br>
-            <strong>Specification:</strong> {item['specification'] or 'N/A'}<br>
-            <strong>Brand:</strong> {item['brand'] or 'N/A'}<br>
+            <strong>Dimensions:</strong> {item['specification'] or 'N/A'}<br>
+            <strong>Brand / Specification:</strong> {item['brand'] or 'N/A'}<br>
             <strong>Quantity:</strong> {item['quantity']}<br>
-            <strong>Category:</strong> {item['item_category']}
         </li>
         """
     items_html += "</ul>"
@@ -135,10 +134,12 @@ def generate_email_content(pr_items, task_name):
         
         <p>Please provide us with your quotation including:</p>
         <ul>
-            <li>Unit price and total price</li>
-            <li>Delivery timeline</li>
-            <li>Warranty information</li>
-            <li>Payment terms</li>
+            <li>Unit Price</li>
+            <li>Delivery Lead Timeline</li>
+            <li>Warranty (If Applicable)</li>
+            <li>Mill Certificate / Certificate of Analysis (COA)</li>
+            <li>Payment Terms</li>
+            <li>Stock Availability</li>
         </ul>
         
         <p>We look forward to your prompt response.</p>
@@ -827,23 +828,22 @@ def capture_quotes(task_id, supplier_id):
         for item in pr_items:
             uid = str(item['id'])
             unit_price = request.form.get(f'unit_price_{uid}') or None
-            total_price = request.form.get(f'total_price_{uid}') or None
             lead_time = request.form.get(f'lead_time_{uid}') or None
             payment_terms = request.form.get(f'payment_terms_{uid}') or None
             notes = request.form.get(f'notes_{uid}') or None
             ono = 1 if request.form.get(f'ono_{uid}') else 0
 
             # Log each parsed item value before insert
-            app.logger.info('Captured quote values for item %s: unit_price=%s total_price=%s lead_time=%s payment_terms=%s ono=%s notes=%s',
-                            uid, unit_price, total_price, lead_time, payment_terms, ono, notes)
+            app.logger.info('Captured quote values for item %s: unit_price=%s lead_time=%s payment_terms=%s ono=%s notes=%s',
+                            uid, unit_price, lead_time, payment_terms, ono, notes)
 
-            if any([unit_price, total_price, lead_time, payment_terms, notes, ono]):
+            if any([unit_price, lead_time, payment_terms, notes, ono]):
                 conn.execute(
                     '''
                     INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, total_price, lead_time, payment_terms, ono, notes)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''',
-                    (task_id, supplier_id, item['id'], unit_price, total_price, lead_time, payment_terms, ono, notes)
+                    (task_id, supplier_id, item['id'], unit_price, None, lead_time, payment_terms, ono, notes)
                 )
 
         # Mark replied when quotes captured (always update to current time)
@@ -1030,10 +1030,10 @@ def export_comparison(task_id):
         row1.extend([supplier_name, "", "", "", "", ""])
     ws.append(row1)
 
-    # Row 2: Sub-headers (W, L, Thk for Dimensions; Quoted prices/terms per supplier)
+    # Row 2: Sub-headers (W, L, Thk for Dimensions; prices/terms per supplier)
     row2 = ["", "", "", "W", "L", "Thk", "", ""]  # placeholders for quantity/weight
     for supplier_id, supplier_name in suppliers_list:
-        row2.extend(["Quoted Unit Price", "Quoted Total Price", "Lead Time", "Payment Terms", "O.N.O.", "Notes"])
+        row2.extend(["Unit Price", "Lead Time", "Payment Terms", "O.N.O.", "Notes"])
     ws.append(row2)
 
     # Merge cells and apply formatting
@@ -1086,7 +1086,7 @@ def export_comparison(task_id):
         item_id = q['pr_item_id']
         if item_id not in quotes_by_item:
             quotes_by_item[item_id] = {}
-        quotes_by_item[item_id][q['supplier_id']] = q
+        quotes_by_item[item_id][q['supplier_id']] = dict(q)
 
     # One row per item (starting from row 3)
     for item in pr_items:
@@ -1130,7 +1130,6 @@ def export_comparison(task_id):
                 ono_display = "O.N.O." if ono_val else ""
                 row.extend([
                     q['unit_price'] if q['unit_price'] is not None else "",
-                    q['total_price'] if q['total_price'] is not None else "",
                     q['lead_time'] or "",
                     q.get('payment_terms') or "",
                     ono_display,
@@ -1138,7 +1137,7 @@ def export_comparison(task_id):
                 ])
             else:
                 # No quote from this supplier for this item
-                row.extend(["", "", "", "", "", ""])
+                row.extend(["", "", "", "", ""])
 
         ws.append(row)
 
@@ -1407,7 +1406,7 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
                 items_html += f"""
                 <li>
                     <strong>Item:</strong> {item['item_name']}<br>
-                    <strong>Specification:</strong> {item['specification'] or 'N/A'}<br>
+                    <strong>Dimensions:</strong> {item['specification'] or 'N/A'}<br>
                     <strong>Brand:</strong> {item['brand'] or 'N/A'}<br>
                     <strong>Quantity:</strong> {item['quantity']}<br>
                     <strong>Category:</strong> {item['item_category']}
@@ -1966,6 +1965,7 @@ def check_inbox_and_mark_replies():
             pass
 
     return processed
+
 # background polling helpers
 def _inbox_polling_loop(interval):
     if interval <= 0:

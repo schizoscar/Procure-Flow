@@ -78,9 +78,9 @@
                                 {% if template.email_content %}
                                     {{ template.email_content|replace('{supplier_name}', '<span class="placeholder">[Supplier Name]</span>')|replace('[Supplier Name]', '<span class="placeholder">[Supplier Name]</span>')|safe }}
                                 {% else %}
-                                    <p>Dear <span class="placeholder">[Supplier Name]</span>,</p>
+                                    <p>Dear <span class="placeholder">[Supplier Name] {{ supplier.contact_name }}</span>,</p>
                                     
-                                    <p>We are inquiring about the following items for procurement:</p>
+                                    <p>We are inquiring about the following items below:</p>
                                     
                                     <ul>
                                         <li><em>Items will be automatically inserted here based on supplier assignments</em></li>
@@ -88,10 +88,12 @@
                                     
                                     <p>Please provide us with your quotation including:</p>
                                     <ul>
-                                        <li>Unit price and total price</li>
-                                        <li>Delivery timeline</li>
-                                        <li>Warranty information</li>
-                                        <li>Payment terms</li>
+                                        <li>Unit Price</li>
+                                        <li>Delivery Lead Timeline</li>
+                                        <li>Warranty (If Applicable)</li>
+                                        <li>Mill Certificate / Certificate of Analysis (COA)</li>
+                                        <li>Payment Terms</li>
+                                        <li>Stock Availability</li>
                                     </ul>
                                     
                                     <p>We look forward to your prompt response.</p>
@@ -159,15 +161,16 @@
 {%- else -%}
 Dear [Supplier Name],
 
-We are inquiring about the following items for procurement:
+We are inquiring about the following items below:
 
 [Items will be automatically inserted here]
 
 Please provide us with your quotation including:
-• Unit price and total price
-• Delivery timeline  
-• Warranty information
-• Payment terms
+• Unit Price
+• Delivery Lead Timeline
+• Warranty (If Applicable)
+• Mill Certificate / Certificate of Analysis (COA)
+• Payment Terms
 
 We look forward to your prompt response.
 

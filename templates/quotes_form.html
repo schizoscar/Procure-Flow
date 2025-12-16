@@ -22,12 +22,8 @@
                 </div>
                 <div class="card-body grid-2">
                     <div class="form-group">
-                        <label class="form-label">Quoted Unit Price</label>
+                        <label class="form-label">Unit Price (RM)</label>
                         <input type="number" step="0.01" class="form-control" name="unit_price_{{ item.id }}" value="{{ existing.unit_price if existing else '' }}">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Quoted Total Price</label>
-                        <input type="number" step="0.01" class="form-control" name="total_price_{{ item.id }}" value="{{ existing.total_price if existing else '' }}">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Lead Time</label>

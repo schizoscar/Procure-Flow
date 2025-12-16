@@ -31,9 +31,14 @@
                         </div>
                         <div class="item-details">
                             <p><strong>{{ item.item_name }}</strong></p>
+                            {% if item.brand %}<p>Brand / Specification: {{ item.brand }}</p>{% endif %}
                             <p>Quantity: {{ item.quantity }}</p>
-                            {% if item.specification %}<p>Specs: {{ item.specification }}</p>{% endif %}
-                            {% if item.brand %}<p>Brand: {{ item.brand }}</p>{% endif %}
+                            <p class="text-muted">
+                                {{ item.specification or '' }}
+                                {% if item.width or item.length or item.thickness %}
+                                    Dims: {{ item.width or '-' }} x {{ item.length or '-' }} x {{ item.thickness or '-' }}
+                                {% endif %}
+                            </p>
                         </div>
                     </div>
                     {% endfor %}
