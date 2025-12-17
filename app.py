@@ -134,12 +134,12 @@ def generate_email_content(pr_items, task_name):
         
         <p>Please provide us with your quotation including:</p>
         <ul>
-            <li>Unit Price</li>
+            <li>Payment Terms</li>
+            <li>Unit Price (RM)</li>
             <li>Delivery Lead Timeline</li>
+            <li>Stock Availability</li>
             <li>Warranty (If Applicable)</li>
             <li>Mill Certificate / Certificate of Analysis (COA)</li>
-            <li>Payment Terms</li>
-            <li>Stock Availability</li>
         </ul>
         
         <p>We look forward to your prompt response.</p>
@@ -261,7 +261,6 @@ def new_task(task_id=None):
                 'thickness': request.form.get(f'items[{item_index}][thickness]') or None,
                 'payment_terms': request.form.get(f'items[{item_index}][payment_terms]') or None,
                 'brand': request.form[f'items[{item_index}][brand]'],
-                'balance_stock': request.form.get(f'items[{item_index}][balance_stock]', 0) or 0,
                 'quantity': request.form[f'items[{item_index}][quantity]'],
                 'item_category': request.form[f'items[{item_index}][item_category]']
             })
@@ -287,19 +286,18 @@ def new_task(task_id=None):
         # Add PR items (store width/length/thickness if provided)
         for item_data in items:
             conn.execute('''
-                INSERT INTO pr_items (task_id, item_name, specification, width, length, thickness, brand, balance_stock, quantity, item_category, payment_terms)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO pr_items (task_id, item_name, item_category, brand, quantity, specification, width, length, thickness, payment_terms)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 task_id_to_use,
                 item_data['item_name'],
+                item_data['item_category'],
+                item_data['brand'],
+                item_data['quantity'],
                 item_data['specification'],
                 item_data.get('width'),
                 item_data.get('length'),
                 item_data.get('thickness'),
-                item_data['brand'],
-                item_data['balance_stock'],
-                item_data['quantity'],
-                item_data['item_category'],
                 item_data.get('payment_terms')
             ))
         
@@ -556,7 +554,8 @@ def email_confirmation(task_id):
                 task['task_name'],
                 assigned_item_ids,
                 final_email_content,
-                final_email_subject
+                final_email_subject,
+                supplier.get('contact_name') if isinstance(supplier, dict) else supplier['contact_name']
             )
             if sent_ok:
                 success_count += 1
@@ -703,7 +702,8 @@ def follow_up(task_id):
                 task['task_name'],
                 assigned_item_ids,
                 body,
-                subject
+                subject,
+                supplier.get('contact_name') if isinstance(supplier, dict) else supplier['contact_name']
             )
             if sent_ok:
                 sent += 1
@@ -811,6 +811,13 @@ def capture_quotes(task_id, supplier_id):
         (task_id, supplier_id)
     ).fetchall()
     quotes_map = {(q['pr_item_id']): q for q in existing_quotes}
+    # Determine existing payment terms (use first quote's payment_terms if present)
+    payment_terms_default = ''
+    if existing_quotes:
+        try:
+            payment_terms_default = existing_quotes[0]['payment_terms'] or ''
+        except Exception:
+            payment_terms_default = ''
 
     if request.method == 'POST':
         # Replace existing quotes for this supplier/task
@@ -824,26 +831,29 @@ def capture_quotes(task_id, supplier_id):
             pass
 
         conn.execute('DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id))
+        # Single payment terms value for the whole submission
+        payment_terms_global = request.form.get('payment_terms') or None
 
         for item in pr_items:
             uid = str(item['id'])
             unit_price = request.form.get(f'unit_price_{uid}') or None
+            cert = request.form.get(f'cert_{uid}') or None
             lead_time = request.form.get(f'lead_time_{uid}') or None
-            payment_terms = request.form.get(f'payment_terms_{uid}') or None
             notes = request.form.get(f'notes_{uid}') or None
-            ono = 1 if request.form.get(f'ono_{uid}') else 0
+            ono = 1 if request.form.get(f"ono_{uid}") else 0
 
-            # Log each parsed item value before insert
+            # Log each parsed item value before insert (payment_terms is global)
             app.logger.info('Captured quote values for item %s: unit_price=%s lead_time=%s payment_terms=%s ono=%s notes=%s',
-                            uid, unit_price, lead_time, payment_terms, ono, notes)
+                            uid, unit_price, lead_time, payment_terms_global, ono, notes)
 
-            if any([unit_price, lead_time, payment_terms, notes, ono]):
+            # Insert only when meaningful per-item data is present; apply global payment terms
+            if any([unit_price, lead_time, notes, ono, cert]):
                 conn.execute(
                     '''
-                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, total_price, lead_time, payment_terms, ono, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, stock_availability, cert, lead_time, payment_terms, ono, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''',
-                    (task_id, supplier_id, item['id'], unit_price, None, lead_time, payment_terms, ono, notes)
+                    (task_id, supplier_id, item['id'], unit_price, None, cert, lead_time, payment_terms_global, ono, notes)
                 )
 
         # Mark replied when quotes captured (always update to current time)
@@ -861,7 +871,8 @@ def capture_quotes(task_id, supplier_id):
                            task=task,
                            supplier=supplier,
                            pr_items=pr_items,
-                           quotes_map=quotes_map)
+                           quotes_map=quotes_map,
+                           payment_terms_default=payment_terms_default)
 
 @app.route('/supplier/quote-form/<token>', methods=['GET', 'POST'])
 def supplier_quote_form(token):
@@ -896,22 +907,25 @@ def supplier_quote_form(token):
 
     if request.method == 'POST':
         conn.execute('DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id))
+        # Single payment terms value for the whole submission
+        payment_terms_global = request.form.get('payment_terms') or None
+
         for item in pr_items:
             uid = str(item['id'])
             unit_price = request.form.get(f'unit_price_{uid}') or None
-            total_price = request.form.get(f'total_price_{uid}') or None
+            stock_availability = request.form.get(f'stock_availability_{uid}') or None
+            cert = request.form.get(f'cert_{uid}') or None
             lead_time = request.form.get(f'lead_time_{uid}') or None
-            payment_terms = request.form.get(f'payment_terms_{uid}') or None
             notes = request.form.get(f'notes_{uid}') or None
-            ono = 1 if request.form.get(f'ono_{uid}') else 0
+            ono = 1 if request.form.get(f"ono_{uid}") else 0
 
-            if any([unit_price, total_price, lead_time, payment_terms, notes, ono]):
+            if any([unit_price, stock_availability, lead_time, notes, ono, cert]):
                 conn.execute(
                     '''
-                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, total_price, lead_time, payment_terms, ono, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, stock_availability, cert, lead_time, payment_terms, ono, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''',
-                    (task_id, supplier_id, item['id'], unit_price, total_price, lead_time, payment_terms, ono, notes)
+                    (task_id, supplier_id, item['id'], unit_price, stock_availability, cert, lead_time, payment_terms_global, ono, notes)
                 )
 
         # mark replied and log
@@ -1025,15 +1039,15 @@ def export_comparison(task_id):
 
     # Row 1: Main headers with merged cells for Dimensions, Quantity, Weight, and Suppliers
     # Column structure: Item Name (1), Brand (2), Category (3), Dimensions (4-6), Quantity (7), Weight (8), Suppliers (9+)
-    row1 = ["Item Name", "Brand", "Category", "Dimensions", "", "", "Quantity", "Weight (in Kg)"]
+    row1 = ["Item Name", "Brand / Specification", "Category", "Dimensions", "", "", "Quantity", "Weight (in Kg)"]
     for supplier_id, supplier_name in suppliers_list:
-        row1.extend([supplier_name, "", "", "", "", ""])
+        row1.extend([supplier_name, "", "", "", "", "", ""])
     ws.append(row1)
 
     # Row 2: Sub-headers (W, L, Thk for Dimensions; prices/terms per supplier)
     row2 = ["", "", "", "W", "L", "Thk", "", ""]  # placeholders for quantity/weight
     for supplier_id, supplier_name in suppliers_list:
-        row2.extend(["Unit Price", "Lead Time", "Payment Terms", "O.N.O.", "Notes"])
+        row2.extend(["Unit Price", "Stock Availability", "COA", "Delivery Lead Time", "Payment Terms", "O.N.O.", "Remarks"])
     ws.append(row2)
 
     # Merge cells and apply formatting
@@ -1069,11 +1083,11 @@ def export_comparison(task_id):
     # Merge and center each supplier name (6 columns each)
     col_idx = 9  # Start after Quantity and Weight (columns 7-8)
     for supplier_id, supplier_name in suppliers_list:
-        ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=col_idx + 5)
+        ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=col_idx + 6)
         cell = ws.cell(row=1, column=col_idx)
         cell.font = bold
         cell.alignment = center
-        col_idx += 6
+        col_idx += 7
 
     # Format row 2 as bold and centered
     for cell in ws[2]:
@@ -1130,6 +1144,8 @@ def export_comparison(task_id):
                 ono_display = "O.N.O." if ono_val else ""
                 row.extend([
                     q['unit_price'] if q['unit_price'] is not None else "",
+                    q.get('stock_availability') or "",
+                    q.get('cert') or "",
                     q['lead_time'] or "",
                     q.get('payment_terms') or "",
                     ono_display,
@@ -1137,7 +1153,7 @@ def export_comparison(task_id):
                 ])
             else:
                 # No quote from this supplier for this item
-                row.extend(["", "", "", "", ""])
+                row.extend(["", "", "", "", "", "", ""])
 
         ws.append(row)
 
@@ -1383,7 +1399,7 @@ def logout():
     return redirect(url_for('login'))
 
 # Email sending function
-def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, assigned_item_ids=None, custom_content=None, subject=None):
+def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, assigned_item_ids=None, custom_content=None, subject=None, supplier_contact=None):
     try:
         # Filter items for this specific supplier
         if assigned_item_ids:
@@ -1400,6 +1416,11 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
         
         if custom_content:
             body = custom_content.replace('{supplier_name}', supplier_name)
+            # Replace contact person placeholder if present
+            if supplier_contact:
+                body = body.replace('{contact_person}', supplier_contact)
+            else:
+                body = body.replace('{contact_person}', '')
         else:
             items_html = "<ul>"
             for item in supplier_items:
@@ -1407,9 +1428,8 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
                 <li>
                     <strong>Item:</strong> {item['item_name']}<br>
                     <strong>Dimensions:</strong> {item['specification'] or 'N/A'}<br>
-                    <strong>Brand:</strong> {item['brand'] or 'N/A'}<br>
+                    <strong>Brand / Specification:</strong> {item['brand'] or 'N/A'}<br>
                     <strong>Quantity:</strong> {item['quantity']}<br>
-                    <strong>Category:</strong> {item['item_category']}
                 </li>
                 """
             items_html += "</ul>"
@@ -1418,7 +1438,7 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
             <html>
             <body>
                 <h2>Procurement Inquiry</h2>
-                <p>Dear {supplier_name},</p>
+                <p>Dear {supplier_name}, {supplier_contact or ''},</p>
                 
                 <p>We are inquiring about the following items for procurement:</p>
                 
@@ -1728,15 +1748,14 @@ def parse_reply_fields(body_text):
         return m.group(1).strip()
 
     unit_price = extract(r"unit\s+price\s*[:\-]\s*([^\n\r]+)")
-    total_price = extract(r"total\s+price\s*[:\-]\s*([^\n\r]+)")
-    # Support both "Delivery timeline" and "Lead time"
+    stock_availability = extract(r"total\s+price\s*[:\-]\s*([^\n\r]+)")
     lead_time = extract(r"(?:delivery\s+timeline|lead\s+time)\s*[:\-]\s*([^\n\r]+)")
     warranty = extract(r"warranty\s+information\s*[:\-]\s*([^\n\r]+)")
     payment_terms = extract(r"payment\s+terms\s*[:\-]\s*([^\n\r]+)")
 
     return {
         "unit_price": unit_price,
-        "total_price": total_price,
+        "stock_availability": stock_availability,
         "lead_time": lead_time,
         "warranty": warranty,
         "payment_terms": payment_terms,
@@ -1927,7 +1946,7 @@ def check_inbox_and_mark_replies():
                                     '''
                                     INSERT INTO supplier_quotes
                                         (task_id, supplier_id, pr_item_id,
-                                         unit_price, total_price, lead_time, payment_terms, ono, notes)
+                                         unit_price, stock_availability, lead_time, payment_terms, ono, notes)
                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                                     ''',
                                     (
@@ -1935,7 +1954,7 @@ def check_inbox_and_mark_replies():
                                         supplier_id,
                                         pr_item_id,
                                         parsed.get("unit_price"),
-                                        parsed.get("total_price"),
+                                        parsed.get("stock_availability"),
                                         parsed.get("lead_time"),
                                         parsed.get("payment_terms"),
                                         0,
