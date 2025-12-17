@@ -134,7 +134,8 @@ def init_database():
             supplier_id INTEGER NOT NULL,
             pr_item_id INTEGER NOT NULL,
             unit_price REAL,
-            total_price REAL,
+            stock_availability TEXT,
+            cert TEXT,
             lead_time TEXT,
             payment_terms TEXT,
             ono BOOLEAN DEFAULT 0,
@@ -162,6 +163,17 @@ def init_database():
     ensure_column('pr_items', 'payment_terms', 'TEXT')
     ensure_column('supplier_quotes', 'payment_terms', 'TEXT')
     ensure_column('supplier_quotes', 'ono', 'BOOLEAN')
+    ensure_column('supplier_quotes', 'stock_availability', 'TEXT')
+    ensure_column('supplier_quotes', 'cert', 'TEXT')
+
+    # Migrate existing numeric total_price into stock_availability (text) if present
+    cursor.execute("PRAGMA table_info(supplier_quotes)")
+    cols = [c[1] for c in cursor.fetchall()]
+    if 'total_price' in cols and 'stock_availability' in cols:
+        try:
+            cursor.execute("UPDATE supplier_quotes SET stock_availability = CAST(total_price AS TEXT) WHERE stock_availability IS NULL")
+        except Exception:
+            pass
     
 
     # Insert default admin user
