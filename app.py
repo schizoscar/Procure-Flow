@@ -21,6 +21,9 @@ import threading
 import time
 from itsdangerous import URLSafeSerializer, BadSignature
 import uuid
+from openpyxl import Workbook
+from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+from openpyxl.utils import get_column_letter
 
 
 load_dotenv()
@@ -1061,132 +1064,28 @@ def export_comparison(task_id):
     ''', (task_id,)).fetchall()
     conn.close()
 
-    from openpyxl import Workbook
-    from openpyxl.styles import Font, PatternFill, Border, Side
-
-    from openpyxl.utils import get_column_letter
-    from openpyxl.styles import Alignment
-    
-    # Parse specification string (e.g., "5x8.20mm" -> W=5, L=8, Thk=20)
     def parse_dimensions(spec_str):
         """Parse spec like '5x8.20mm' into (width, length, thickness)."""
         if not spec_str:
             return None, None, None
         spec_str = str(spec_str).lower().replace('mm', '').strip()
-        # Split by 'x' to get [W, L.Thk] (accepts variations like '8.20', '8,20', '8 . 20')
         parts = spec_str.split('x')
         w = parts[0].strip() if len(parts) > 0 else None
 
-        # For L and Thk, try splitting parts[1] by common separators
         l = None
         thk = None
         if len(parts) > 1:
-            rhs = parts[1].strip()
-            # Normalize separators and whitespace
-            rhs = rhs.replace(' ', '')
-            # Try '.' separator first
+            rhs = parts[1].strip().replace(' ', '')
             if '.' in rhs:
                 l_thk = rhs.split('.')
             elif ',' in rhs:
-                # Some specs use comma as separator e.g., '8,20'
                 l_thk = rhs.split(',')
             else:
-                # No clear separator; treat entire rhs as length
                 l_thk = [rhs]
-
             l = l_thk[0].strip() if len(l_thk) > 0 else None
             thk = l_thk[1].strip() if len(l_thk) > 1 else None
-        
+
         return w, l, thk
-
-    # Get unique suppliers for this task (sorted by supplier name for consistent ordering)
-    suppliers = {}
-    for q in quotes:
-        if q['supplier_id'] not in suppliers:
-            suppliers[q['supplier_id']] = q['supplier_name']
-    suppliers_list = sorted(suppliers.items(), key=lambda x: x[1])  # Sort by supplier name
-    
-    # Debug: log suppliers found
-    app.logger.info(f"export_comparison task_id={task_id}: found {len(suppliers_list)} suppliers: {suppliers_list}")
-
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Comparison"
-
-    # Row 1: Main headers with merged cells for Dimensions, Quantity, Weight, and Suppliers
-    # Column structure: Item Name (1), Brand (2), Category (3), Dimensions (4-6), Quantity (7), Weight (8), Suppliers (9+)
-    row1 = ["Item Name", "Brand / Specification", "Category", "Dimensions", "", "", "Quantity", "Weight (in Kg)"]
-    for supplier_id, supplier_name in suppliers_list:
-        row1.extend([supplier_name, "", "", "", "", "", "", "", ""])
-    ws.append(row1)
-
-    # Row 2: Sub-headers (W, L, Thk for Dimensions; prices/terms per supplier)
-    row2 = ["", "", "", "W", "L", "Thk", "", ""]
-    for supplier_id, supplier_name in suppliers_list:
-        row2.extend([
-            "Rate (RM/Kg)",
-            "Quoted Price (RM)",
-            "Total Amount Quoted (RM)",
-            "Delivery Lead Time",
-            "Stock Availability",
-            "COA",
-            "Payment Terms",
-            "O.N.O.",
-            "Remarks"
-        ])
-    ws.append(row2)
-
-    # Merge cells and apply formatting
-    bold = Font(bold=True)
-    center = Alignment(horizontal="center", vertical="center")
-    
-    # Merge and center Item Name, Brand, Category (columns 1-3, rows 1-2)
-    for col in range(1, 4):
-        ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
-        cell = ws.cell(row=1, column=col)
-        cell.font = bold
-        cell.alignment = center
-    
-    # Merge and center Dimensions (columns 4-6, row 1)
-    ws.merge_cells(start_row=1, start_column=4, end_row=1, end_column=6)
-    cell = ws.cell(row=1, column=4)
-    cell.font = bold
-    cell.alignment = center
-    
-    # Center W, L, Thk in row 2 (columns 4-6)
-    for col in range(4, 7):
-        cell = ws.cell(row=2, column=col)
-        cell.font = bold
-        cell.alignment = center
-    
-    # Merge and center Quantity and Weight (columns 7-8, rows 1-2)
-    for col in range(7, 9):
-        ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
-        cell = ws.cell(row=1, column=col)
-        cell.font = bold
-        cell.alignment = center
-    
-    # Merge and center each supplier name (6 columns each)
-    col_idx = 9  # Start after Quantity and Weight (columns 7-8)
-    for supplier_id, supplier_name in suppliers_list:
-        ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=col_idx + 8)
-        cell = ws.cell(row=1, column=col_idx)
-        cell.font = bold
-        cell.alignment = center
-        col_idx += 9
-
-    # Format row 2 as bold and centered
-    for cell in ws[2]:
-        cell.font = bold
-        cell.alignment = center
-
-    # Build a lookup: item_id -> {supplier_id -> quote_row}
-    quotes_by_item = {}
-    for q in quotes:
-        item_id = q['pr_item_id']
-        if item_id not in quotes_by_item:
-            quotes_by_item[item_id] = {}
-        quotes_by_item[item_id][q['supplier_id']] = dict(q)
 
     def to_float(x):
         try:
@@ -1196,8 +1095,142 @@ def export_comparison(task_id):
         except (ValueError, TypeError):
             return None
 
-    # One row per item (starting from row 3)
-    cert_links = {}  # Track cert cells for hyperlinks: (row, col) -> url
+    def lead_time_to_days(v):
+        """Convert common lead time text into comparable 'days' number."""
+        if v is None:
+            return None
+        s = str(v).strip().lower()
+        if not s:
+            return None
+
+        # treat ready stock / immediate as 0 days (best)
+        if "ready" in s or "immediate" in s or "instock" in s or "in stock" in s:
+            return 0.0
+
+        m = re.search(r"(\d+(\.\d+)?)", s)
+        if not m:
+            return None
+        num = float(m.group(1))
+
+        if "week" in s:
+            return num * 7.0
+        if "month" in s:
+            return num * 30.0
+        if "day" in s:
+            return num
+
+        # If user typed plain "7" assume days
+        return num
+
+    SUPPLIER_BLOCK_COLS = 8
+    OFF_RATE  = 0
+    OFF_PRICE = 1
+    OFF_TOTAL = 2
+    OFF_LEAD  = 3
+    OFF_STOCK = 4
+    OFF_COA   = 5
+    OFF_ONO   = 6
+    OFF_REMARKS = 7
+
+    suppliers = {}  # supplier_id -> supplier_name
+    supplier_terms = {}  # supplier_id -> set(payment_terms)
+
+    for q in quotes:
+        sid = q['supplier_id']
+        suppliers.setdefault(sid, q['supplier_name'])
+
+        pt = (q['payment_terms'] or "").strip()
+        if pt:
+            supplier_terms.setdefault(sid, set()).add(pt)
+
+    suppliers_list = sorted(suppliers.items(), key=lambda x: x[1])  # (sid, name)
+
+    def supplier_header_label(supplier_id, supplier_name):
+        terms = supplier_terms.get(supplier_id, set())
+        if not terms:
+            return supplier_name
+        if len(terms) == 1:
+            return f"{supplier_name} ({next(iter(terms))})"
+        return f"{supplier_name} (Multiple)"
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Comparison"
+
+    row1 = ["Item Name", "Brand / Specification", "Category", "Dimensions", "", "", "Quantity", "Weight (in Kg)"]
+    for supplier_id, supplier_name in suppliers_list:
+        row1.extend([supplier_header_label(supplier_id, supplier_name)] + [""] * (SUPPLIER_BLOCK_COLS - 1))
+    ws.append(row1)
+
+    row2 = ["", "", "", "W", "L", "Thk", "", ""]
+    for supplier_id, supplier_name in suppliers_list:
+        row2.extend([
+            "Rate (RM/Kg)",
+            "Quoted Price (RM)",
+            "Total Amount Quoted (RM)",
+            "Delivery Lead Time",
+            "Stock Availability",
+            "COA",
+            "O.N.O.",
+            "Remarks"
+        ])
+    ws.append(row2)
+
+    bold = Font(bold=True)
+    center = Alignment(horizontal="center", vertical="center")
+
+    # Merge and center Item Name, Brand, Category (cols 1-3)
+    for col in range(1, 4):
+        ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
+        cell = ws.cell(row=1, column=col)
+        cell.font = bold
+        cell.alignment = center
+
+    # Merge and center Dimensions (cols 4-6 row 1)
+    ws.merge_cells(start_row=1, start_column=4, end_row=1, end_column=6)
+    cell = ws.cell(row=1, column=4)
+    cell.font = bold
+    cell.alignment = center
+
+    # Center W, L, Thk row2
+    for col in range(4, 7):
+        cell = ws.cell(row=2, column=col)
+        cell.font = bold
+        cell.alignment = center
+
+    # Merge and center Quantity and Weight (cols 7-8)
+    for col in range(7, 9):
+        ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
+        cell = ws.cell(row=1, column=col)
+        cell.font = bold
+        cell.alignment = center
+
+    # Merge and center each supplier header (8 columns each)
+    col_idx = 9
+    for supplier_id, supplier_name in suppliers_list:
+        ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=col_idx + (SUPPLIER_BLOCK_COLS - 1))
+        cell = ws.cell(row=1, column=col_idx)
+        cell.font = bold
+        cell.alignment = center
+        col_idx += SUPPLIER_BLOCK_COLS
+
+    # Format row 2 as bold and centered
+    for cell in ws[2]:
+        cell.font = bold
+        cell.alignment = center
+
+    best_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")   # light green
+    total_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid") # light gray
+
+    quotes_by_item = {}
+    for q in quotes:
+        item_id = q['pr_item_id']
+        quotes_by_item.setdefault(item_id, {})
+        quotes_by_item[item_id][q['supplier_id']] = dict(q)
+
+    cert_links = {}  # (row, col) -> url
+    supplier_total_amounts = {sid: 0.0 for sid, _ in suppliers_list}
+
     current_row = 3
     for item in pr_items:
         w = item['width'] or None
@@ -1208,9 +1241,7 @@ def export_comparison(task_id):
             w = w or parsed_w
             l = l or parsed_l
             thk = thk or parsed_thk
-        
-        # Calculate weight (in Kg) using formula: (W*L*Thk)*(12*25.4*12*25.4)/1000*7.85/1000
-        # If any dimension is missing, weight is empty
+
         weight = ""
         if w and l and thk:
             try:
@@ -1220,7 +1251,7 @@ def export_comparison(task_id):
                 weight = round((w_val * l_val * thk_val) * (12 * 25.4 * 12 * 25.4) / 1000 * 7.85 / 1000, 2)
             except (ValueError, TypeError):
                 weight = ""
-        
+
         row = [
             item['item_name'],
             item['brand'] or "",
@@ -1232,21 +1263,26 @@ def export_comparison(task_id):
             weight
         ]
 
-        # Add supplier quote columns and track cert cells
-        col_idx = 9  # Start column for supplier data
+        metric_candidates = {
+            "rate": [],
+            "price": [],
+            "total": [],
+            "lead": []
+        }
+
+        col_idx = 9
         for supplier_id, supplier_name in suppliers_list:
             q = quotes_by_item.get(item['id'], {}).get(supplier_id)
             if q:
-                ono_val = q['ono'] if 'ono' in q.keys() else q.get('ono')
+                ono_val = q.get('ono')
                 ono_display = "✓" if ono_val else "✗"
-                
-                # For cert column, show link if cert file exists, otherwise empty
+
                 cert_display = ""
                 cert_url = None
                 if q.get('cert'):
-                    cert_display = "PDF"  # Display text
-                    cert_url = q['cert']  # Store URL for hyperlink
-                
+                    cert_display = "PDF"
+                    cert_url = q['cert']
+
                 unit_price = q['unit_price'] if q['unit_price'] is not None else ""
                 unit_price_val = to_float(unit_price)
 
@@ -1255,121 +1291,137 @@ def export_comparison(task_id):
 
                 rate_val = ""
                 if unit_price_val is not None and weight_val not in (None, 0):
-                    rate_val = round(unit_price_val / weight_val, 4)  # 4dp for rate looks nicer
+                    rate_val = round(unit_price_val / weight_val, 4)
 
                 total_amount_val = ""
                 if unit_price_val is not None and qty_val is not None:
                     total_amount_val = round(unit_price_val * qty_val, 2)
+                    supplier_total_amounts[supplier_id] += float(total_amount_val)
 
                 row.extend([
                     rate_val,
                     unit_price,
                     total_amount_val,
-                    q['lead_time'] or "",
+                    q.get('lead_time') or "",
                     q.get('stock_availability') or "",
                     cert_display,
-                    q.get('payment_terms') or "",
                     ono_display,
-                    q['notes'] or ""
+                    q.get('notes') or ""
                 ])
 
-                # COA is now the 6th column in the supplier block => offset +5
                 if cert_url:
-                    cert_links[(current_row, col_idx + 5)] = cert_url
+                    cert_links[(current_row, col_idx + OFF_COA)] = cert_url
 
-                col_idx += 9
-                
-                # # Track cert column for hyperlink (column 3 in supplier block = index col_idx+2)
-                # if cert_url:
-                #     cert_links[(current_row, col_idx + 2)] = cert_url
-                # col_idx += 7
+                # highlight candidates
+                metric_candidates["rate"].append((col_idx + OFF_RATE, to_float(rate_val)))
+                metric_candidates["price"].append((col_idx + OFF_PRICE, unit_price_val))
+                metric_candidates["total"].append((col_idx + OFF_TOTAL, to_float(total_amount_val)))
+                metric_candidates["lead"].append((col_idx + OFF_LEAD, lead_time_to_days(q.get('lead_time'))))
+
+                col_idx += SUPPLIER_BLOCK_COLS
             else:
-                # No quote from this supplier for this item
-                row.extend(["", "", "", "", "", "", "", "", ""])
-                col_idx += 9
+                row.extend([""] * SUPPLIER_BLOCK_COLS)
+                col_idx += SUPPLIER_BLOCK_COLS
 
         ws.append(row)
+
+        # Apply per-row best highlighting (lowest wins)
+        for key in ["rate", "price", "total", "lead"]:
+            vals = [(col, v) for (col, v) in metric_candidates[key] if v is not None]
+            if not vals:
+                continue
+            best_val = min(v for _, v in vals)
+            for col, v in vals:
+                if v == best_val:
+                    ws.cell(row=current_row, column=col).fill = best_fill
+
         current_row += 1
 
-    # --- Formatting: borders, autofit columns, adjust row heights ---
-    # Apply thin border to all used cells
+    totals_row = current_row
+    ws.merge_cells(start_row=totals_row, start_column=1, end_row=totals_row, end_column=8)
+    label_cell = ws.cell(row=totals_row, column=1)
+    label_cell.value = "TOTAL"
+    label_cell.font = Font(bold=True)
+    label_cell.alignment = Alignment(horizontal="right", vertical="center")
+    label_cell.fill = total_fill
+
+    total_cells = []  # (col, value)
+    for i, (sid, _sname) in enumerate(suppliers_list):
+        total_col = 9 + i * SUPPLIER_BLOCK_COLS + OFF_TOTAL
+        c = ws.cell(row=totals_row, column=total_col)
+        val = supplier_total_amounts.get(sid, 0.0)
+
+        if val and val != 0.0:
+            c.value = round(val, 2)
+            c.number_format = '#,##0.00'
+            total_cells.append((total_col, float(c.value)))
+        else:
+            c.value = ""
+
+        c.font = Font(bold=True)
+        c.fill = total_fill
+        c.alignment = Alignment(horizontal="center", vertical="center")
+
+    # Highlight best (lowest) total
+    if total_cells:
+        best_total = min(v for _, v in total_cells)
+        for col, v in total_cells:
+            if v == best_total:
+                ws.cell(row=totals_row, column=col).fill = best_fill
+
     thin_side = Side(border_style="thin", color="000000")
     table_border = Border(left=thin_side, right=thin_side, top=thin_side, bottom=thin_side)
 
     max_col = ws.max_column
     max_row = ws.max_row
-
-    # Track max length per column for width calculation
     col_max_length = [0] * (max_col + 1)
 
     for r in range(1, max_row + 1):
-        # Estimate row height by counting line breaks in the row
         max_lines = 1
         for c in range(1, max_col + 1):
             cell = ws.cell(row=r, column=c)
-            # Apply border
             cell.border = table_border
-            # Ensure vertical centering and wrap
-            try:
-                cell.alignment = Alignment(horizontal=(cell.alignment.horizontal or "left"), vertical="center", wrap_text=True)
-            except Exception:
-                cell.alignment = Alignment(horizontal="left", vertical="center", wrap_text=True)
+            cell.alignment = Alignment(
+                horizontal=(cell.alignment.horizontal or "left"),
+                vertical="center",
+                wrap_text=True
+            )
 
             value = cell.value if cell.value is not None else ""
             text = str(value)
-            # Update max length for this column
-            if len(text) > col_max_length[c]:
-                col_max_length[c] = len(text)
-            # Count lines for row height estimation
-            lines = text.count("\n") + 1
-            if lines > max_lines:
-                max_lines = lines
+            col_max_length[c] = max(col_max_length[c], len(text))
 
-        # Set an approximate row height (15pt per line)
+            lines = text.count("\n") + 1
+            max_lines = max(max_lines, lines)
+
         ws.row_dimensions[r].height = max(15, max_lines * 15)
 
-    # Add hyperlinks to certificate cells
-    from openpyxl.worksheet.hyperlink import Hyperlink
+    # Add COA hyperlinks
     for (row, col), url in cert_links.items():
         cell = ws.cell(row=row, column=col)
-        # Create hyperlink (convert relative path to full URL if needed)
-        if url.startswith('/'):
-            # Relative path - construct URL
-            hyperlink_url = url
-        else:
-            hyperlink_url = url
-        cell.hyperlink = hyperlink_url
-        cell.style = "Hyperlink"  # Apply hyperlink styling (blue, underlined)
+        cell.hyperlink = url
+        cell.style = "Hyperlink"
 
-    # Set column widths based on max content length
-    for col_idx in range(1, max_col + 1):
-        col_letter = get_column_letter(col_idx)
-        # Add some padding
-        width = int(col_max_length[col_idx] * 1.2) + 2
-        # Clamp reasonable bounds
-        if width < 8:
-            width = 8
-        if width > 60:
-            width = 60
-        ws.column_dimensions[col_letter].width = width
+    # Column widths
+    for c in range(1, max_col + 1):
+        col_letter = get_column_letter(c)
+        width = int(col_max_length[c] * 1.2) + 2
+        ws.column_dimensions[col_letter].width = max(8, min(60, width))
 
-    # Make header rows slightly taller
-    if max_row >= 1:
-        ws.row_dimensions[1].height = 28
-    if max_row >= 2:
-        ws.row_dimensions[2].height = 20
+    ws.row_dimensions[1].height = 28
+    ws.row_dimensions[2].height = 20
 
     output = io.BytesIO()
     wb.save(output)
     output.seek(0)
 
-    from flask import send_file
     return send_file(
         output,
         as_attachment=True,
         download_name=f"comparison_task_{task_id}.xlsx",
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
+
 
 @app.route('/suppliers')
 def suppliers():
