@@ -99,8 +99,19 @@
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Payment Terms</label>
-                                <input type="text" class="form-control" name="items[{{ loop.index0 }}][payment_terms]" 
-                                       value="{{ item.payment_terms or '' }}" placeholder="e.g., 30 days credit">
+                                {% set pt = item.payment_terms or '' %}
+                                <select class="form-control form-select" name="items[{{ loop.index0 }}][payment_terms]">
+                                    <option value="" {% if pt == '' %}selected{% endif %}>Empty</option>
+                                    <option value="Cash" {% if pt == 'Cash' %}selected{% endif %}>Cash</option>
+                                    <option value="30 Days" {% if pt == '30 Days' %}selected{% endif %}>30 Days</option>
+                                    <option value="60 Days" {% if pt == '60 Days' %}selected{% endif %}>60 Days</option>
+                                    <option value="90 Days" {% if pt == '90 Days' %}selected{% endif %}>90 Days</option>
+
+                                    {# Optional safety: if old saved values were free-text, keep them visible #}
+                                    {% if pt not in ['', 'Cash', '30 Days', '60 Days', '90 Days'] %}
+                                        <option value="{{ pt }}" selected>Other: {{ pt }}</option>
+                                    {% endif %}
+                                </select>
                             </div>
                         </div>
                     </div>
@@ -169,9 +180,15 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">Payment Terms</label>
-                            <input type="text" class="form-control" name="items[0][payment_terms]" 
-                                   placeholder="e.g., 30 days credit">
+                            <select class="form-control form-select" name="items[0][payment_terms]">
+                                <option value="">Empty</option>
+                                <option value="Cash">Cash</option>
+                                <option value="30 Days">30 Days</option>
+                                <option value="60 Days">60 Days</option>
+                                <option value="90 Days">90 Days</option>
+                            </select>
                         </div>
+
                     </div>
                 </div>
                 {% endif %}
@@ -246,48 +263,59 @@
                             <input type="text" class="form-control" name="items[${itemCount - 1}][item_name]" required>
                         </div>
                         <div class="form-group">
-                            <label class="form-label required">Quantity</label>
-                            <input type="number" class="form-control" name="items[${itemCount - 1}][quantity]" min="1" required>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Specification</label>
-                            <input type="text" class="form-control" name="items[${itemCount - 1}][specification]" 
-                                   placeholder="Technical specifications">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Width</label>
-                            <input type="text" class="form-control" name="items[${itemCount - 1}][width]" 
-                                   placeholder="e.g., 10mm">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Length</label>
-                            <input type="text" class="form-control" name="items[${itemCount - 1}][length]" 
-                                   placeholder="e.g., 100cm">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Thickness</label>
-                            <input type="text" class="form-control" name="items[${itemCount - 1}][thickness]" 
-                                   placeholder="e.g., 5mm">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Brand</label>
-                            <input type="text" class="form-control" name="items[${itemCount - 1}][brand]" 
-                                   placeholder="Preferred brand">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Balance Stock</label>
-                            <input type="number" class="form-control" name="items[${itemCount - 1}][balance_stock]" min="0" 
-                                   placeholder="Current stock level">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Payment Terms</label>
-                            <input type="text" class="form-control" name="items[${itemCount - 1}][payment_terms]" 
-                                   placeholder="e.g., 30 days credit">
-                        </div>
-                        <div class="form-group">
                             <label class="form-label required">Item Category</label>
                             <select class="form-control form-select" name="items[${itemCount - 1}][item_category]" required>
                                 ${categoriesOptions}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Brand / Specification</label>
+                            <input type="text" class="form-control" name="items[${itemCount - 1}][brand_specification]" 
+                                   placeholder="Preferred brand or specification">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label required">Quantity</label>
+                            <input type="number" class="form-control" name="items[${itemCount - 1}][quantity]" min="1" required>
+                        </div>
+
+                        <div class="form-group" style="grid-column: 1 / -1;">
+                            <label class="form-label">Dimensions</label>
+
+                            <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: .5rem;">
+                                <div class="form-group" style="margin:0;">
+                                    <label class="form-label">Width (mm)</label>
+                                    <input type="number" class="form-control dimension-input"
+                                            name="items[${itemCount - 1}][width]"
+                                            min="0" step="1" inputmode="numeric"
+                                            placeholder="e.g., 10">
+                                </div>
+
+                                <div class="form-group" style="margin:0;">
+                                    <label class="form-label">Length (mm)</label>
+                                    <input type="number" class="form-control dimension-input"
+                                            name="items[${itemCount - 1}][length]"
+                                            min="0" step="1" inputmode="numeric"
+                                            placeholder="e.g., 100">
+                                </div>
+
+                                <div class="form-group" style="margin:0;">
+                                    <label class="form-label">Thickness (mm)</label>
+                                    <input type="number" class="form-control dimension-input"
+                                            name="items[${itemCount - 1}][thickness]"
+                                            min="0" step="1" inputmode="numeric"
+                                            placeholder="e.g., 5">
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Payment Terms</label>
+                            <select class="form-control form-select" name="items[${itemCount - 1}][payment_terms]">
+                                <option value="">Empty</option>
+                                <option value="Cash">Cash</option>
+                                <option value="30 Days">30 Days</option>
+                                <option value="60 Days">60 Days</option>
+                                <option value="90 Days">90 Days</option>
                             </select>
                         </div>
                     </div>
