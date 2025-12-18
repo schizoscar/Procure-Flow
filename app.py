@@ -1117,13 +1117,23 @@ def export_comparison(task_id):
     # Column structure: Item Name (1), Brand (2), Category (3), Dimensions (4-6), Quantity (7), Weight (8), Suppliers (9+)
     row1 = ["Item Name", "Brand / Specification", "Category", "Dimensions", "", "", "Quantity", "Weight (in Kg)"]
     for supplier_id, supplier_name in suppliers_list:
-        row1.extend([supplier_name, "", "", "", "", "", ""])
+        row1.extend([supplier_name, "", "", "", "", "", "", "", ""])
     ws.append(row1)
 
     # Row 2: Sub-headers (W, L, Thk for Dimensions; prices/terms per supplier)
-    row2 = ["", "", "", "W", "L", "Thk", "", ""]  # placeholders for quantity/weight
+    row2 = ["", "", "", "W", "L", "Thk", "", ""]
     for supplier_id, supplier_name in suppliers_list:
-        row2.extend(["Unit Price", "Stock Availability", "COA", "Delivery Lead Time", "Payment Terms", "O.N.O.", "Remarks"])
+        row2.extend([
+            "Rate (RM/Kg)",
+            "Quoted Price (RM)",
+            "Total Amount Quoted (RM)",
+            "Delivery Lead Time",
+            "Stock Availability",
+            "COA",
+            "Payment Terms",
+            "O.N.O.",
+            "Remarks"
+        ])
     ws.append(row2)
 
     # Merge cells and apply formatting
@@ -1159,11 +1169,11 @@ def export_comparison(task_id):
     # Merge and center each supplier name (6 columns each)
     col_idx = 9  # Start after Quantity and Weight (columns 7-8)
     for supplier_id, supplier_name in suppliers_list:
-        ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=col_idx + 6)
+        ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=col_idx + 8)
         cell = ws.cell(row=1, column=col_idx)
         cell.font = bold
         cell.alignment = center
-        col_idx += 7
+        col_idx += 9
 
     # Format row 2 as bold and centered
     for cell in ws[2]:
@@ -1177,6 +1187,14 @@ def export_comparison(task_id):
         if item_id not in quotes_by_item:
             quotes_by_item[item_id] = {}
         quotes_by_item[item_id][q['supplier_id']] = dict(q)
+
+    def to_float(x):
+        try:
+            if x is None or x == "":
+                return None
+            return float(x)
+        except (ValueError, TypeError):
+            return None
 
     # One row per item (starting from row 3)
     cert_links = {}  # Track cert cells for hyperlinks: (row, col) -> url
@@ -1229,24 +1247,46 @@ def export_comparison(task_id):
                     cert_display = "PDF"  # Display text
                     cert_url = q['cert']  # Store URL for hyperlink
                 
+                unit_price = q['unit_price'] if q['unit_price'] is not None else ""
+                unit_price_val = to_float(unit_price)
+
+                qty_val = to_float(item['quantity'])
+                weight_val = to_float(weight)
+
+                rate_val = ""
+                if unit_price_val is not None and weight_val not in (None, 0):
+                    rate_val = round(unit_price_val / weight_val, 4)  # 4dp for rate looks nicer
+
+                total_amount_val = ""
+                if unit_price_val is not None and qty_val is not None:
+                    total_amount_val = round(unit_price_val * qty_val, 2)
+
                 row.extend([
-                    q['unit_price'] if q['unit_price'] is not None else "",
+                    rate_val,
+                    unit_price,
+                    total_amount_val,
+                    q['lead_time'] or "",
                     q.get('stock_availability') or "",
                     cert_display,
-                    q['lead_time'] or "",
                     q.get('payment_terms') or "",
                     ono_display,
                     q['notes'] or ""
                 ])
-                
-                # Track cert column for hyperlink (column 3 in supplier block = index col_idx+2)
+
+                # COA is now the 6th column in the supplier block => offset +5
                 if cert_url:
-                    cert_links[(current_row, col_idx + 2)] = cert_url
-                col_idx += 7
+                    cert_links[(current_row, col_idx + 5)] = cert_url
+
+                col_idx += 9
+                
+                # # Track cert column for hyperlink (column 3 in supplier block = index col_idx+2)
+                # if cert_url:
+                #     cert_links[(current_row, col_idx + 2)] = cert_url
+                # col_idx += 7
             else:
                 # No quote from this supplier for this item
-                row.extend(["", "", "", "", "", "", ""])
-                col_idx += 7
+                row.extend(["", "", "", "", "", "", "", "", ""])
+                col_idx += 9
 
         ws.append(row)
         current_row += 1
@@ -1553,10 +1593,12 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
                 
                 <p>Please provide us with your quotation including:</p>
                 <ul>
-                    <li>Unit price and total price</li>
-                    <li>Delivery timeline</li>
-                    <li>Warranty information</li>
                     <li>Payment terms</li>
+                    <li>Unit Price (RM))</li>
+                    <li>Delivery Lead Timeline</li>
+                    <li>Stock Availability</li>
+                    <li>Warranty (If Applicable)</li>
+                    <li>Mill Certificate / Certificate of Analysis (COA)</li>
                 </ul>
                 
                 <p>We look forward to your prompt response.</p>
