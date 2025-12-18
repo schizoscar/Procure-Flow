@@ -34,6 +34,14 @@
                         <input type="text" class="form-control" name="lead_time_{{ item.id }}" value="{{ existing.lead_time if existing else '' }}" placeholder="e.g. 14 days">
                     </div>
                     <div class="form-group">
+                        <label class="form-label">Stock Availability</label>
+                        <input type="text" class="form-control" name="stock_availability_{{ item.id }}" placeholder="e.g., 10 in stock or Available">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Warranty (If Applicable)</label>
+                        <input type="text" class="form-control" name="warranty_{{ item.id }}" placeholder="e.g., 1 year">
+                    </div>
+                    <div class="form-group">
                         <label class="form-label">Mill Certificate / Certificate of Analysis (COA)</label>
                         <input type="file" class="form-control" name="cert_{{ item.id }}" accept=".pdf" id="cert_{{ item.id }}">
                         <small class="text-muted">PDF files only</small>
@@ -52,6 +60,15 @@
                             <input type="checkbox" name="ono_{{ item.id }}" {% if existing and existing.ono %}checked{% endif %}>
                             <span>On Nearest Offer</span>
                         </div>
+                    </div>
+                    <div class="form-group" id="ono_dims_{{ item.id }}" style="display:none;">
+                        <label class="form-label">O.N.O. Dimensions (mm)</label>
+                        <div style="display:flex;gap:0.5rem;align-items:center;">
+                            <input type="number" step="1" min="0" class="form-control" name="ono_width_{{ item.id }}" id="ono_width_{{ item.id }}" placeholder="Width (mm)">
+                            <input type="number" step="1" min="0" class="form-control" name="ono_length_{{ item.id }}" id="ono_length_{{ item.id }}" placeholder="Length (mm)">
+                            <input type="number" step="1" min="0" class="form-control" name="ono_thickness_{{ item.id }}" id="ono_thickness_{{ item.id }}" placeholder="Thickness (mm)">
+                        </div>
+                        <small class="text-muted">If provided, a new item entry will be created for these dimensions and used in comparison.</small>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Remarks</label>

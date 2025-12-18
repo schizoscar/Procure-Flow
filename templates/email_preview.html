@@ -88,13 +88,20 @@
                                     
                                     <p>Please provide us with your quotation including:</p>
                                     <ul>
-                                        <li>Unit Price</li>
+                                        <li>Payment Terms</li>
+                                        <li>Unit Price (RM)</li>
                                         <li>Delivery Lead Timeline</li>
+                                        <li>Stock Availability</li>
                                         <li>Warranty (If Applicable)</li>
                                         <li>Mill Certificate / Certificate of Analysis (COA)</li>
-                                        <li>Payment Terms</li>
-                                        <li>Stock Availability</li>
                                     </ul>
+
+                                    <p>Please fill in the quotation above using the quotation form below:</p>
+                                    <td>
+                                        {% if form_links and form_links.get(s.id) %}
+                                        <a href="{{ form_links.get(s.id) }}" target="_blank">Open Form</a>
+                                        {% else %}—{% endif %}
+                                    </td>
                                     
                                     <p>We look forward to your prompt response.</p>
                                     
@@ -166,11 +173,17 @@ We are inquiring about the following items below:
 [Items will be automatically inserted here]
 
 Please provide us with your quotation including:
-• Unit Price
+• Payment Terms
+• Unit Price (RM)
 • Delivery Lead Timeline
+• Stock Availability
 • Warranty (If Applicable)
 • Mill Certificate / Certificate of Analysis (COA)
-• Payment Terms
+
+Please fill in the quotation above using the quotation form below:
+{%- if form_links and form_links.get(s.id) -%}
+{{ form_links.get(s.id) }}
+{% endif %}
 
 We look forward to your prompt response.
 

@@ -44,6 +44,10 @@
                                 <input type="text" class="form-control" name="stock_availability_{{ item.id }}" placeholder="e.g., 10 in stock or Available">
                             </div>
                             <div class="form-group">
+                                <label class="form-label">Warranty (If Applicable)</label>
+                                <input type="text" class="form-control" name="warranty_{{ item.id }}" placeholder="e.g., 1 year">
+                            </div>
+                            <div class="form-group">
                                 <label class="form-label">Mill Certificate / Certificate of Analysis (COA)</label>
                                 <input type="file" class="form-control" name="cert_{{ item.id }}" accept=".pdf" id="cert_{{ item.id }}">
                                 <small class="text-muted">PDF files only</small>
@@ -57,10 +61,6 @@
                                     <input type="checkbox" name="ono_{{ item.id }}">
                                     <span>On Nearest Offer</span>
                                 </div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Warranty (If Applicable)</label>
-                                <input type="text" class="form-control" name="warranty_{{ item.id }}" placeholder="e.g., 1 year">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Remarks</label>
