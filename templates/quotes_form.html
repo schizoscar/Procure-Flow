@@ -7,7 +7,7 @@
         <p>Task: {{ task.task_name }}</p>
     </div>
     <div class="card-body">
-        <form method="POST">
+        <form method="POST" enctype="multipart/form-data">
             <div class="form-group">
                 <label class="form-label">Payment Terms</label>
                 <input type="text" class="form-control" name="payment_terms" value="{{ payment_terms_default or '' }}" placeholder="e.g., 30 days credit">
@@ -35,9 +35,15 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Mill Certificate / Certificate of Analysis (COA)</label>
-                        <div style="display:flex;align-items:center;gap:0.5rem;">
-                            <input type="checkbox" name="cert_{{ item.id }}" {% if existing and existing.cert %}checked{% endif %}>
-                            <span>COA Available</span>
+                        <input type="file" class="form-control" name="cert_{{ item.id }}" accept=".pdf" id="cert_{{ item.id }}">
+                        <small class="text-muted">PDF files only</small>
+                        {% if existing and existing.cert %}
+                            <div style="margin-top:0.5rem;">
+                                <small class="text-muted">Current: <a href="{{ existing.cert }}" target="_blank">View file</a></small>
+                            </div>
+                        {% endif %}
+                        <div id="cert_filename_{{ item.id }}" style="margin-top:0.5rem;display:none;">
+                            <small class="text-success"><i class="fas fa-check"></i> <span id="cert_name_{{ item.id }}"></span></small>
                         </div>
                     </div>
                     <div class="form-group">
@@ -61,4 +67,25 @@
         </form>
     </div>
 </div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle file input change to display filename
+    {% for item in pr_items %}
+    const certInput_{{ item.id }} = document.getElementById('cert_{{ item.id }}');
+    if (certInput_{{ item.id }}) {
+        certInput_{{ item.id }}.addEventListener('change', function() {
+            const filenameDiv = document.getElementById('cert_filename_{{ item.id }}');
+            const filenameSpan = document.getElementById('cert_name_{{ item.id }}');
+            if (this.files && this.files.length > 0) {
+                filenameSpan.textContent = this.files[0].name;
+                filenameDiv.style.display = 'block';
+            } else {
+                filenameDiv.style.display = 'none';
+            }
+        });
+    }
+    {% endfor %}
+});
+</script>
 {% endblock %}

@@ -5,6 +5,7 @@ import re
 from datetime import datetime
 import json
 from werkzeug.security import generate_password_hash, check_password_hash
+from werkzeug.utils import secure_filename
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
@@ -19,12 +20,55 @@ from email.utils import parsedate_to_datetime
 import threading
 import time
 from itsdangerous import URLSafeSerializer, BadSignature
+import uuid
 
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('APP_SECRET_KEY', 'procure-flow-secret-key-2024')
+
+# File upload configuration
+UPLOADS_DIR = os.path.join('uploads', 'certificates')
+ALLOWED_EXTENSIONS = {'pdf'}  # PDF only
+MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+
+# Ensure uploads directory exists
+os.makedirs(UPLOADS_DIR, exist_ok=True)
+
+def allowed_file(filename):
+    """Check if file extension is allowed."""
+    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+def save_uploaded_file(file, task_id, supplier_id, item_id):
+    """Save uploaded file and return relative path for database storage."""
+    if not file or file.filename == '':
+        return None
+    
+    if not allowed_file(file.filename):
+        return None
+    
+    # Check file size
+    file.seek(0, os.SEEK_END)
+    file_size = file.tell()
+    file.seek(0)
+    if file_size > MAX_FILE_SIZE:
+        return None
+    
+    # Generate unique filename
+    ext = secure_filename(file.filename).rsplit('.', 1)[1].lower()
+    unique_filename = f"task_{task_id}_supplier_{supplier_id}_item_{item_id}_{uuid.uuid4().hex}.{ext}"
+    
+    # Create subdirectory for this task if needed
+    task_dir = os.path.join(UPLOADS_DIR, str(task_id))
+    os.makedirs(task_dir, exist_ok=True)
+    
+    # Save file
+    file_path = os.path.join(task_dir, unique_filename)
+    file.save(file_path)
+    
+    # Return relative path for database storage
+    return f"/uploads/certificates/{task_id}/{unique_filename}"
 
 def get_quote_serializer():
     return URLSafeSerializer(app.secret_key, salt="supplier-quote")
@@ -155,6 +199,26 @@ def index():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     return redirect(url_for('dashboard'))
+
+@app.route('/uploads/certificates/<path:filepath>')
+def download_certificate(filepath):
+    """Serve uploaded certificate files."""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    try:
+        file_path = os.path.join(UPLOADS_DIR, filepath)
+        # Prevent directory traversal
+        if not os.path.abspath(file_path).startswith(os.path.abspath(UPLOADS_DIR)):
+            return "Access denied", 403
+        
+        if os.path.exists(file_path):
+            return send_file(file_path, as_attachment=True)
+        else:
+            return "File not found", 404
+    except Exception as e:
+        print(f"Error serving certificate: {e}")
+        return "Error accessing file", 500
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -837,23 +901,29 @@ def capture_quotes(task_id, supplier_id):
         for item in pr_items:
             uid = str(item['id'])
             unit_price = request.form.get(f'unit_price_{uid}') or None
-            cert = request.form.get(f'cert_{uid}') or None
             lead_time = request.form.get(f'lead_time_{uid}') or None
             notes = request.form.get(f'notes_{uid}') or None
             ono = 1 if request.form.get(f"ono_{uid}") else 0
+            
+            # Handle certificate file upload
+            cert_path = None
+            if f'cert_{uid}' in request.files:
+                cert_file = request.files[f'cert_{uid}']
+                if cert_file and cert_file.filename != '':
+                    cert_path = save_uploaded_file(cert_file, task_id, supplier_id, item['id'])
 
             # Log each parsed item value before insert (payment_terms is global)
-            app.logger.info('Captured quote values for item %s: unit_price=%s lead_time=%s payment_terms=%s ono=%s notes=%s',
-                            uid, unit_price, lead_time, payment_terms_global, ono, notes)
+            app.logger.info('Captured quote values for item %s: unit_price=%s lead_time=%s payment_terms=%s ono=%s notes=%s cert=%s',
+                            uid, unit_price, lead_time, payment_terms_global, ono, notes, cert_path)
 
             # Insert only when meaningful per-item data is present; apply global payment terms
-            if any([unit_price, lead_time, notes, ono, cert]):
+            if any([unit_price, lead_time, notes, ono, cert_path]):
                 conn.execute(
                     '''
                     INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, stock_availability, cert, lead_time, payment_terms, ono, notes)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''',
-                    (task_id, supplier_id, item['id'], unit_price, None, cert, lead_time, payment_terms_global, ono, notes)
+                    (task_id, supplier_id, item['id'], unit_price, None, cert_path, lead_time, payment_terms_global, ono, notes)
                 )
 
         # Mark replied when quotes captured (always update to current time)
@@ -914,18 +984,24 @@ def supplier_quote_form(token):
             uid = str(item['id'])
             unit_price = request.form.get(f'unit_price_{uid}') or None
             stock_availability = request.form.get(f'stock_availability_{uid}') or None
-            cert = request.form.get(f'cert_{uid}') or None
             lead_time = request.form.get(f'lead_time_{uid}') or None
             notes = request.form.get(f'notes_{uid}') or None
             ono = 1 if request.form.get(f"ono_{uid}") else 0
+            
+            # Handle certificate file upload
+            cert_path = None
+            if f'cert_{uid}' in request.files:
+                cert_file = request.files[f'cert_{uid}']
+                if cert_file and cert_file.filename != '':
+                    cert_path = save_uploaded_file(cert_file, task_id, supplier_id, item['id'])
 
-            if any([unit_price, stock_availability, lead_time, notes, ono, cert]):
+            if any([unit_price, stock_availability, lead_time, notes, ono, cert_path]):
                 conn.execute(
                     '''
                     INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, stock_availability, cert, lead_time, payment_terms, ono, notes)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''',
-                    (task_id, supplier_id, item['id'], unit_price, stock_availability, cert, lead_time, payment_terms_global, ono, notes)
+                    (task_id, supplier_id, item['id'], unit_price, stock_availability, cert_path, lead_time, payment_terms_global, ono, notes)
                 )
 
         # mark replied and log
@@ -1103,6 +1179,8 @@ def export_comparison(task_id):
         quotes_by_item[item_id][q['supplier_id']] = dict(q)
 
     # One row per item (starting from row 3)
+    cert_links = {}  # Track cert cells for hyperlinks: (row, col) -> url
+    current_row = 3
     for item in pr_items:
         w = item['width'] or None
         l = item['length'] or None
@@ -1136,26 +1214,42 @@ def export_comparison(task_id):
             weight
         ]
 
-        # Add supplier quote columns
+        # Add supplier quote columns and track cert cells
+        col_idx = 9  # Start column for supplier data
         for supplier_id, supplier_name in suppliers_list:
             q = quotes_by_item.get(item['id'], {}).get(supplier_id)
             if q:
                 ono_val = q['ono'] if 'ono' in q.keys() else q.get('ono')
-                ono_display = "O.N.O." if ono_val else ""
+                ono_display = "✓" if ono_val else "✗"
+                
+                # For cert column, show link if cert file exists, otherwise empty
+                cert_display = ""
+                cert_url = None
+                if q.get('cert'):
+                    cert_display = "PDF"  # Display text
+                    cert_url = q['cert']  # Store URL for hyperlink
+                
                 row.extend([
                     q['unit_price'] if q['unit_price'] is not None else "",
                     q.get('stock_availability') or "",
-                    q.get('cert') or "",
+                    cert_display,
                     q['lead_time'] or "",
                     q.get('payment_terms') or "",
                     ono_display,
                     q['notes'] or ""
                 ])
+                
+                # Track cert column for hyperlink (column 3 in supplier block = index col_idx+2)
+                if cert_url:
+                    cert_links[(current_row, col_idx + 2)] = cert_url
+                col_idx += 7
             else:
                 # No quote from this supplier for this item
                 row.extend(["", "", "", "", "", "", ""])
+                col_idx += 7
 
         ws.append(row)
+        current_row += 1
 
     # --- Formatting: borders, autofit columns, adjust row heights ---
     # Apply thin border to all used cells
@@ -1193,6 +1287,19 @@ def export_comparison(task_id):
 
         # Set an approximate row height (15pt per line)
         ws.row_dimensions[r].height = max(15, max_lines * 15)
+
+    # Add hyperlinks to certificate cells
+    from openpyxl.worksheet.hyperlink import Hyperlink
+    for (row, col), url in cert_links.items():
+        cell = ws.cell(row=row, column=col)
+        # Create hyperlink (convert relative path to full URL if needed)
+        if url.startswith('/'):
+            # Relative path - construct URL
+            hyperlink_url = url
+        else:
+            hyperlink_url = url
+        cell.hyperlink = hyperlink_url
+        cell.style = "Hyperlink"  # Apply hyperlink styling (blue, underlined)
 
     # Set column widths based on max content length
     for col_idx in range(1, max_col + 1):
