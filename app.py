@@ -161,11 +161,37 @@ def validate_password(password):
 def generate_email_content(pr_items, task_name):
     items_html = "<ul>"
     for item in pr_items:
+        # Build dimensions display based on category
+        category = (item.get('item_category') or '').strip()
+        dims = 'N/A'
+        if category in ['Steel Plates', 'Stainless Steel']:
+            w = item.get('width') or ''
+            l = item.get('length') or ''
+            thk = item.get('thickness') or ''
+            if w or l or thk:
+                dims = f"{w}mm x {l}mm x {thk}mm"
+        elif category == 'Angle Bar':
+            a = item.get('dim_a') or ''
+            b = item.get('dim_b') or ''
+            l = item.get('length') or ''
+            thk = item.get('thickness') or ''
+            if a or b or l or thk:
+                dims = f"A={a}mm, B={b}mm, L={l}mm, Thk={thk}mm"
+        elif category in ['Rebar', 'Bolts, Fasteners']:
+            d = item.get('diameter') or ''
+            l = item.get('length') or ''
+            if d or l:
+                dims = f"D={d}mm, L={l}mm"
+        else:
+            uom = item.get('uom') or ''
+            if uom:
+                dims = f"UOM: {uom}"
+        
         items_html += f"""
         <li>
             <strong>Item:</strong> {item['item_name']}<br>
-            <strong>Dimensions:</strong> {item['specification'] or 'N/A'}<br>
-            <strong>Brand / Specification:</strong> {item['brand'] or 'N/A'}<br>
+            <strong>Dimensions:</strong> {dims}<br>
+            <strong>Brand / Specification:</strong> {item.get('brand') or 'N/A'}<br>
             <strong>Quantity:</strong> {item['quantity']}<br>
         </li>
         """
@@ -175,7 +201,7 @@ def generate_email_content(pr_items, task_name):
     <html>
     <body>
         <h2>Procurement Inquiry</h2>
-        <p>Dear {{supplier_name}},</p>
+        <p>Dear {{supplier_name}}{{contact_person}},</p>
         
         <p>We are inquiring about the following items for procurement:</p>
         
@@ -183,12 +209,12 @@ def generate_email_content(pr_items, task_name):
         
         <p>Please provide us with your quotation including:</p>
         <ul>
-            <li>Payment Terms</li>
-            <li>Unit Price (RM)</li>
+            <li>Unit Price</li>
             <li>Delivery Lead Timeline</li>
-            <li>Stock Availability</li>
             <li>Warranty (If Applicable)</li>
             <li>Mill Certificate / Certificate of Analysis (COA)</li>
+            <li>Payment Terms</li>
+            <li>Stock Availability</li>
         </ul>
         
         <p>We look forward to your prompt response.</p>
@@ -204,6 +230,72 @@ def index():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     return redirect(url_for('dashboard'))
+
+@app.route('/dashboard')
+def dashboard():
+    """Main dashboard showing recent tasks and stats."""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    
+    # Get recent tasks (for admin, all tasks; for user, only their tasks)
+    if session.get('role') == 'admin':
+        recent_tasks = conn.execute('''
+            SELECT * FROM tasks 
+            ORDER BY created_at DESC 
+            LIMIT 10
+        ''').fetchall()
+    else:
+        recent_tasks = conn.execute('''
+            SELECT * FROM tasks 
+            WHERE user_id = ?
+            ORDER BY created_at DESC 
+            LIMIT 10
+        ''', (session['user_id'],)).fetchall()
+    
+    # Get stats for admin dashboard
+    stats = None
+    if session.get('role') == 'admin':
+        stats = {
+            'total_tasks': conn.execute('SELECT COUNT(*) FROM tasks').fetchone()[0],
+            'active_tasks': conn.execute("SELECT COUNT(*) FROM tasks WHERE status NOT IN ('completed', 'cancelled')").fetchone()[0],
+            'total_suppliers': conn.execute('SELECT COUNT(*) FROM suppliers WHERE is_active = 1').fetchone()[0]
+        }
+    
+    conn.close()
+    return render_template('dashboard.html', recent_tasks=recent_tasks, stats=stats)
+
+@app.route('/purchase-requisitions')
+def purchase_requisitions():
+    """Show saved Purchase Requisitions that haven't been sent to suppliers yet."""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    conn = get_db_connection()
+    
+    # Get PRs with status 'purchase_requisition' (saved but not yet in supplier selection)
+    if session.get('role') == 'admin':
+        prs = conn.execute('''
+            SELECT t.*, u.username,
+                   (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) as item_count
+            FROM tasks t
+            LEFT JOIN users u ON t.user_id = u.id
+            WHERE t.status = 'purchase_requisition'
+            ORDER BY t.created_at DESC
+        ''').fetchall()
+    else:
+        prs = conn.execute('''
+            SELECT t.*, 
+                   (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) as item_count
+            FROM tasks t
+            WHERE t.user_id = ? AND t.status = 'purchase_requisition'
+            ORDER BY t.created_at DESC
+        ''', (session['user_id'],)).fetchall()
+    
+    conn.close()
+    return render_template('purchase_requisitions.html', prs=prs)
+
 
 @app.route('/uploads/certificates/<path:filepath>')
 def download_certificate(filepath):
@@ -297,7 +389,22 @@ def new_task(task_id=None):
         return redirect(url_for('login'))
     
     conn = get_db_connection()
-    categories = conn.execute('SELECT * FROM categories').fetchall()
+    categories = conn.execute('SELECT * FROM categories ORDER BY name').fetchall()
+    
+    # Fetch category items for autocomplete
+    cat_items_data = conn.execute('''
+        SELECT c.name as cat_name, ci.name as item_name
+        FROM category_items ci
+        JOIN categories c ON ci.category_id = c.id
+        ORDER BY ci.name
+    ''').fetchall()
+    
+    category_items_map = {}
+    for row in cat_items_data:
+        cat = row['cat_name']
+        if cat not in category_items_map:
+            category_items_map[cat] = []
+        category_items_map[cat].append(row['item_name'])
     
     if task_id:
         # Editing existing task - verify ownership
@@ -324,14 +431,21 @@ def new_task(task_id=None):
         while f'items[{item_index}][item_name]' in request.form:
             items.append({
                 'item_name': request.form[f'items[{item_index}][item_name]'],
-                'specification': request.form.get(f'items[{item_index}][specification]') or None,
+                'item_category': request.form[f'items[{item_index}][item_category]'],
+                'brand': request.form.get(f'items[{item_index}][brand]') or None,
+                'quantity': request.form.get(f'items[{item_index}][quantity]') or None,
+                'payment_terms': request.form.get(f'items[{item_index}][payment_terms]') or None,
+                # Steel Plates dimensions
                 'width': request.form.get(f'items[{item_index}][width]') or None,
                 'length': request.form.get(f'items[{item_index}][length]') or None,
                 'thickness': request.form.get(f'items[{item_index}][thickness]') or None,
-                'payment_terms': request.form.get(f'items[{item_index}][payment_terms]') or None,
-                'brand': request.form.get(f'items[{item_index}][brand]') or None,
-                'quantity': request.form.get(f'items[{item_index}][quantity]') or None,
-                'item_category': request.form[f'items[{item_index}][item_category]']
+                # Angle Bar dimensions
+                'dim_a': request.form.get(f'items[{item_index}][dim_a]') or None,
+                'dim_b': request.form.get(f'items[{item_index}][dim_b]') or None,
+                # Bolts/Rebar dimensions
+                'diameter': request.form.get(f'items[{item_index}][diameter]') or None,
+                # Other UOM
+                'uom': request.form.get(f'items[{item_index}][uom]') or None,
             })
             item_index += 1
         
@@ -350,38 +464,43 @@ def new_task(task_id=None):
                 (task_name, session['user_id'], 'purchase_requisition')
             )
             task_id_to_use = cursor.lastrowid
-            flash('Task created successfully!', 'success')
+            flash('Purchase Requisition saved successfully!', 'success')
         
-        # Add PR items (store width/length/thickness if provided)
+        # Add PR items with all dimension fields
         for item_data in items:
             conn.execute('''
-                INSERT INTO pr_items (task_id, item_name, item_category, brand, quantity, specification, width, length, thickness, payment_terms)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO pr_items (task_id, item_name, item_category, brand, quantity, payment_terms,
+                                      width, length, thickness, dim_a, dim_b, diameter, uom)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 task_id_to_use,
                 item_data['item_name'],
                 item_data['item_category'],
                 item_data['brand'],
                 item_data['quantity'],
-                item_data['specification'],
+                item_data['payment_terms'],
                 item_data.get('width'),
                 item_data.get('length'),
                 item_data.get('thickness'),
-                item_data.get('payment_terms')
+                item_data.get('dim_a'),
+                item_data.get('dim_b'),
+                item_data.get('diameter'),
+                item_data.get('uom')
             ))
         
         conn.commit()
         conn.close()
         
-        # ALWAYS go to next step after saving
-        return redirect(url_for('supplier_selection', task_id=task_id_to_use))
+        # Redirect to dashboard instead of supplier selection
+        return redirect(url_for('dashboard'))
     
     conn.close()
     return render_template('pr_form.html', 
                          categories=categories, 
                          task=task, 
                          existing_items=existing_items,
-                         is_edit=bool(task_id))
+                         is_edit=bool(task_id),
+                         category_items_map=category_items_map)
 
 @app.route('/task/<int:task_id>/edit')
 def edit_task(task_id):
@@ -990,8 +1109,14 @@ def supplier_quote_form(token):
             unit_price = request.form.get(f'unit_price_{uid}') or None
             stock_availability = request.form.get(f'stock_availability_{uid}') or None
             lead_time = request.form.get(f'lead_time_{uid}') or None
+            warranty = request.form.get(f'warranty_{uid}') or None
             notes = request.form.get(f'notes_{uid}') or None
             ono = 1 if request.form.get(f"ono_{uid}") else 0
+            
+            # O.N.O. alternate dimensions
+            ono_width = request.form.get(f'ono_width_{uid}') or None
+            ono_length = request.form.get(f'ono_length_{uid}') or None
+            ono_thickness = request.form.get(f'ono_thickness_{uid}') or None
             
             # Handle certificate file upload
             cert_path = None
@@ -1000,13 +1125,16 @@ def supplier_quote_form(token):
                 if cert_file and cert_file.filename != '':
                     cert_path = save_uploaded_file(cert_file, task_id, supplier_id, item['id'])
 
-            if any([unit_price, stock_availability, lead_time, notes, ono, cert_path]):
+            if any([unit_price, stock_availability, lead_time, warranty, notes, ono, cert_path]):
                 conn.execute(
                     '''
-                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, stock_availability, cert, lead_time, payment_terms, ono, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, stock_availability, 
+                                                 cert, lead_time, warranty, payment_terms, ono, 
+                                                 ono_width, ono_length, ono_thickness, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''',
-                    (task_id, supplier_id, item['id'], unit_price, stock_availability, cert_path, lead_time, payment_terms_global, ono, notes)
+                    (task_id, supplier_id, item['id'], unit_price, stock_availability, cert_path, 
+                     lead_time, warranty, payment_terms_global, ono, ono_width, ono_length, ono_thickness, notes)
                 )
 
         # mark replied and log
@@ -1235,32 +1363,79 @@ def export_comparison(task_id):
 
     current_row = 3
     for item in pr_items:
+        category = (item['item_category'] or '').strip()
         w = item['width'] or None
         l = item['length'] or None
         thk = item['thickness'] or None
-        # if not (w and l and thk):
-        #     parsed_w, parsed_l, parsed_thk = parse_dimensions(item['specification'])
-        #     w = w or parsed_w
-        #     l = l or parsed_l
-        #     thk = thk or parsed_thk
+        dim_a = item.get('dim_a') or None
+        dim_b = item.get('dim_b') or None
+        diameter = item.get('diameter') or None
+        uom = item.get('uom') or None
 
+        # Calculate weight based on category
         weight = ""
-        if w and l and thk:
-            try:
-                w_val = float(w)
-                l_val = float(l)
-                thk_val = float(thk)
-                weight = round((w_val * l_val * thk_val) * (12 * 25.4 * 12 * 25.4) / 1000 * 7.85 / 1000, 2)
-            except (ValueError, TypeError):
-                weight = ""
+        weight_formula_applied = False
+        
+        # Steel Plates / Stainless Steel: (W * L * Thk * 7.85) / 1,000,000
+        if category in ['Steel Plates', 'Stainless Steel']:
+            if w and l and thk:
+                try:
+                    w_val = float(w)
+                    l_val = float(l)
+                    thk_val = float(thk)
+                    weight = round((w_val * l_val * thk_val * 7.85) / 1000000, 2)
+                    weight_formula_applied = True
+                except (ValueError, TypeError):
+                    weight = ""
+        
+        # Rebar / Bolts, Fasteners: (π/4) * D² * L * 7.85 * 10⁻⁶
+        elif category in ['Rebar', 'Bolts, Fasteners']:
+            if diameter and l:
+                try:
+                    import math
+                    d_val = float(diameter)
+                    l_val = float(l)
+                    weight = round((math.pi / 4) * (d_val ** 2) * l_val * 7.85 * 0.000001, 2)
+                    weight_formula_applied = True
+                except (ValueError, TypeError):
+                    weight = ""
+        
+        # Angle Bar: (L * Thk * (A + B - Thk) * 7.85) / 1,000,000
+        elif category == 'Angle Bar':
+            if l and thk and dim_a and dim_b:
+                try:
+                    l_val = float(l)
+                    thk_val = float(thk)
+                    a_val = float(dim_a)
+                    b_val = float(dim_b)
+                    weight = round((l_val * thk_val * (a_val + b_val - thk_val) * 7.85) / 1000000, 2)
+                    weight_formula_applied = True
+                except (ValueError, TypeError):
+                    weight = ""
+        
+        # For "Other" categories, no weight calculation
+        else:
+            weight = "N/A"
+
+        # Build dimension display based on category
+        dim_display = ['', '', '']  # W/L/Thk or A/B/L/Thk or D/L or UOM
+        if category in ['Steel Plates', 'Stainless Steel']:
+            dim_display = [w or '', l or '', thk or '']
+        elif category == 'Angle Bar':
+            # Show as: A=x, B=y, L=z, Thk=t
+            dim_display = [f"A={dim_a or ''}, B={dim_b or ''}", l or '', thk or '']
+        elif category in ['Rebar', 'Bolts, Fasteners']:
+            dim_display = [f"D={diameter or ''}", l or '', '']
+        else:
+            dim_display = [uom or '', '', '']
 
         row = [
             item['item_name'],
             item['brand'] or "",
-            item['item_category'] or "",
-            w or "",
-            l or "",
-            thk or "",
+            category,
+            dim_display[0],
+            dim_display[1],
+            dim_display[2],
             item['quantity'] or "",
             weight
         ]
@@ -1720,43 +1895,6 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
         print(f"Email sending failed: {e}")
         return False
 
-@app.route('/dashboard')
-def dashboard():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    conn = get_db_connection()
-    
-    # Get stats for admin
-    stats = None
-    if session['role'] == 'admin':
-        stats = conn.execute('''
-            SELECT 
-                (SELECT COUNT(*) FROM tasks) as total_tasks,
-                (SELECT COUNT(*) FROM tasks WHERE status != 'confirm_email') as active_tasks,
-                (SELECT COUNT(*) FROM suppliers WHERE is_active = 1) as total_suppliers
-        ''').fetchone()
-    
-    # Get recent tasks
-    if session['role'] == 'admin':
-        recent_tasks = conn.execute('''
-            SELECT t.*, u.username 
-            FROM tasks t 
-            LEFT JOIN users u ON t.user_id = u.id 
-            ORDER BY t.created_at DESC 
-            LIMIT 5
-        ''').fetchall()
-    else:
-        recent_tasks = conn.execute('''
-            SELECT * FROM tasks 
-            WHERE user_id = ? 
-            ORDER BY created_at DESC 
-            LIMIT 5
-        ''', (session['user_id'],)).fetchall()
-    
-    conn.close()
-    
-    return render_template('dashboard.html', stats=stats, recent_tasks=recent_tasks)
 
 @app.route('/task/<int:task_id>/suppliers', methods=['GET', 'POST'])
 def supplier_selection(task_id):
@@ -1788,9 +1926,20 @@ def supplier_selection(task_id):
         conn.execute('DELETE FROM task_suppliers WHERE task_id = ?', (task_id,))
         
         # Add supplier selections with assigned items
+        # Add supplier selections with assigned items
         for supplier_id in selected_suppliers:
-            assigned_items = item_assignments.get(supplier_id, [])
-            items_json = json.dumps(assigned_items) if assigned_items else None
+            assignment_type = request.form.get(f'assignment_type_{supplier_id}')
+            
+            if assignment_type == 'specific':
+                # Get specific items for this supplier
+                # If no items checked, getlist returns [], which dumps to "[]"
+                # This correctly represents "Specific items: None" instead of "All items"
+                assigned_items = request.form.getlist(f'supplier_{supplier_id}_items')
+                items_json = json.dumps(assigned_items)
+            else:
+                # 'all' compatible items -> NULL in database
+                items_json = None
+                
             conn.execute(
                 'INSERT INTO task_suppliers (task_id, supplier_id, is_selected, assigned_items) VALUES (?, ?, ?, ?)',
                 (task_id, supplier_id, True, items_json)
@@ -1934,6 +2083,56 @@ def delete_category(category_id):
     conn.close()
     return redirect(url_for('categories'))
 
+@app.route('/category/<int:category_id>/items')
+def category_items(category_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('index'))
+    
+    conn = get_db_connection()
+    category = conn.execute('SELECT * FROM categories WHERE id = ?', (category_id,)).fetchone()
+    if not category:
+        conn.close()
+        flash('Category not found', 'error')
+        return redirect(url_for('categories'))
+        
+    items = conn.execute('SELECT * FROM category_items WHERE category_id = ? ORDER BY name', (category_id,)).fetchall()
+    conn.close()
+    return render_template('category_items.html', category=category, items=items)
+
+@app.route('/category/<int:category_id>/add-item', methods=['POST'])
+def add_category_item(category_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        return redirect(url_for('index'))
+    
+    name = request.form.get('name')
+    if name:
+        conn = get_db_connection()
+        conn.execute('INSERT INTO category_items (category_id, name) VALUES (?, ?)', (category_id, name))
+        conn.commit()
+        conn.close()
+        flash('Item added successfully', 'success')
+    
+    return redirect(url_for('category_items', category_id=category_id))
+
+@app.route('/delete-category-item/<int:item_id>')
+def delete_category_item(item_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        return redirect(url_for('index'))
+    
+    conn = get_db_connection()
+    item = conn.execute('SELECT category_id FROM category_items WHERE id = ?', (item_id,)).fetchone()
+    if item:
+        category_id = item['category_id']
+        conn.execute('DELETE FROM category_items WHERE id = ?', (item_id,))
+        conn.commit()
+        conn.close()
+        flash('Item deleted successfully', 'success')
+        return redirect(url_for('category_items', category_id=category_id))
+    
+    conn.close()
+    return redirect(url_for('categories'))
+
 def parse_reply_fields(body_text):
     """
     Try to extract:
@@ -2068,20 +2267,42 @@ def check_inbox_and_mark_replies():
 
             supplier_id = supplier['id']
 
-            # ----- FIND ALL PENDING TASKS FOR THIS SUPPLIER -----
-            # Find all tasks for this supplier. We will update replied_at on every reply
-            # so do not filter by replied_at NULL here (Option A)
-            pending_rows = conn.execute(
+            # ----- FIND MATCHING TASKS FOR THIS SUPPLIER BY SUBJECT -----
+            # Only match tasks where the subject contains the task_name
+            # Email subjects are typically "Re: Procurement Inquiry - {task_name}" or similar
+            
+            # First, get all task_names for this supplier
+            all_supplier_tasks = conn.execute(
                 """
-                SELECT task_id FROM task_suppliers
-                WHERE supplier_id = ?
+                SELECT ts.task_id, t.task_name 
+                FROM task_suppliers ts
+                JOIN tasks t ON ts.task_id = t.id
+                WHERE ts.supplier_id = ?
                 """,
                 (supplier_id,)
             ).fetchall()
-
-            if not pending_rows:
-                # Nothing to update; leave unread
+            
+            if not all_supplier_tasks:
+                # No tasks for this supplier; leave unread
+                print(f"[IMAP] No tasks found for supplier {supplier_id}, leaving email unread")
                 continue
+            
+            # Check if subject matches any task_name
+            matched_tasks = []
+            for task_row in all_supplier_tasks:
+                task_name = task_row['task_name']
+                # Check if task_name appears in subject (case-insensitive)
+                if task_name.lower() in subject.lower():
+                    matched_tasks.append(task_row)
+                    print(f"[IMAP] Subject matched task: {task_name}")
+            
+            if not matched_tasks:
+                # Subject doesn't match any known task - leave email UNREAD
+                print(f"[IMAP] Subject '{subject}' doesn't match any task for supplier {supplier_id}, leaving unread")
+                continue
+            
+            # Only process matched tasks (not all tasks for this supplier)
+            pending_rows = matched_tasks
 
             # Parse Date header -> replied_at timestamp string
             raw_date = msg.get("Date")
