@@ -69,15 +69,21 @@ def reset_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             task_id INTEGER,
             item_name TEXT NOT NULL,
-            specification TEXT,
+            item_category TEXT NOT NULL,
+            brand TEXT,
+            quantity INTEGER NOT NULL,
+            payment_terms TEXT,
+            -- Steel Plates dimensions
             width INTEGER,
             length INTEGER,
             thickness INTEGER,
-            brand TEXT,
-            balance_stock INTEGER,
-            quantity INTEGER NOT NULL,
-            item_category TEXT NOT NULL,
-            payment_terms TEXT,
+            -- Angle Bar dimensions
+            dim_a INTEGER,
+            dim_b INTEGER,
+            -- Bolts/Rebar dimensions
+            diameter INTEGER,
+            -- Other category UOM
+            uom TEXT,
             FOREIGN KEY (task_id) REFERENCES tasks (id)
         )''',
         
@@ -117,13 +123,30 @@ def reset_database():
             stock_availability TEXT,
             cert TEXT,
             lead_time TEXT,
+            warranty TEXT,
             payment_terms TEXT,
             ono BOOLEAN DEFAULT 0,
-            notes TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (task_id) REFERENCES tasks (id),
-            FOREIGN KEY (supplier_id) REFERENCES suppliers (id),
+            ono_width INTEGER,
             FOREIGN KEY (pr_item_id) REFERENCES pr_items (id)
+        )''',
+        '''CREATE TABLE IF NOT EXISTS email_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            supplier_id INTEGER NOT NULL,
+            email_type TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            body TEXT NOT NULL,
+            status TEXT NOT NULL,
+            error TEXT,
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES tasks (id),
+            FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+        )''',
+        '''CREATE TABLE IF NOT EXISTS category_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            FOREIGN KEY (category_id) REFERENCES categories (id)
         )'''
     ]
     
@@ -142,8 +165,15 @@ def reset_database():
     )
     
     # Default categories
-    default_categories = ['Bolts, Fasteners', 'Calibration Services', 'Casting Services', 'Chemical Products', 'Construction', 'Construction Materials, Grout, Epoxy', 'Construction Services', 'Electronics', 'Galvanizing Services', 
-'Hardware, Consumable Products', 'Hydraulic Equipments, Services', 'IT Equipment', 'Logistic Services', 'Lubricant Products', 'Measuring Instruments & Equipments', 'Mechanical', 'Office Supplies', 'PTFE', 'Paint Coating', 'Rubber Products', 'Stainless Steel', 'Steel Plates', 'Welding Equipments, Machinery, Tools']
+    default_categories = [
+        'Angle Bar', 'Bolts, Fasteners', 'Calibration Services', 'Casting Services',
+        'Chemical Products', 'Construction', 'Construction Materials, Grout, Epoxy',
+        'Construction Services', 'Electronics', 'Galvanizing Services',
+        'Hardware, Consumable Products', 'Hydraulic Equipments, Services', 'IT Equipment',
+        'Logistic Services', 'Lubricant Products', 'Measuring Instruments & Equipments',
+        'Mechanical', 'Office Supplies', 'PTFE', 'Paint Coating', 'Rebar', 'Rubber Products',
+        'Stainless Steel', 'Steel Plates', 'Welding Equipments, Machinery, Tools'
+    ]
     for category in default_categories:
         cursor.execute('INSERT INTO categories (name) VALUES (?)', (category,))
     
