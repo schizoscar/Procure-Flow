@@ -327,8 +327,8 @@ def new_task(task_id=None):
                 'length': request.form.get(f'items[{item_index}][length]') or None,
                 'thickness': request.form.get(f'items[{item_index}][thickness]') or None,
                 'payment_terms': request.form.get(f'items[{item_index}][payment_terms]') or None,
-                'brand': request.form[f'items[{item_index}][brand]'],
-                'quantity': request.form[f'items[{item_index}][quantity]'],
+                'brand': request.form.get(f'items[{item_index}][brand]') or None,
+                'quantity': request.form.get(f'items[{item_index}][quantity]') or None,
                 'item_category': request.form[f'items[{item_index}][item_category]']
             })
             item_index += 1
@@ -1064,28 +1064,28 @@ def export_comparison(task_id):
     ''', (task_id,)).fetchall()
     conn.close()
 
-    def parse_dimensions(spec_str):
-        """Parse spec like '5x8.20mm' into (width, length, thickness)."""
-        if not spec_str:
-            return None, None, None
-        spec_str = str(spec_str).lower().replace('mm', '').strip()
-        parts = spec_str.split('x')
-        w = parts[0].strip() if len(parts) > 0 else None
+    # def parse_dimensions(spec_str):
+    #     """Parse spec like '5x8.20mm' into (width, length, thickness)."""
+    #     if not spec_str:
+    #         return None, None, None
+    #     spec_str = str(spec_str).lower().replace('mm', '').strip()
+    #     parts = spec_str.split('x')
+    #     w = parts[0].strip() if len(parts) > 0 else None
 
-        l = None
-        thk = None
-        if len(parts) > 1:
-            rhs = parts[1].strip().replace(' ', '')
-            if '.' in rhs:
-                l_thk = rhs.split('.')
-            elif ',' in rhs:
-                l_thk = rhs.split(',')
-            else:
-                l_thk = [rhs]
-            l = l_thk[0].strip() if len(l_thk) > 0 else None
-            thk = l_thk[1].strip() if len(l_thk) > 1 else None
+    #     l = None
+    #     thk = None
+    #     if len(parts) > 1:
+    #         rhs = parts[1].strip().replace(' ', '')
+    #         if '.' in rhs:
+    #             l_thk = rhs.split('.')
+    #         elif ',' in rhs:
+    #             l_thk = rhs.split(',')
+    #         else:
+    #             l_thk = [rhs]
+    #         l = l_thk[0].strip() if len(l_thk) > 0 else None
+    #         thk = l_thk[1].strip() if len(l_thk) > 1 else None
 
-        return w, l, thk
+    #     return w, l, thk
 
     def to_float(x):
         try:
@@ -1162,7 +1162,7 @@ def export_comparison(task_id):
         row1.extend([supplier_header_label(supplier_id, supplier_name)] + [""] * (SUPPLIER_BLOCK_COLS - 1))
     ws.append(row1)
 
-    row2 = ["", "", "", "W", "L", "Thk", "", ""]
+    row2 = ["", "", "", "W (mm)", "L (mm)", "Thk (mm)", "", ""]
     for supplier_id, supplier_name in suppliers_list:
         row2.extend([
             "Rate (RM/Kg)",
@@ -1236,11 +1236,11 @@ def export_comparison(task_id):
         w = item['width'] or None
         l = item['length'] or None
         thk = item['thickness'] or None
-        if not (w and l and thk):
-            parsed_w, parsed_l, parsed_thk = parse_dimensions(item['specification'])
-            w = w or parsed_w
-            l = l or parsed_l
-            thk = thk or parsed_thk
+        # if not (w and l and thk):
+        #     parsed_w, parsed_l, parsed_thk = parse_dimensions(item['specification'])
+        #     w = w or parsed_w
+        #     l = l or parsed_l
+        #     thk = thk or parsed_thk
 
         weight = ""
         if w and l and thk:
@@ -1598,7 +1598,7 @@ def logout():
     return redirect(url_for('login'))
 
 # Email sending function
-def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, assigned_item_ids=None, custom_content=None, subject=None, supplier_contact=None):
+def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, assigned_item_ids=None, custom_content=None, subject=None, supplier_contact=None, quote_form_link=None):
     try:
         # Filter items for this specific supplier
         if assigned_item_ids:
@@ -1620,6 +1620,18 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
                 body = body.replace('{contact_person}', supplier_contact)
             else:
                 body = body.replace('{contact_person}', '')
+
+            if quote_form_link:
+                quote_html = f'<p><strong>Quotation Form Link:</strong> <a href="{quote_form_link}">{quote_form_link}</a></p>'
+
+                # If user put a placeholder in the template, replace it
+                if '{quote_form_link}' in body:
+                    body = body.replace('{quote_form_link}', quote_form_link)
+                # Otherwise, try to insert nicely before </body>
+                elif '</body>' in body:
+                    body = body.replace('</body>', quote_html + '</body>')
+                else:
+                    body += quote_html
         else:
             items_html = "<ul>"
             for item in supplier_items:
@@ -1637,7 +1649,7 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
             <html>
             <body>
                 <h2>Procurement Inquiry</h2>
-                <p>Dear {supplier_name}, {supplier_contact or ''},</p>
+                <p>Dear {(supplier_name.strip() + ' from ' + supplier_contact.strip()) if (supplier_contact and supplier_contact.strip()) else (supplier_name.strip() if supplier_name else '')},</p>
                 
                 <p>We are inquiring about the following items for procurement:</p>
                 
@@ -1652,6 +1664,8 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
                     <li>Warranty (If Applicable)</li>
                     <li>Mill Certificate / Certificate of Analysis (COA)</li>
                 </ul>
+
+                <p>Supplier form: {quote_form_link}</p>
                 
                 <p>We look forward to your prompt response.</p>
                 
