@@ -1,6 +1,7 @@
 <!-- templates/base.html -->
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -8,6 +9,7 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
+
 <body>
     <div class="container">
         <!-- Sidebar -->
@@ -20,10 +22,13 @@
                     <i class="fas fa-home"></i> Home
                 </a>
                 <a href="{{ url_for('new_task') }}">
-                    <i class="fas fa-plus-circle"></i> New
+                    <i class="fas fa-plus-circle"></i> New PR
+                </a>
+                <a href="{{ url_for('purchase_requisitions') }}">
+                    <i class="fas fa-file-alt"></i> Purchase Requisitions
                 </a>
                 <a href="{{ url_for('task_list') }}">
-                    <i class="fas fa-tasks"></i> Task List
+                    <i class="fas fa-tasks"></i> My Tasks
                 </a>
                 {% if session.role == 'admin' %}
                 <a href="{{ url_for('suppliers') }}">
@@ -41,29 +46,30 @@
                 </a>
             </div>
         </div>
-        
+
         <!-- Main Content -->
         <div class="main-content" id="mainContent">
             <button class="hamburger" id="hamburger">
                 <i class="fas fa-bars"></i>
             </button>
-            
+
             <!-- Flash Messages -->
             {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                    {% for category, message in messages %}
-                        <div class="alert alert-{{ category if category != 'message' else 'info' }}">
-                            {{ message }}
-                        </div>
-                    {% endfor %}
-                {% endif %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category if category != 'message' else 'info' }}">
+                {{ message }}
+            </div>
+            {% endfor %}
+            {% endif %}
             {% endwith %}
-            
+
             {% block content %}{% endblock %}
         </div>
     </div>
-    
+
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
     {% block scripts %}{% endblock %}
 </body>
+
 </html>

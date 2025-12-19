@@ -19,118 +19,187 @@
         <form method="POST">
             <div class="form-group">
                 <label class="form-label required">Project Reference</label>
-                <input type="text" class="form-control" name="task_name" required 
-                       value="{{ task.task_name if task else '' }}"
-                       placeholder="Enter task name (e.g., Office Supplies Q4 2024)">
+                <input type="text" class="form-control" name="task_name" required
+                    value="{{ task.task_name if task else '' }}"
+                    placeholder="Enter project reference (e.g., Office Supplies Q4 2024)">
             </div>
 
-            <div class="items-container" id="itemsContainer" style="max-height: 60vh; overflow-y: auto; position: relative;">
+            <div class="items-container" id="itemsContainer"
+                data-item-count="{{ existing_items|length if existing_items else 1 }}"
+                style="max-height: 60vh; overflow-y: auto; position: relative;">
                 {% if existing_items %}
-                    {% for item in existing_items %}
-                    <div class="card mb-2 item-row">
-                        <div class="d-flex justify-between align-center">
-                            <h4>Item {{ loop.index }}</h4>
-                            {% if existing_items|length > 1 %}
-                            <button type="button" class="btn btn-danger remove-item">
-                                <i class="fas fa-times"></i> Remove
-                            </button>
-                            {% endif %}
-                        </div>
-                        <div class="grid-2">
-                            <div class="form-group">
-                                <label class="form-label required">Item Name</label>
-                                <input type="text" class="form-control" name="items[{{ loop.index0 }}][item_name]" 
-                                       value="{{ item.item_name }}" required>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label required">Item Category</label>
-                                <select class="form-control form-select" name="items[{{ loop.index0 }}][item_category]" required>
-                                    <option value="">Select Category</option>
-                                    {% for category in categories %}
-                                    <option value="{{ category.name }}" {% if item.item_category == category.name %}selected{% endif %}>
-                                        {{ category.name }}
-                                    </option>
-                                    {% endfor %}
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Brand / Specification</label>
-                                <input type="text" class="form-control" name="items[{{ loop.index0 }}][brand]" 
-                                       value="{{ item.brand or '' }}" placeholder="Preferred brand">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label required">Quantity</label>
-                                <input type="number" class="form-control" name="items[{{ loop.index0 }}][quantity]" 
-                                       value="{{ item.quantity }}" min="1" required>
-                            </div>
-                            <div class="form-group" style="grid-column: 1 / -1;">
-                                <label class="form-label">Dimensions</label>
-
-                                <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: .5rem;">
-                                    <div class="form-group" style="margin:0;">
-                                        <label class="form-label">Width (mm)</label>
-                                        <input type="number" class="form-control dimension-input"
-                                                name="items[{{ loop.index0 }}][width]"
-                                                value="{{ item.width or '' }}"
-                                                min="0" step="1" inputmode="numeric"
-                                                placeholder="e.g., 10mm">
-                                    </div>
-
-                                    <div class="form-group" style="margin:0;">
-                                        <label class="form-label">Length (mm)</label>
-                                        <input type="number"
-                                               class="form-control dimension-input"
-                                               name="items[{{ loop.index0 }}][length]"
-                                               value="{{ item.length or '' }}"
-                                               min="0" step="1" inputmode="numeric"
-                                               placeholder="e.g., 100">
-                                    </div>
-
-                                    <div class="form-group" style="margin:0;">
-                                        <label class="form-label">Thickness (mm)</label>
-                                        <input type="number"
-                                               class="form-control dimension-input"
-                                               name="items[{{ loop.index0 }}][thickness]"
-                                               value="{{ item.thickness or '' }}"
-                                               min="0" step="1" inputmode="numeric"
-                                               placeholder="e.g., 5">
-                                    </div>
-                                </div>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Payment Terms</label>
-                                {% set pt = item.payment_terms or '' %}
-                                <select class="form-control form-select" name="items[{{ loop.index0 }}][payment_terms]">
-                                    <option value="" {% if pt == '' %}selected{% endif %}>Empty</option>
-                                    <option value="Cash" {% if pt == 'Cash' %}selected{% endif %}>Cash</option>
-                                    <option value="30 Days" {% if pt == '30 Days' %}selected{% endif %}>30 Days</option>
-                                    <option value="60 Days" {% if pt == '60 Days' %}selected{% endif %}>60 Days</option>
-                                    <option value="90 Days" {% if pt == '90 Days' %}selected{% endif %}>90 Days</option>
-
-                                    {# Optional safety: if old saved values were free-text, keep them visible #}
-                                    {% if pt not in ['', 'Cash', '30 Days', '60 Days', '90 Days'] %}
-                                        <option value="{{ pt }}" selected>Other: {{ pt }}</option>
-                                    {% endif %}
-                                </select>
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                {% else %}
-                <!-- First item row -->
-                <div class="card mb-2 item-row">
+                {% for item in existing_items %}
+                <div class="card mb-2 item-row" data-index="{{ loop.index0 }}">
                     <div class="d-flex justify-between align-center">
-                        <h4>Item 1</h4>
-                        <!-- No remove button for the first item when there's only one -->
+                        <h4>Item {{ loop.index }}</h4>
+                        {% if existing_items|length > 1 %}
+                        <button type="button" class="btn btn-danger remove-item">
+                            <i class="fas fa-times"></i> Remove
+                        </button>
+                        {% endif %}
                     </div>
                     <div class="grid-2">
                         <div class="form-group">
                             <label class="form-label required">Item Name</label>
-                            <input type="text" class="form-control" name="items[0][item_name]" required>
+                            <input type="text" class="form-control" name="items[{{ loop.index0 }}][item_name]"
+                                value="{{ item.item_name }}" list="items-list-{{ loop.index0 }}" required>
+                            <datalist id="items-list-{{ loop.index0 }}"></datalist>
                         </div>
                         <div class="form-group">
                             <label class="form-label required">Item Category</label>
-                            <select class="form-control form-select" name="items[0][item_category]" required>
+                            <select class="form-control form-select category-select"
+                                name="items[{{ loop.index0 }}][item_category]" required>
+                                <option value="">Select Category</option>
+                                {% for category in categories %}
+                                <option value="{{ category.name }}" {% if item.item_category==category.name %}selected{%
+                                    endif %}>
+                                    {{ category.name }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Brand / Specification</label>
+                            <input type="text" class="form-control" name="items[{{ loop.index0 }}][brand]"
+                                value="{{ item.brand or '' }}" placeholder="Preferred brand">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label required">Quantity</label>
+                            <input type="number" class="form-control" name="items[{{ loop.index0 }}][quantity]"
+                                value="{{ item.quantity }}" min="1" required>
+                        </div>
+
+                        <!-- Dynamic Dimensions Section -->
+                        <div class="form-group dimensions-container" style="grid-column: 1 / -1;">
+                            <label class="form-label">Dimensions</label>
+
+                            <!-- Steel Plates: Width, Length, Thickness -->
+                            <div class="dims-steel-plates dims-section" style="display:none;">
+                                <div
+                                    style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: .5rem;">
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Width (mm)</label>
+                                        <input type="number" class="form-control" name="items[{{ loop.index0 }}][width]"
+                                            value="{{ item.width or '' }}" min="0" step="1" placeholder="e.g., 1200">
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Length (mm)</label>
+                                        <input type="number" class="form-control"
+                                            name="items[{{ loop.index0 }}][length]" value="{{ item.length or '' }}"
+                                            min="0" step="1" placeholder="e.g., 2400">
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Thickness (mm)</label>
+                                        <input type="number" class="form-control"
+                                            name="items[{{ loop.index0 }}][thickness]"
+                                            value="{{ item.thickness or '' }}" min="0" step="1" placeholder="e.g., 10">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Angle Bar: A, B, Length, Thickness -->
+                            <div class="dims-angle-bar dims-section" style="display:none;">
+                                <div
+                                    style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: .5rem;">
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">A (mm)</label>
+                                        <input type="number" class="form-control" name="items[{{ loop.index0 }}][dim_a]"
+                                            value="{{ item.dim_a or '' }}" min="0" step="1" placeholder="e.g., 50">
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">B (mm)</label>
+                                        <input type="number" class="form-control" name="items[{{ loop.index0 }}][dim_b]"
+                                            value="{{ item.dim_b or '' }}" min="0" step="1" placeholder="e.g., 50">
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Length (mm)</label>
+                                        <input type="number" class="form-control"
+                                            name="items[{{ loop.index0 }}][length]" value="{{ item.length or '' }}"
+                                            min="0" step="1" placeholder="e.g., 6000">
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Thickness (mm)</label>
+                                        <input type="number" class="form-control"
+                                            name="items[{{ loop.index0 }}][thickness]"
+                                            value="{{ item.thickness or '' }}" min="0" step="1" placeholder="e.g., 5">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Bolts/Rebar: Diameter, Length -->
+                            <div class="dims-bolts-rebar dims-section" style="display:none;">
+                                <div
+                                    style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-top: .5rem;">
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Diameter (mm)</label>
+                                        <input type="number" class="form-control"
+                                            name="items[{{ loop.index0 }}][diameter]" value="{{ item.diameter or '' }}"
+                                            min="0" step="1" placeholder="e.g., 12">
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Length (mm)</label>
+                                        <input type="number" class="form-control"
+                                            name="items[{{ loop.index0 }}][length]" value="{{ item.length or '' }}"
+                                            min="0" step="1" placeholder="e.g., 100">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Other: UOM -->
+                            <div class="dims-other dims-section" style="display:none;">
+                                <div
+                                    style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: .5rem;">
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Unit of Measure (UOM)</label>
+                                        <select class="form-control form-select" name="items[{{ loop.index0 }}][uom]">
+                                            <option value="">Select UOM</option>
+                                            {% set uom_val = item.uom or '' %}
+                                            <option value="pcs" {% if uom_val=='pcs' %}selected{% endif %}>pcs</option>
+                                            <option value="kg" {% if uom_val=='kg' %}selected{% endif %}>kg</option>
+                                            <option value="L" {% if uom_val=='L' %}selected{% endif %}>L</option>
+                                            <option value="unit" {% if uom_val=='unit' %}selected{% endif %}>unit
+                                            </option>
+                                            <option value="set" {% if uom_val=='set' %}selected{% endif %}>set</option>
+                                            <option value="m" {% if uom_val=='m' %}selected{% endif %}>m</option>
+                                            <option value="roll" {% if uom_val=='roll' %}selected{% endif %}>roll
+                                            </option>
+                                        </select>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label class="form-label">Payment Terms</label>
+                            {% set pt = item.payment_terms or '' %}
+                            <select class="form-control form-select" name="items[{{ loop.index0 }}][payment_terms]">
+                                <option value="" {% if pt=='' %}selected{% endif %}>Empty</option>
+                                <option value="Cash" {% if pt=='Cash' %}selected{% endif %}>Cash</option>
+                                <option value="30 Days" {% if pt=='30 Days' %}selected{% endif %}>30 Days</option>
+                                <option value="60 Days" {% if pt=='60 Days' %}selected{% endif %}>60 Days</option>
+                                <option value="90 Days" {% if pt=='90 Days' %}selected{% endif %}>90 Days</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <!-- First item row -->
+                <div class="card mb-2 item-row" data-index="0">
+                    <div class="d-flex justify-between align-center">
+                        <h4>Item 1</h4>
+                    </div>
+                    <div class="grid-2">
+                        <div class="form-group">
+                            <label class="form-label required">Item Name</label>
+                            <input type="text" class="form-control" name="items[0][item_name]" list="items-list-0"
+                                required>
+                            <datalist id="items-list-0"></datalist>
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label required">Item Category</label>
+                            <select class="form-control form-select category-select" name="items[0][item_category]"
+                                required>
                                 <option value="">Select Category</option>
                                 {% for category in categories %}
                                 <option value="{{ category.name }}">{{ category.name }}</option>
@@ -139,45 +208,105 @@
                         </div>
                         <div class="form-group">
                             <label class="form-label">Brand / Specification</label>
-                            <input type="text" class="form-control" name="items[0][brand]" 
-                                   placeholder="Preferred brand">
+                            <input type="text" class="form-control" name="items[0][brand]"
+                                placeholder="Preferred brand">
                         </div>
                         <div class="form-group">
                             <label class="form-label required">Quantity</label>
                             <input type="number" class="form-control" name="items[0][quantity]" min="1" required>
                         </div>
-                        <div class="form-group" style="grid-column: 1 / -1;">
+
+                        <!-- Dynamic Dimensions Section -->
+                        <div class="form-group dimensions-container" style="grid-column: 1 / -1;">
                             <label class="form-label">Dimensions</label>
 
-                            <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: .5rem;">
-                                <div class="form-group" style="margin:0;">
-                                    <label class="form-label">Width (mm)</label>
-                                    <input type="number"
-                                           class="form-control dimension-input"
-                                           name="items[0][width]"
-                                           min="0" step="1" inputmode="numeric"
-                                           placeholder="e.g., 10">
+                            <!-- Steel Plates -->
+                            <div class="dims-steel-plates dims-section" style="display:none;">
+                                <div
+                                    style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: .5rem;">
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Width (mm)</label>
+                                        <input type="number" class="form-control" name="items[0][width]" min="0"
+                                            step="1" placeholder="e.g., 1200">
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Length (mm)</label>
+                                        <input type="number" class="form-control" name="items[0][length]" min="0"
+                                            step="1" placeholder="e.g., 2400">
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Thickness (mm)</label>
+                                        <input type="number" class="form-control" name="items[0][thickness]" min="0"
+                                            step="1" placeholder="e.g., 10">
+                                    </div>
                                 </div>
+                            </div>
 
-                                <div class="form-group" style="margin:0;">
-                                    <label class="form-label">Length (mm)</label>
-                                    <input type="number"
-                                           class="form-control dimension-input"
-                                           name="items[0][length]"
-                                           min="0" step="1" inputmode="numeric"
-                                           placeholder="e.g., 100">
+                            <!-- Angle Bar -->
+                            <div class="dims-angle-bar dims-section" style="display:none;">
+                                <div
+                                    style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: .5rem;">
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">A (mm)</label>
+                                        <input type="number" class="form-control" name="items[0][dim_a]" min="0"
+                                            step="1" placeholder="e.g., 50">
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">B (mm)</label>
+                                        <input type="number" class="form-control" name="items[0][dim_b]" min="0"
+                                            step="1" placeholder="e.g., 50">
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Length (mm)</label>
+                                        <input type="number" class="form-control" name="items[0][length]" min="0"
+                                            step="1" placeholder="e.g., 6000">
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Thickness (mm)</label>
+                                        <input type="number" class="form-control" name="items[0][thickness]" min="0"
+                                            step="1" placeholder="e.g., 5">
+                                    </div>
                                 </div>
+                            </div>
 
-                                <div class="form-group" style="margin:0;">
-                                    <label class="form-label">Thickness (mm)</label>
-                                    <input type="number"
-                                           class="form-control dimension-input"
-                                           name="items[0][thickness]"
-                                           min="0" step="1" inputmode="numeric"
-                                           placeholder="e.g., 5">
+                            <!-- Bolts/Rebar -->
+                            <div class="dims-bolts-rebar dims-section" style="display:none;">
+                                <div
+                                    style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-top: .5rem;">
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Diameter (mm)</label>
+                                        <input type="number" class="form-control" name="items[0][diameter]" min="0"
+                                            step="1" placeholder="e.g., 12">
+                                    </div>
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Length (mm)</label>
+                                        <input type="number" class="form-control" name="items[0][length]" min="0"
+                                            step="1" placeholder="e.g., 100">
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Other -->
+                            <div class="dims-other dims-section" style="display:none;">
+                                <div
+                                    style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: .5rem;">
+                                    <div class="form-group" style="margin:0;">
+                                        <label class="form-label">Unit of Measure (UOM)</label>
+                                        <select class="form-control form-select" name="items[0][uom]">
+                                            <option value="">Select UOM</option>
+                                            <option value="pcs">pcs</option>
+                                            <option value="kg">kg</option>
+                                            <option value="L">L</option>
+                                            <option value="unit">unit</option>
+                                            <option value="set">set</option>
+                                            <option value="m">m</option>
+                                            <option value="roll">roll</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
                         </div>
+
                         <div class="form-group">
                             <label class="form-label">Payment Terms</label>
                             <select class="form-control form-select" name="items[0][payment_terms]">
@@ -188,7 +317,6 @@
                                 <option value="90 Days">90 Days</option>
                             </select>
                         </div>
-
                     </div>
                 </div>
                 {% endif %}
@@ -200,13 +328,9 @@
 
             <div class="d-flex gap-1 mt-2">
                 <button type="submit" class="btn btn-primary">
-                    <i class="fas fa-save"></i> {% if is_edit %}Save & Continue{% else %}Continue to Supplier Selection{% endif %}
+                    <i class="fas fa-save"></i> Save & Continue
                 </button>
-                {% if is_edit %}
-                <a href="{{ url_for('task_list') }}" class="btn btn-secondary">Cancel</a>
-                {% else %}
                 <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancel</a>
-                {% endif %}
             </div>
         </form>
     </div>
@@ -214,146 +338,249 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- Categories data for JavaScript -->
+<script id="categoriesData" type="application/json">
+{{ categories | map(attribute='name') | list | tojson }}
+</script>
+<script id="categoryItemsData" type="application/json">
+{{ category_items_map | tojson }}
+</script>
+
 <script>
-    console.log('PR Form Script Loading...');
+    // Category to dimension type mapping
+    const CATEGORY_DIMS = {
+        'Steel Plates': 'steel-plates',
+        'Stainless Steel': 'steel-plates',
+        'Angle Bar': 'angle-bar',
+        'Bolts, Fasteners': 'bolts-rebar',
+        'Rebar': 'bolts-rebar'
+    };
 
-    let initializationCount = 0;
-
-    document.addEventListener('DOMContentLoaded', function () {
-        initializationCount++;
-        console.log('DOM Content Loaded - Initialization #:', initializationCount);
-
-        let itemCount = {{ existing_items| length if existing_items else 1
-    }};
-    console.log('Initial itemCount:', itemCount);
-
-    // Remove ALL existing event listeners from the add button
-    const addButton = document.getElementById('addItem');
-    if (addButton) {
-        console.log('Add button found, replacing it...');
-        const newAddButton = addButton.cloneNode(true);
-        addButton.parentNode.replaceChild(newAddButton, addButton);
-
-        let clickCount = 0;
-        newAddButton.addEventListener('click', function (e) {
-            clickCount++;
-            console.log('Add button clicked - Click #:', clickCount);
-            e.preventDefault();
-            e.stopPropagation();
-
-            itemCount++;
-            console.log('Adding item #:', itemCount);
-
-            let categoriesOptions = '<option value="">Select Category</option>';
-            {% for category in categories %}
-            categoriesOptions += '<option value="{{ category.name }}">{{ category.name }}</option>';
-            {% endfor %}
-
-            const newItem = `
-                <div class="card mb-2 item-row">
-                    <div class="d-flex justify-between align-center">
-                        <h4>Item ${itemCount}</h4>
-                        <button type="button" class="btn btn-danger remove-item">
-                            <i class="fas fa-times"></i> Remove
-                        </button>
-                    </div>
-                    <div class="grid-2">
-                        <div class="form-group">
-                            <label class="form-label required">Item Name</label>
-                            <input type="text" class="form-control" name="items[${itemCount - 1}][item_name]" required>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label required">Item Category</label>
-                            <select class="form-control form-select" name="items[${itemCount - 1}][item_category]" required>
-                                ${categoriesOptions}
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Brand / Specification</label>
-                            <input type="text" class="form-control" name="items[${itemCount - 1}][brand_specification]" 
-                                   placeholder="Preferred brand or specification">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label required">Quantity</label>
-                            <input type="number" class="form-control" name="items[${itemCount - 1}][quantity]" min="1" required>
-                        </div>
-
-                        <div class="form-group" style="grid-column: 1 / -1;">
-                            <label class="form-label">Dimensions</label>
-
-                            <div style="display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-top: .5rem;">
-                                <div class="form-group" style="margin:0;">
-                                    <label class="form-label">Width (mm)</label>
-                                    <input type="number" class="form-control dimension-input"
-                                            name="items[${itemCount - 1}][width]"
-                                            min="0" step="1" inputmode="numeric"
-                                            placeholder="e.g., 10">
-                                </div>
-
-                                <div class="form-group" style="margin:0;">
-                                    <label class="form-label">Length (mm)</label>
-                                    <input type="number" class="form-control dimension-input"
-                                            name="items[${itemCount - 1}][length]"
-                                            min="0" step="1" inputmode="numeric"
-                                            placeholder="e.g., 100">
-                                </div>
-
-                                <div class="form-group" style="margin:0;">
-                                    <label class="form-label">Thickness (mm)</label>
-                                    <input type="number" class="form-control dimension-input"
-                                            name="items[${itemCount - 1}][thickness]"
-                                            min="0" step="1" inputmode="numeric"
-                                            placeholder="e.g., 5">
-                                </div>
-                            </div>
-                        </div>
-
-                        <div class="form-group">
-                            <label class="form-label">Payment Terms</label>
-                            <select class="form-control form-select" name="items[${itemCount - 1}][payment_terms]">
-                                <option value="">Empty</option>
-                                <option value="Cash">Cash</option>
-                                <option value="30 Days">30 Days</option>
-                                <option value="60 Days">60 Days</option>
-                                <option value="90 Days">90 Days</option>
-                            </select>
-                        </div>
-                    </div>
-                </div>
-            `;
-
-            document.getElementById('itemsContainer').insertAdjacentHTML('beforeend', newItem);
-            updateItemNumbers();
-        });
+    function getDimType(category) {
+        return CATEGORY_DIMS[category] || 'other';
     }
 
-    // Rest of your functions...
-    document.getElementById('itemsContainer').addEventListener('click', function(e) {
-        if (e.target.closest('.remove-item')) {
-            e.preventDefault();
-            const row = e.target.closest('.item-row');
-            if (row) {
-                row.remove();
-                updateItemNumbers();
+    function updateDimensionFields(itemRow) {
+        const select = itemRow.querySelector('.category-select');
+        const category = select ? select.value : '';
+        const dimType = getDimType(category);
+
+        // Hide all dimension sections
+        itemRow.querySelectorAll('.dims-section').forEach(section => {
+            section.style.display = 'none';
+        });
+
+        // Show the appropriate section
+        if (category) {
+            const targetClass = '.dims-' + dimType;
+            const targetSection = itemRow.querySelector(targetClass);
+            if (targetSection) {
+                targetSection.style.display = 'block';
             }
         }
-    });
 
-    function updateItemNumbers() {
-        const items = document.querySelectorAll('.item-row');
-        console.log('Current items count:', items.length);
-        let currentCount = 0;
-        items.forEach((item) => {
-            currentCount++;
-            const title = item.querySelector('h4');
-            if (title) {
-                title.textContent = `Item ${currentCount}`;
-            }
-        });
-        itemCount = currentCount;
+        updateItemSuggestions(itemRow, category);
     }
 
-    updateItemNumbers();
-});
+    function updateItemSuggestions(row, category) {
+        const dataList = row.querySelector('datalist');
+        if (!dataList) return;
+
+        // Get category items map
+        const categoryItemsData = JSON.parse(document.getElementById('categoryItemsData').textContent);
+
+        dataList.innerHTML = '';
+        if (category && categoryItemsData[category]) {
+            categoryItemsData[category].forEach(item => {
+                const option = document.createElement('option');
+                option.value = item;
+                dataList.appendChild(option);
+            });
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function () {
+        const container = document.getElementById('itemsContainer');
+        let itemCount = parseInt(container.getAttribute('data-item-count') || '1', 10);
+
+        // Initialize dimension fields for existing items
+        document.querySelectorAll('.item-row').forEach(row => {
+            updateDimensionFields(row);
+        });
+
+        // Listen for category changes
+        document.getElementById('itemsContainer').addEventListener('change', function (e) {
+            if (e.target.classList.contains('category-select')) {
+                const itemRow = e.target.closest('.item-row');
+                updateDimensionFields(itemRow);
+            }
+        });
+
+        // Add item button
+        const addButton = document.getElementById('addItem');
+        if (addButton) {
+            const newAddButton = addButton.cloneNode(true);
+            addButton.parentNode.replaceChild(newAddButton, addButton);
+
+            newAddButton.addEventListener('click', function (e) {
+                e.preventDefault();
+                e.stopPropagation();
+                itemCount++;
+
+                // Build categories options from JSON data
+                const categoriesData = JSON.parse(document.getElementById('categoriesData').textContent);
+                let categoriesOptions = '<option value="">Select Category</option>';
+                categoriesData.forEach(function (catName) {
+                    categoriesOptions += '<option value="' + catName + '">' + catName + '</option>';
+                });
+
+                const newItem = `
+                    <div class="card mb-2 item-row" data-index="${itemCount - 1}">
+                        <div class="d-flex justify-between align-center">
+                            <h4>Item ${itemCount}</h4>
+                            <button type="button" class="btn btn-danger remove-item">
+                                <i class="fas fa-times"></i> Remove
+                            </button>
+                        </div>
+                        <div class="grid-2">
+                            <div class="form-group">
+                                <label class="form-label required">Item Name</label>
+                                <input type="text" class="form-control" name="items[${itemCount - 1}][item_name]" list="items-list-${itemCount - 1}" required>
+                                <datalist id="items-list-${itemCount - 1}"></datalist>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label required">Item Category</label>
+                                <select class="form-control form-select category-select" name="items[${itemCount - 1}][item_category]" required>
+                                    ${categoriesOptions}
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Brand / Specification</label>
+                                <input type="text" class="form-control" name="items[${itemCount - 1}][brand]" placeholder="Preferred brand">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label required">Quantity</label>
+                                <input type="number" class="form-control" name="items[${itemCount - 1}][quantity]" min="1" required>
+                            </div>
+                            
+                            <div class="form-group dimensions-container" style="grid-column: 1 / -1;">
+                                <label class="form-label">Dimensions</label>
+                                
+                                <div class="dims-steel-plates dims-section" style="display:none;">
+                                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-top: .5rem;">
+                                        <div class="form-group" style="margin:0;">
+                                            <label class="form-label">Width (mm)</label>
+                                            <input type="number" class="form-control" name="items[${itemCount - 1}][width]" min="0" step="1" placeholder="e.g., 1200">
+                                        </div>
+                                        <div class="form-group" style="margin:0;">
+                                            <label class="form-label">Length (mm)</label>
+                                            <input type="number" class="form-control" name="items[${itemCount - 1}][length]" min="0" step="1" placeholder="e.g., 2400">
+                                        </div>
+                                        <div class="form-group" style="margin:0;">
+                                            <label class="form-label">Thickness (mm)</label>
+                                            <input type="number" class="form-control" name="items[${itemCount - 1}][thickness]" min="0" step="1" placeholder="e.g., 10">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="dims-angle-bar dims-section" style="display:none;">
+                                    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; margin-top: .5rem;">
+                                        <div class="form-group" style="margin:0;">
+                                            <label class="form-label">A (mm)</label>
+                                            <input type="number" class="form-control" name="items[${itemCount - 1}][dim_a]" min="0" step="1" placeholder="e.g., 50">
+                                        </div>
+                                        <div class="form-group" style="margin:0;">
+                                            <label class="form-label">B (mm)</label>
+                                            <input type="number" class="form-control" name="items[${itemCount - 1}][dim_b]" min="0" step="1" placeholder="e.g., 50">
+                                        </div>
+                                        <div class="form-group" style="margin:0;">
+                                            <label class="form-label">Length (mm)</label>
+                                            <input type="number" class="form-control" name="items[${itemCount - 1}][length]" min="0" step="1" placeholder="e.g., 6000">
+                                        </div>
+                                        <div class="form-group" style="margin:0;">
+                                            <label class="form-label">Thickness (mm)</label>
+                                            <input type="number" class="form-control" name="items[${itemCount - 1}][thickness]" min="0" step="1" placeholder="e.g., 5">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="dims-bolts-rebar dims-section" style="display:none;">
+                                    <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; margin-top: .5rem;">
+                                        <div class="form-group" style="margin:0;">
+                                            <label class="form-label">Diameter (mm)</label>
+                                            <input type="number" class="form-control" name="items[${itemCount - 1}][diameter]" min="0" step="1" placeholder="e.g., 12">
+                                        </div>
+                                        <div class="form-group" style="margin:0;">
+                                            <label class="form-label">Length (mm)</label>
+                                            <input type="number" class="form-control" name="items[${itemCount - 1}][length]" min="0" step="1" placeholder="e.g., 100">
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="dims-other dims-section" style="display:none;">
+                                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: .5rem;">
+                                        <div class="form-group" style="margin:0;">
+                                            <label class="form-label">Unit of Measure (UOM)</label>
+                                            <select class="form-control form-select" name="items[${itemCount - 1}][uom]">
+                                                <option value="">Select UOM</option>
+                                                <option value="pcs">pcs</option>
+                                                <option value="kg">kg</option>
+                                                <option value="L">L</option>
+                                                <option value="unit">unit</option>
+                                                <option value="set">set</option>
+                                                <option value="m">m</option>
+                                                <option value="roll">roll</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label class="form-label">Payment Terms</label>
+                                <select class="form-control form-select" name="items[${itemCount - 1}][payment_terms]">
+                                    <option value="">Empty</option>
+                                    <option value="Cash">Cash</option>
+                                    <option value="30 Days">30 Days</option>
+                                    <option value="60 Days">60 Days</option>
+                                    <option value="90 Days">90 Days</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                `;
+
+                document.getElementById('itemsContainer').insertAdjacentHTML('beforeend', newItem);
+                updateItemNumbers();
+            });
+        }
+
+        // Remove item handler
+        document.getElementById('itemsContainer').addEventListener('click', function (e) {
+            if (e.target.closest('.remove-item')) {
+                e.preventDefault();
+                const row = e.target.closest('.item-row');
+                if (row) {
+                    row.remove();
+                    updateItemNumbers();
+                }
+            }
+        });
+
+        function updateItemNumbers() {
+            const items = document.querySelectorAll('.item-row');
+            let currentCount = 0;
+            items.forEach((item) => {
+                currentCount++;
+                const title = item.querySelector('h4');
+                if (title) {
+                    title.textContent = `Item ${currentCount}`;
+                }
+            });
+            itemCount = currentCount;
+        }
+
+        updateItemNumbers();
+    });
 </script>
 {% endblock %}

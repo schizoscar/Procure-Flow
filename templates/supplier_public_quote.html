@@ -1,11 +1,13 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Submit Quote - {{ task.task_name }}</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
+
 <body>
     <div class="container" style="padding:2rem; max-width: 900px; margin: 0 auto;">
         <div class="card">
@@ -26,40 +28,70 @@
                             <p class="text-muted">
                                 {{ item.specification or '' }}
                                 {% if item.width or item.length or item.thickness %}
-                                    <br>Dims: {{ item.width or '-' }} x {{ item.length or '-' }} x {{ item.thickness or '-' }}
+                                <br>Dims: {{ item.width or '-' }} x {{ item.length or '-' }} x {{ item.thickness or '-'
+                                }}
                                 {% endif %}
                             </p>
                         </div>
                         <div class="card-body grid-2">
                             <div class="form-group">
                                 <label class="form-label">Unit Price (RM)</label>
-                                <input type="number" step="0.01" min="0" class="form-control" name="unit_price_{{ item.id }}">
+                                <input type="number" step="0.01" min="0" class="form-control"
+                                    name="unit_price_{{ item.id }}">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Delivery Lead Time</label>
-                                <input type="text" class="form-control" name="lead_time_{{ item.id }}" placeholder="e.g. 14 days">
+                                <input type="text" class="form-control" name="lead_time_{{ item.id }}"
+                                    placeholder="e.g. 14 days">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Stock Availability</label>
-                                <input type="text" class="form-control" name="stock_availability_{{ item.id }}" placeholder="e.g., 10 in stock or Available">
+                                <input type="text" class="form-control" name="stock_availability_{{ item.id }}"
+                                    placeholder="e.g., 10 in stock or Available">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Warranty (If Applicable)</label>
-                                <input type="text" class="form-control" name="warranty_{{ item.id }}" placeholder="e.g., 1 year">
+                                <input type="text" class="form-control" name="warranty_{{ item.id }}"
+                                    placeholder="e.g., 1 year">
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Mill Certificate / Certificate of Analysis (COA)</label>
-                                <input type="file" class="form-control" name="cert_{{ item.id }}" accept=".pdf" id="cert_{{ item.id }}">
+                                <input type="file" class="form-control" name="cert_{{ item.id }}" accept=".pdf"
+                                    id="cert_{{ item.id }}">
                                 <small class="text-muted">PDF files only</small>
                                 <div id="cert_filename_{{ item.id }}" style="margin-top:0.5rem;display:none;">
-                                    <small class="text-success"><i class="fas fa-check"></i> <span id="cert_name_{{ item.id }}"></span></small>
+                                    <small class="text-success"><i class="fas fa-check"></i> <span
+                                            id="cert_name_{{ item.id }}"></span></small>
                                 </div>
                             </div>
                             <div class="form-group">
-                                <label class="form-label">O.N.O.</label>
+                                <label class="form-label">O.N.O. (On Nearest Offer)</label>
                                 <div style="display:flex;align-items:center;gap:0.5rem;">
-                                    <input type="checkbox" name="ono_{{ item.id }}">
-                                    <span>On Nearest Offer</span>
+                                    <input type="checkbox" name="ono_{{ item.id }}" class="ono-checkbox"
+                                        data-item-id="{{ item.id }}">
+                                    <span>Check if offering alternate dimensions</span>
+                                </div>
+                                <div id="ono_fields_{{ item.id }}" class="ono-dimensions"
+                                    style="display:none; margin-top:0.75rem; padding:0.75rem; background:#f8f9fa; border-radius:6px;">
+                                    <label class="form-label" style="font-weight:600;">O.N.O. Dimensions (mm)</label>
+                                    <div
+                                        style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem; margin-top:0.5rem;">
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">Width</label>
+                                            <input type="number" class="form-control" name="ono_width_{{ item.id }}"
+                                                min="0" step="1" placeholder="mm">
+                                        </div>
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">Length</label>
+                                            <input type="number" class="form-control" name="ono_length_{{ item.id }}"
+                                                min="0" step="1" placeholder="mm">
+                                        </div>
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">Thickness</label>
+                                            <input type="number" class="form-control" name="ono_thickness_{{ item.id }}"
+                                                min="0" step="1" placeholder="mm">
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                             <div class="form-group">
@@ -76,24 +108,36 @@
     </div>
 
     <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        // Handle file input change to display filename
-        {% for item in pr_items %}
-        const certInput_{{ item.id }} = document.getElementById('cert_{{ item.id }}');
-        if (certInput_{{ item.id }}) {
-            certInput_{{ item.id }}.addEventListener('change', function() {
-                const filenameDiv = document.getElementById('cert_filename_{{ item.id }}');
-                const filenameSpan = document.getElementById('cert_name_{{ item.id }}');
-                if (this.files && this.files.length > 0) {
-                    filenameSpan.textContent = this.files[0].name;
-                    filenameDiv.style.display = 'block';
-                } else {
-                    filenameDiv.style.display = 'none';
-                }
+        document.addEventListener('DOMContentLoaded', function () {
+            // Handle O.N.O. checkbox toggle
+            document.querySelectorAll('.ono-checkbox').forEach(function (checkbox) {
+                checkbox.addEventListener('change', function () {
+                    const itemId = this.getAttribute('data-item-id');
+                    const fieldsDiv = document.getElementById('ono_fields_' + itemId);
+                    if (fieldsDiv) {
+                        fieldsDiv.style.display = this.checked ? 'block' : 'none';
+                    }
+                });
             });
-        }
-        {% endfor %}
-    });
+
+            // Handle file input change to display filename
+            document.querySelectorAll('input[type="file"][name^="cert_"]').forEach(function (input) {
+                input.addEventListener('change', function () {
+                    const itemId = this.name.replace('cert_', '');
+                    const filenameDiv = document.getElementById('cert_filename_' + itemId);
+                    const filenameSpan = document.getElementById('cert_name_' + itemId);
+                    if (filenameDiv && filenameSpan) {
+                        if (this.files && this.files.length > 0) {
+                            filenameSpan.textContent = this.files[0].name;
+                            filenameDiv.style.display = 'block';
+                        } else {
+                            filenameDiv.style.display = 'none';
+                        }
+                    }
+                });
+            });
+        });
     </script>
 </body>
+
 </html>
