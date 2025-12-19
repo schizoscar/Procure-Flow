@@ -35,7 +35,7 @@
                     </div>
                     <div class="form-group">
                         <label class="form-label">Stock Availability</label>
-                        <input type="text" class="form-control" name="stock_availability_{{ item.id }}" placeholder="e.g., 10 in stock or Available">
+                        <input type="text" class="form-control" name="stock_availability_{{ item.id }}" value="{{ existing.stock_availability if existing else '' }}" placeholder="e.g., 10 in stock or Available">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Warranty (If Applicable)</label>
