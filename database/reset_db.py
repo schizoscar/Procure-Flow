@@ -129,7 +129,7 @@ def reset_database():
     
     for sql in tables_sql:
         cursor.execute(sql)
-        print(f"✅ Created table: {sql.split(' ')[2]}")
+        print(f"Created table: {sql.split(' ')[2]}")
     
     # Add default data
     from werkzeug.security import generate_password_hash
