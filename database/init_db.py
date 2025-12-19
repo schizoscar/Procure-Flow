@@ -147,6 +147,16 @@ def init_database():
         )
     ''')
 
+    # Category Items table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS category_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            FOREIGN KEY (category_id) REFERENCES categories (id)
+        )
+    ''')
+
     # Backfill missing columns on existing task_suppliers table
     def ensure_column(table, column, col_type):
         cursor.execute(f"PRAGMA table_info({table})")
@@ -157,12 +167,22 @@ def init_database():
     ensure_column('task_suppliers', 'initial_sent_at', 'TIMESTAMP')
     ensure_column('task_suppliers', 'followup_sent_at', 'TIMESTAMP')
     ensure_column('task_suppliers', 'replied_at', 'TIMESTAMP')
+    # pr_items dimension columns
     ensure_column('pr_items', 'width', 'INTEGER')
     ensure_column('pr_items', 'length', 'INTEGER')
     ensure_column('pr_items', 'thickness', 'INTEGER')
+    ensure_column('pr_items', 'diameter', 'INTEGER')
+    ensure_column('pr_items', 'dim_a', 'INTEGER')
+    ensure_column('pr_items', 'dim_b', 'INTEGER')
+    ensure_column('pr_items', 'uom', 'TEXT')
     ensure_column('pr_items', 'payment_terms', 'TEXT')
+    # supplier_quotes columns
     ensure_column('supplier_quotes', 'payment_terms', 'TEXT')
     ensure_column('supplier_quotes', 'ono', 'BOOLEAN')
+    ensure_column('supplier_quotes', 'ono_width', 'INTEGER')
+    ensure_column('supplier_quotes', 'ono_length', 'INTEGER')
+    ensure_column('supplier_quotes', 'ono_thickness', 'INTEGER')
+    ensure_column('supplier_quotes', 'warranty', 'TEXT')
     ensure_column('supplier_quotes', 'stock_availability', 'TEXT')
     ensure_column('supplier_quotes', 'cert', 'TEXT')
 
