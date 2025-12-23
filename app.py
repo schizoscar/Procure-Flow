@@ -162,7 +162,9 @@ def generate_email_content(pr_items, task_name):
     items_html = "<ul>"
     for item in pr_items:
         # Build dimensions display based on category
+        item = dict(item) if item is not None else {}
         category = (item.get('item_category') or '').strip()
+
         dims = 'N/A'
         if category in ['Steel Plates', 'Stainless Steel']:
             w = item.get('width') or ''
@@ -184,8 +186,14 @@ def generate_email_content(pr_items, task_name):
                 dims = f"D={d}mm, L={l}mm"
         else:
             uom = item.get('uom') or ''
-            if uom:
+            uom_qty = item.get('uom_qty') or ''
+            if uom_qty and uom:
+                dims = f"{uom_qty} {uom}"
+            elif uom_qty:
+                dims = f"Qty: {uom_qty}"
+            elif uom:
                 dims = f"UOM: {uom}"
+
         
         items_html += f"""
         <li>
@@ -240,19 +248,25 @@ def dashboard():
     conn = get_db_connection()
     
     # Get recent tasks (for admin, all tasks; for user, only their tasks)
+    # Get recent tasks (for admin, all tasks; for user, only their tasks)
     if session.get('role') == 'admin':
         recent_tasks = conn.execute('''
-            SELECT * FROM tasks 
-            ORDER BY created_at DESC 
+            SELECT t.*,
+                (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
+            FROM tasks t
+            ORDER BY t.created_at DESC
             LIMIT 10
         ''').fetchall()
     else:
         recent_tasks = conn.execute('''
-            SELECT * FROM tasks 
-            WHERE user_id = ?
-            ORDER BY created_at DESC 
+            SELECT t.*,
+                (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
+            FROM tasks t
+            WHERE t.user_id = ?
+            ORDER BY t.created_at DESC
             LIMIT 10
         ''', (session['user_id'],)).fetchall()
+
     
     # Get stats for admin dashboard
     stats = None
@@ -430,8 +444,8 @@ def new_task(task_id=None):
         item_index = 0
         while f'items[{item_index}][item_name]' in request.form:
             items.append({
-                'item_name': request.form[f'items[{item_index}][item_name]'],
                 'item_category': request.form[f'items[{item_index}][item_category]'],
+                'item_name': request.form[f'items[{item_index}][item_name]'],
                 'brand': request.form.get(f'items[{item_index}][brand]') or None,
                 'quantity': request.form.get(f'items[{item_index}][quantity]') or None,
                 'payment_terms': request.form.get(f'items[{item_index}][payment_terms]') or None,
@@ -445,7 +459,9 @@ def new_task(task_id=None):
                 # Bolts/Rebar dimensions
                 'diameter': request.form.get(f'items[{item_index}][diameter]') or None,
                 # Other UOM
+                'uom_qty': request.form.get(f'items[{item_index}][uom_qty]') or None,
                 'uom': request.form.get(f'items[{item_index}][uom]') or None,
+
             })
             item_index += 1
         
@@ -469,13 +485,13 @@ def new_task(task_id=None):
         # Add PR items with all dimension fields
         for item_data in items:
             conn.execute('''
-                INSERT INTO pr_items (task_id, item_name, item_category, brand, quantity, payment_terms,
-                                      width, length, thickness, dim_a, dim_b, diameter, uom)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO pr_items (task_id, item_category, item_name, brand, quantity, payment_terms,
+                                      width, length, thickness, dim_a, dim_b, diameter, uom_qty, uom)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 task_id_to_use,
-                item_data['item_name'],
                 item_data['item_category'],
+                item_data['item_name'],
                 item_data['brand'],
                 item_data['quantity'],
                 item_data['payment_terms'],
@@ -485,6 +501,7 @@ def new_task(task_id=None):
                 item_data.get('dim_a'),
                 item_data.get('dim_b'),
                 item_data.get('diameter'),
+                item_data.get('uom_qty'),
                 item_data.get('uom')
             ))
         
@@ -810,16 +827,20 @@ def task_list():
     if session['role'] == 'admin':
         # Admin sees all tasks
         all_tasks = conn.execute('''
-            SELECT t.*, u.username 
-            FROM tasks t 
-            LEFT JOIN users u ON t.user_id = u.id 
+            SELECT t.*,
+                u.username,
+                (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
+            FROM tasks t
+            LEFT JOIN users u ON u.id = t.user_id
             ORDER BY t.created_at DESC
         ''').fetchall()
-        
+
         my_tasks = conn.execute('''
-            SELECT * FROM tasks 
-            WHERE user_id = ? 
-            ORDER BY created_at DESC
+            SELECT t.*,
+                (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
+            FROM tasks t
+            WHERE t.user_id = ?
+            ORDER BY t.created_at DESC
         ''', (session['user_id'],)).fetchall()
         
         conn.close()
@@ -827,11 +848,13 @@ def task_list():
     else:
         # Regular users see only their tasks
         my_tasks = conn.execute('''
-            SELECT * FROM tasks 
-            WHERE user_id = ? 
-            ORDER BY created_at DESC
+            SELECT t.*,
+                (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
+            FROM tasks t
+            WHERE t.user_id = ?
+            ORDER BY t.created_at DESC
         ''', (session['user_id'],)).fetchall()
-        
+
         conn.close()
         return render_template('task_list.html', my_tasks=my_tasks)
 
@@ -1176,6 +1199,9 @@ def debug_quotes(task_id, supplier_id):
 def export_comparison(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
+    
+    BASE_COLS = 9  # 3 fixed cols + 4 dimension cols + quantity + weight
+    SUPPLIER_START_COL = BASE_COLS + 1  # 10
 
     conn = get_db_connection()
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
@@ -1287,12 +1313,26 @@ def export_comparison(task_id):
     ws = wb.active
     ws.title = "Comparison"
 
-    row1 = ["Item Name", "Brand / Specification", "Category", "Dimensions", "", "", "Quantity", "Weight (in Kg)"]
+    row1 = [
+        "Item Name",
+        "Brand / Specification",
+        "Category",
+        "Dimensions", "", "", "",   # 4 cols for dimensions
+        "Quantity",
+        "Weight (in Kg)"
+    ]
     for supplier_id, supplier_name in suppliers_list:
         row1.extend([supplier_header_label(supplier_id, supplier_name)] + [""] * (SUPPLIER_BLOCK_COLS - 1))
     ws.append(row1)
 
-    row2 = ["", "", "", "W (mm)", "L (mm)", "Thk (mm)", "", ""]
+    row2 = [
+        "", "", "",
+        "W/A/D/UOM",
+        "B",
+        "L",
+        "Thk",
+        "", ""
+    ]
     for supplier_id, supplier_name in suppliers_list:
         row2.extend([
             "Rate (RM/Kg)",
@@ -1309,6 +1349,23 @@ def export_comparison(task_id):
     bold = Font(bold=True)
     center = Alignment(horizontal="center", vertical="center")
 
+    # ---- Header styling (Row 1–2) ----
+    # "Dark Blue 60%" (common Excel look). If you want a different shade, change the hex.
+    header_fill = PatternFill(fill_type="solid", fgColor="8DB4E2")  # dark blue
+    header_font = Font(bold=True, color="0000FF")
+    header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    # Make sure we color all header cells across the full table width
+    max_col = ws.max_column
+
+    for r in (1, 2):
+        for c in range(1, max_col + 1):
+            cell = ws.cell(row=r, column=c)
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = header_align
+
+
     # Merge and center Item Name, Brand, Category (cols 1-3)
     for col in range(1, 4):
         ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
@@ -1316,32 +1373,32 @@ def export_comparison(task_id):
         cell.font = bold
         cell.alignment = center
 
-    # Merge and center Dimensions (cols 4-6 row 1)
-    ws.merge_cells(start_row=1, start_column=4, end_row=1, end_column=6)
+    # Merge and center Dimensions (now cols 4-7)
+    ws.merge_cells(start_row=1, start_column=4, end_row=1, end_column=7)
     cell = ws.cell(row=1, column=4)
     cell.font = bold
     cell.alignment = center
 
-    # Center W, L, Thk row2
-    for col in range(4, 7):
-        cell = ws.cell(row=2, column=col)
-        cell.font = bold
-        cell.alignment = center
+    # Center dim headers row2 (cols 4-7)
+    for col in range(4, 8):
+        c = ws.cell(row=2, column=col)
+        c.font = bold
+        c.alignment = center
 
-    # Merge and center Quantity and Weight (cols 7-8)
-    for col in range(7, 9):
+    # Merge and center Quantity and Weight (now cols 8-9)
+    for col in range(8, 10):
         ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
-        cell = ws.cell(row=1, column=col)
-        cell.font = bold
-        cell.alignment = center
+        c = ws.cell(row=1, column=col)
+        c.font = bold
+        c.alignment = center
 
     # Merge and center each supplier header (8 columns each)
-    col_idx = 9
+    col_idx = SUPPLIER_START_COL
     for supplier_id, supplier_name in suppliers_list:
         ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=col_idx + (SUPPLIER_BLOCK_COLS - 1))
-        cell = ws.cell(row=1, column=col_idx)
-        cell.font = bold
-        cell.alignment = center
+        c = ws.cell(row=1, column=col_idx)
+        c.font = bold
+        c.alignment = center
         col_idx += SUPPLIER_BLOCK_COLS
 
     # Format row 2 as bold and centered
@@ -1367,10 +1424,11 @@ def export_comparison(task_id):
         w = item['width'] or None
         l = item['length'] or None
         thk = item['thickness'] or None
-        dim_a = item.get('dim_a') or None
-        dim_b = item.get('dim_b') or None
-        diameter = item.get('diameter') or None
-        uom = item.get('uom') or None
+        dim_a = item['dim_a'] or None
+        dim_b = item['dim_b'] or None
+        diameter = item['diameter'] or None
+        uom_qty = item['uom_qty'] or None
+        uom = item['uom'] or None
 
         # Calculate weight based on category
         weight = ""
@@ -1418,25 +1476,36 @@ def export_comparison(task_id):
             weight = "N/A"
 
         # Build dimension display based on category
-        dim_display = ['', '', '']  # W/L/Thk or A/B/L/Thk or D/L or UOM
-        if category in ['Steel Plates', 'Stainless Steel']:
-            dim_display = [w or '', l or '', thk or '']
-        elif category == 'Angle Bar':
-            # Show as: A=x, B=y, L=z, Thk=t
-            dim_display = [f"A={dim_a or ''}, B={dim_b or ''}", l or '', thk or '']
-        elif category in ['Rebar', 'Bolts, Fasteners']:
-            dim_display = [f"D={diameter or ''}", l or '', '']
+        # dim_display order = [Dim1, Dim2, Dim3, Dim4]
+        # Dim1 = W/A/D/UOMQty, Dim2 = B, Dim3 = L, Dim4 = Thk
+        dim_display = ["", "", "", ""]
+
+        if category in ["Steel Plates", "Stainless Steel"]:
+            # W -> Dim1, L -> Dim3, Thk -> Dim4
+            dim_display = [w or "", "", l or "", thk or ""]
+
+        elif category == "Angle Bar":
+            # A -> Dim1, B -> Dim2, L -> Dim3, Thk -> Dim4
+            dim_display = [dim_a or "", dim_b or "", l or "", thk or ""]
+
+        elif category in ["Rebar", "Bolts, Fasteners"]:
+            # D -> Dim1, L -> Dim3
+            dim_display = [diameter or "", "", l or "", ""]
+
         else:
-            dim_display = [uom or '', '', '']
+            # Other: UOM integer only goes to Dim1 (as you requested)
+            dim_display = [uom_qty or "", "", "", ""]
+
 
         row = [
-            item['item_name'],
-            item['brand'] or "",
+            item["item_name"],
+            item["brand"] or "",
             category,
             dim_display[0],
             dim_display[1],
             dim_display[2],
-            item['quantity'] or "",
+            dim_display[3],
+            item["quantity"] or "",
             weight
         ]
 
@@ -1447,7 +1516,7 @@ def export_comparison(task_id):
             "lead": []
         }
 
-        col_idx = 9
+        col_idx = SUPPLIER_START_COL
         for supplier_id, supplier_name in suppliers_list:
             q = quotes_by_item.get(item['id'], {}).get(supplier_id)
             if q:
@@ -1515,7 +1584,7 @@ def export_comparison(task_id):
         current_row += 1
 
     totals_row = current_row
-    ws.merge_cells(start_row=totals_row, start_column=1, end_row=totals_row, end_column=8)
+    ws.merge_cells(start_row=totals_row, start_column=1, end_row=totals_row, end_column=BASE_COLS)
     label_cell = ws.cell(row=totals_row, column=1)
     label_cell.value = "TOTAL"
     label_cell.font = Font(bold=True)
@@ -1524,7 +1593,7 @@ def export_comparison(task_id):
 
     total_cells = []  # (col, value)
     for i, (sid, _sname) in enumerate(suppliers_list):
-        total_col = 9 + i * SUPPLIER_BLOCK_COLS + OFF_TOTAL
+        total_col = SUPPLIER_START_COL + i * SUPPLIER_BLOCK_COLS + OFF_TOTAL
         c = ws.cell(row=totals_row, column=total_col)
         val = supplier_total_amounts.get(sid, 0.0)
 
@@ -1598,7 +1667,6 @@ def export_comparison(task_id):
         download_name=f"comparison_task_{task_id}.xlsx",
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
-
 
 @app.route('/suppliers')
 def suppliers():
@@ -1812,14 +1880,47 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
         else:
             items_html = "<ul>"
             for item in supplier_items:
-                items_html += f"""
-                <li>
-                    <strong>Item:</strong> {item['item_name']}<br>
-                    <strong>Dimensions:</strong> {item['specification'] or 'N/A'}<br>
-                    <strong>Brand / Specification:</strong> {item['brand'] or 'N/A'}<br>
-                    <strong>Quantity:</strong> {item['quantity']}<br>
-                </li>
-                """
+                item = dict(item)
+
+                category = (item.get('item_category') or '').strip()
+                dims = "N/A"
+                if category in ['Steel Plates', 'Stainless Steel']:
+                    w = item.get('width') or ''
+                    l = item.get('length') or ''
+                    thk = item.get('thickness') or ''
+                    if w or l or thk:
+                        dims = f"{w}mm x {l}mm x {thk}mm"
+                elif category == 'Angle Bar':
+                    a = item.get('dim_a') or ''
+                    b = item.get('dim_b') or ''
+                    l = item.get('length') or ''
+                    thk = item.get('thickness') or ''
+                    if a or b or l or thk:
+                        dims = f"A={a}mm, B={b}mm, L={l}mm, Thk={thk}mm"
+                elif category in ['Rebar', 'Bolts, Fasteners']:
+                    d = item.get('diameter') or ''
+                    l = item.get('length') or ''
+                    if d or l:
+                        dims = f"D={d}mm, L={l}mm"
+                else:
+                    uom = item.get('uom') or ''
+                    uom_qty = item.get('uom_qty') or ''
+                    if uom_qty and uom:
+                        dims = f"{uom_qty} {uom}"
+                    elif uom_qty:
+                        dims = f"Qty: {uom_qty}"
+                    elif uom:
+                        dims = f"UOM: {uom}"
+
+            items_html += f"""
+            <li>
+                <strong>Item:</strong> {item['item_name']}<br>
+                <strong>Dimensions:</strong> {dims}<br>
+                <strong>Brand / Specification:</strong> {item.get('brand') or 'N/A'}<br>
+                <strong>Quantity:</strong> {item.get('quantity')}<br>
+            </li>
+            """
+
             items_html += "</ul>"
             
             body = f"""

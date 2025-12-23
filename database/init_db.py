@@ -153,6 +153,7 @@ def init_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             category_id INTEGER NOT NULL,
             name TEXT NOT NULL,
+            UNIQUE(category_id, name),
             FOREIGN KEY (category_id) REFERENCES categories (id)
         )
     ''')
@@ -174,6 +175,7 @@ def init_database():
     ensure_column('pr_items', 'diameter', 'INTEGER')
     ensure_column('pr_items', 'dim_a', 'INTEGER')
     ensure_column('pr_items', 'dim_b', 'INTEGER')
+    ensure_column('pr_items', 'uom_qty', 'INTEGER')
     ensure_column('pr_items', 'uom', 'TEXT')
     ensure_column('pr_items', 'payment_terms', 'TEXT')
     # supplier_quotes columns
@@ -182,9 +184,17 @@ def init_database():
     ensure_column('supplier_quotes', 'ono_width', 'INTEGER')
     ensure_column('supplier_quotes', 'ono_length', 'INTEGER')
     ensure_column('supplier_quotes', 'ono_thickness', 'INTEGER')
+    ensure_column('supplier_quotes', 'ono_dim_a', 'INTEGER')
+    ensure_column('supplier_quotes', 'ono_dim_b', 'INTEGER')
+    ensure_column('supplier_quotes', 'ono_diameter', 'INTEGER')
+    ensure_column('supplier_quotes', 'ono_uom_qty', 'INTEGER')
+    ensure_column('supplier_quotes', 'ono_uom', 'TEXT')
+    ensure_column('supplier_quotes', 'lead_time', 'TEXT')
     ensure_column('supplier_quotes', 'warranty', 'TEXT')
     ensure_column('supplier_quotes', 'stock_availability', 'TEXT')
     ensure_column('supplier_quotes', 'cert', 'TEXT')
+    ensure_column('supplier_quotes', 'notes', 'TEXT')
+
 
     # Migrate existing numeric total_price into stock_availability (text) if present
     cursor.execute("PRAGMA table_info(supplier_quotes)")
@@ -206,11 +216,164 @@ def init_database():
 
     # ============== uncomment on initial setup ==============
     '''
-    # Insert some default categories
-    default_categories = ['Bolts, Fasteners', 'Calibration Services', 'Casting Services', 'Chemical Products', 'Construction Materials, Grout, Epoxy', 'Construction Services', 'Galvanizing Services', 'Hardware, Consumable Products', 'Hydraulic Equipments, Services', 'Logistic Services', 'Lubricant Products', 'Measuring Instruments & Equipments', 'PTFE', 'Paint Coating', 'Rubber Products', 'Stainless Steel', 'Steel Plates', 'Welding Equipments, Machinery, Tools']
+    # Insert default categories
+    default_categories = [
+        'Angle Bar', 'Bolts, Fasteners', 'Calibration Services', 'Casting Services',
+        'Chemical Products', 'Construction Materials, Grout, Epoxy',
+        'Construction Services', 'Galvanizing Services',
+        'Hardware, Consumable Products', 'Hydraulic Equipments, Services',
+        'Logistic Services', 'Lubricant Products', 'Measuring Instruments & Equipments',
+        'PTFE', 'Paint Coating', 'Rebar', 'Rubber Products',
+        'Stainless Steel', 'Steel Plates', 'Welding Equipments, Machinery, Tools',
+        'Office Supplies'
+    ]
     for category in default_categories:
         cursor.execute('INSERT OR IGNORE INTO categories (name) VALUES (?)', (category,))
+
+    # Default item names per category
+    category_items_map = {
+        'Steel Plates': [
+            'Steel Plates',
+            'Round Bar',
+            'Flat Bar',
+            'I-Beam'
+        ],
+        'Stainless Steel': [
+            'Stainless Steel Plates',
+            'Brass Flat Bar'
+        ],
+        'Bolts, Fasteners': [
+            'Bolts',
+            'Nuts',
+            'Washers',
+            'Stud Bar'
+        ],
+        'PTFE': [
+            'Plain PTFE',
+            'Etched PTFE',
+            'Dimpled PTFE',
+            'Etched PTFE Tape',
+            'UHMW-PE'
+        ],
+        'Rubber Products': [
+            'Compression Seals',
+            'Rubber Seals',
+            'Nylon Cord',
+            'SMR 20 CV',
+            'SMR 20',
+            'Customised Reclaimed Rubber',
+            'S40 V',
+            'Skim Block'
+        ],
+        'Paint Coating': [
+            'Paint Coating',
+            'Trichloroethylene',
+            'Chemlok',
+            'Megum'
+        ],
+        'Chemical Products': [
+            'Flexsys-Santoflex 77PD',
+            'Carbon Black 330',
+            'Carbon Black N220',
+            'Toulene',
+            'Tuladan Oil',
+            'Stearic Acid',
+            'TMTD',
+            'CBS',
+            'PVI',
+            'MBTS',
+            'TMQ',
+            'H3236 WAX',
+            'Sulphur',
+            '6PPD',
+            'ETU',
+            'OPDA',
+            'CLAY',
+            'DFR 903'
+        ],
+        'Lubricant Products': [
+            'Silicon Grease for PTFE',
+            'Hydraulic Oil',
+            'Engine Oil',
+            'Compressor Oil'
+        ],
+        'Casting Services': [
+            'Steel Casting'
+        ],
+        'Measuring Instruments & Equipments': [
+            'Measuring Instruments',
+            'PLC'
+        ],
+        'Welding Equipments, Machinery, Tools': [
+            'Machineries',
+            'Motors',
+            'Welding Machine',
+            'Lathe Machine',
+            'Milling Machine',
+            'CNC Lathing Machine',
+            'Laser Cutting Machine',
+            'Rubber Moulding Press',
+            'Grinder',
+            'Handrill',
+            'Cutting Tools',
+            'Grinding Disc',
+            'Cutting Disc',
+            'Drill Bits',
+            'Machine Taps',
+            'Blower',
+            'Grout Pump'
+        ],
+        'Construction Materials, Grout, Epoxy': [
+            'Non Shrink Grout',
+            'Construction Epoxy'
+        ],
+        'Calibration Services': [
+            'Calibration Services for Measuring Instruments & Equipments'
+        ],
+        'Galvanizing Services': [
+            'Steel Plates Galvanizing Services'
+        ],
+        'Hardware, Consumable Products': [
+            'Miscellaneous Hardware',
+            'Tools'
+        ],
+        'Hydraulic Equipments, Services': [
+            'Hydraulic Jacks',
+            'Manifold',
+            'Hose',
+            'Pressure Gauge'
+        ],
+        'Logistic Services': [
+            'Logistic Services',
+            'Delivery Services'
+        ],
+        'Office Supplies': [
+            'Stationery Products',
+            'Printing Services'
+        ],
+        'Angle Bar': [
+            'Angle Bar'
+        ],
+        'Rebar': [
+            'Rebar'
+        ],
+    }
+
+    for cat_name, items in category_items_map.items():
+        cursor.execute('INSERT OR IGNORE INTO categories (name) VALUES (?)', (cat_name,))
+        cursor.execute('SELECT id FROM categories WHERE name = ?', (cat_name,))
+        row = cursor.fetchone()
+        if not row:
+            continue
+        cat_id = row[0]
+
+        for item_name in items:
+            cursor.execute(
+                'INSERT OR IGNORE INTO category_items (category_id, name) VALUES (?, ?)',
+                (cat_id, item_name)
+            )
     '''
+
 
     conn.commit()
     conn.close()

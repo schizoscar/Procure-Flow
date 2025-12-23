@@ -57,18 +57,97 @@
                     <div class="form-group">
                         <label class="form-label">O.N.O.</label>
                         <div style="display:flex;align-items:center;gap:0.5rem;">
-                            <input type="checkbox" name="ono_{{ item.id }}" {% if existing and existing.ono %}checked{% endif %}>
+                            <input type="checkbox"
+                                class="ono-checkbox"
+                                name="ono_{{ item.id }}"
+                                data-item-id="{{ item.id }}"
+                                data-dim-type="{% if item.item_category in ['Steel Plates','Stainless Steel'] %}steel-plates{% elif item.item_category == 'Angle Bar' %}angle-bar{% elif item.item_category in ['Bolts, Fasteners','Rebar'] %}bolts-rebar{% else %}other{% endif %}"
+                                {% if existing and existing.ono %}checked{% endif %}>
                             <span>On Nearest Offer</span>
                         </div>
                     </div>
-                    <div class="form-group" id="ono_dims_{{ item.id }}" style="display:none;">
-                        <label class="form-label">O.N.O. Dimensions (mm)</label>
-                        <div style="display:flex;gap:0.5rem;align-items:center;">
-                            <input type="number" step="1" min="0" class="form-control" name="ono_width_{{ item.id }}" id="ono_width_{{ item.id }}" placeholder="Width (mm)">
-                            <input type="number" step="1" min="0" class="form-control" name="ono_length_{{ item.id }}" id="ono_length_{{ item.id }}" placeholder="Length (mm)">
-                            <input type="number" step="1" min="0" class="form-control" name="ono_thickness_{{ item.id }}" id="ono_thickness_{{ item.id }}" placeholder="Thickness (mm)">
+
+                    <div class="form-group ono-dims-wrap" id="ono_dims_{{ item.id }}" style="display:none;">
+                        <label class="form-label">O.N.O. Dimensions</label>
+
+                        <!-- Steel Plates / Stainless Steel: W, L, Thk -->
+                        <div class="ono-dims-section ono-steel-plates" style="display:none;">
+                            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem; align-items:center;">
+                                <input type="number" step="1" min="0" class="form-control"
+                                    name="ono_width_{{ item.id }}" id="ono_width_{{ item.id }}"
+                                    value="{{ existing.ono_width if existing else '' }}"
+                                    placeholder="Width (mm)">
+                                <input type="number" step="1" min="0" class="form-control"
+                                    name="ono_length_{{ item.id }}" id="ono_length_{{ item.id }}"
+                                    value="{{ existing.ono_length if existing else '' }}"
+                                    placeholder="Length (mm)">
+                                <input type="number" step="1" min="0" class="form-control"
+                                    name="ono_thickness_{{ item.id }}" id="ono_thickness_{{ item.id }}"
+                                    value="{{ existing.ono_thickness if existing else '' }}"
+                                    placeholder="Thickness (mm)">
+                            </div>
                         </div>
-                        <small class="text-muted">If provided, a new item entry will be created for these dimensions and used in comparison.</small>
+
+                        <!-- Angle Bar: A, B, L, Thk -->
+                        <div class="ono-dims-section ono-angle-bar" style="display:none;">
+                            <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem; align-items:center;">
+                                <input type="number" step="1" min="0" class="form-control"
+                                    name="ono_dim_a_{{ item.id }}" id="ono_dim_a_{{ item.id }}"
+                                    value="{{ existing.ono_dim_a if existing and existing.ono_dim_a is defined else '' }}"
+                                    placeholder="A (mm)">
+                                <input type="number" step="1" min="0" class="form-control"
+                                    name="ono_dim_b_{{ item.id }}" id="ono_dim_b_{{ item.id }}"
+                                    value="{{ existing.ono_dim_b if existing and existing.ono_dim_b is defined else '' }}"
+                                    placeholder="B (mm)">
+                                <input type="number" step="1" min="0" class="form-control"
+                                    name="ono_length_{{ item.id }}" id="ono_length_{{ item.id }}"
+                                    value="{{ existing.ono_length if existing else '' }}"
+                                    placeholder="Length (mm)">
+                                <input type="number" step="1" min="0" class="form-control"
+                                    name="ono_thickness_{{ item.id }}" id="ono_thickness_{{ item.id }}"
+                                    value="{{ existing.ono_thickness if existing else '' }}"
+                                    placeholder="Thickness (mm)">
+                            </div>
+                        </div>
+
+                        <!-- Bolts / Rebar: D, L -->
+                        <div class="ono-dims-section ono-bolts-rebar" style="display:none;">
+                            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem; align-items:center;">
+                                <input type="number" step="1" min="0" class="form-control"
+                                    name="ono_diameter_{{ item.id }}" id="ono_diameter_{{ item.id }}"
+                                    value="{{ existing.ono_diameter if existing and existing.ono_diameter is defined else '' }}"
+                                    placeholder="Diameter (mm)">
+                                <input type="number" step="1" min="0" class="form-control"
+                                    name="ono_length_{{ item.id }}" id="ono_length_{{ item.id }}"
+                                    value="{{ existing.ono_length if existing else '' }}"
+                                    placeholder="Length (mm)">
+                            </div>
+                        </div>
+
+                        <!-- Other: UOM Amount + UOM -->
+                        <div class="ono-dims-section ono-other" style="display:none;">
+                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; align-items:center;">
+                                <input type="number" step="1" min="1" class="form-control"
+                                    name="ono_uom_qty_{{ item.id }}" id="ono_uom_qty_{{ item.id }}"
+                                    value="{{ existing.ono_uom_qty if existing and existing.ono_uom_qty is defined else '' }}"
+                                    placeholder="UOM Amount">
+                                <select class="form-control" name="ono_uom_{{ item.id }}" id="ono_uom_{{ item.id }}">
+                                    {% set ou = existing.ono_uom if existing and existing.ono_uom is defined else '' %}
+                                    <option value="" {% if ou=='' %}selected{% endif %}>Select UOM</option>
+                                    <option value="pcs" {% if ou=='pcs' %}selected{% endif %}>pcs</option>
+                                    <option value="kg" {% if ou=='kg' %}selected{% endif %}>kg</option>
+                                    <option value="L" {% if ou=='L' %}selected{% endif %}>L</option>
+                                    <option value="unit" {% if ou=='unit' %}selected{% endif %}>unit</option>
+                                    <option value="set" {% if ou=='set' %}selected{% endif %}>set</option>
+                                    <option value="m" {% if ou=='m' %}selected{% endif %}>m</option>
+                                    <option value="roll" {% if ou=='roll' %}selected{% endif %}>roll</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <small class="text-muted">
+                            If provided, a new item entry will be created for these alternate dimensions and used in comparison.
+                        </small>
                     </div>
                     <div class="form-group">
                         <label class="form-label">Remarks</label>
@@ -87,6 +166,39 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+
+    function showONOForItem(itemId, dimType) {
+        const wrap = document.getElementById('ono_dims_' + itemId);
+        if (!wrap) return;
+
+        // Hide all sections
+        wrap.querySelectorAll('.ono-dims-section').forEach(sec => sec.style.display = 'none');
+
+        // Show the correct one
+        const target = wrap.querySelector('.ono-' + dimType);
+        if (target) target.style.display = 'block';
+    }
+
+    // Hook up ONO checkboxes
+    document.querySelectorAll('.ono-checkbox').forEach(function(cb) {
+        const itemId = cb.getAttribute('data-item-id');
+        const dimType = cb.getAttribute('data-dim-type') || 'other';
+        const wrap = document.getElementById('ono_dims_' + itemId);
+        if (!wrap) return;
+
+        function sync() {
+            if (cb.checked) {
+                wrap.style.display = 'block';
+                showONOForItem(itemId, dimType);
+            } else {
+                wrap.style.display = 'none';
+            }
+        }
+
+        cb.addEventListener('change', sync);
+        sync(); // auto apply on load (important for edit mode)
+    });
+
     // Handle file input change to display filename
     {% for item in pr_items %}
     const certInput_{{ item.id }} = document.getElementById('cert_{{ item.id }}');

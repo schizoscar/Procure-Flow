@@ -67,29 +67,95 @@
                             <div class="form-group">
                                 <label class="form-label">O.N.O. (On Nearest Offer)</label>
                                 <div style="display:flex;align-items:center;gap:0.5rem;">
-                                    <input type="checkbox" name="ono_{{ item.id }}" class="ono-checkbox"
-                                        data-item-id="{{ item.id }}">
+                                    <input type="checkbox"
+                                        name="ono_{{ item.id }}"
+                                        class="ono-checkbox"
+                                        data-item-id="{{ item.id }}"
+                                        data-category="{{ item.item_category or '' }}"
+                                        data-dim-type="{% if item.item_category in ['Steel Plates','Stainless Steel'] %}steel-plates{% elif item.item_category == 'Angle Bar' %}angle-bar{% elif item.item_category in ['Bolts, Fasteners','Rebar'] %}bolts-rebar{% else %}other{% endif %}">
                                     <span>Check if offering alternate dimensions</span>
                                 </div>
-                                <div id="ono_fields_{{ item.id }}" class="ono-dimensions"
+
+                                <div id="ono_fields_{{ item.id }}"
+                                    class="ono-dimensions"
                                     style="display:none; margin-top:0.75rem; padding:0.75rem; background:#f8f9fa; border-radius:6px;">
-                                    <label class="form-label" style="font-weight:600;">O.N.O. Dimensions (mm)</label>
-                                    <div
-                                        style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem; margin-top:0.5rem;">
-                                        <div>
-                                            <label class="form-label" style="font-size:0.85rem;">Width</label>
-                                            <input type="number" class="form-control" name="ono_width_{{ item.id }}"
-                                                min="0" step="1" placeholder="mm">
+
+                                    <label class="form-label" style="font-weight:600;">O.N.O. Dimensions</label>
+
+                                    <!-- Steel Plates / Stainless Steel: W, L, Thk -->
+                                    <div class="ono-dims-section ono-steel-plates" style="display:none; margin-top:0.5rem;">
+                                        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
+                                                <input type="number" class="form-control" name="ono_width_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                                <input type="number" class="form-control" name="ono_length_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
+                                                <input type="number" class="form-control" name="ono_thickness_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label class="form-label" style="font-size:0.85rem;">Length</label>
-                                            <input type="number" class="form-control" name="ono_length_{{ item.id }}"
-                                                min="0" step="1" placeholder="mm">
+                                    </div>
+
+                                    <!-- Angle Bar: A, B, L, Thk -->
+                                    <div class="ono-dims-section ono-angle-bar" style="display:none; margin-top:0.5rem;">
+                                        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
+                                                <input type="number" class="form-control" name="ono_dim_a_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
+                                                <input type="number" class="form-control" name="ono_dim_b_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                                <input type="number" class="form-control" name="ono_length_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
+                                                <input type="number" class="form-control" name="ono_thickness_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                            </div>
                                         </div>
-                                        <div>
-                                            <label class="form-label" style="font-size:0.85rem;">Thickness</label>
-                                            <input type="number" class="form-control" name="ono_thickness_{{ item.id }}"
-                                                min="0" step="1" placeholder="mm">
+                                    </div>
+
+                                    <!-- Bolts/Rebar: D, L -->
+                                    <div class="ono-dims-section ono-bolts-rebar" style="display:none; margin-top:0.5rem;">
+                                        <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
+                                                <input type="number" class="form-control" name="ono_diameter_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                                <input type="number" class="form-control" name="ono_length_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Other: UOM Amount + UOM -->
+                                    <div class="ono-dims-section ono-other" style="display:none; margin-top:0.5rem;">
+                                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
+                                                <input type="number" class="form-control" name="ono_uom_qty_{{ item.id }}" min="1" step="1" placeholder="e.g. 10">
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">UOM</label>
+                                                <select class="form-control" name="ono_uom_{{ item.id }}">
+                                                    <option value="">Select UOM</option>
+                                                    <option value="pcs">pcs</option>
+                                                    <option value="kg">kg</option>
+                                                    <option value="L">L</option>
+                                                    <option value="unit">unit</option>
+                                                    <option value="set">set</option>
+                                                    <option value="m">m</option>
+                                                    <option value="roll">roll</option>
+                                                </select>
+                                            </div>
                                         </div>
                                     </div>
                                 </div>
@@ -109,13 +175,35 @@
 
     <script>
         document.addEventListener('DOMContentLoaded', function () {
-            // Handle O.N.O. checkbox toggle
+
+            function showONOSection(itemId, dimType) {
+                const fieldsDiv = document.getElementById('ono_fields_' + itemId);
+                if (!fieldsDiv) return;
+
+                // Hide all ONO dim sections first
+                fieldsDiv.querySelectorAll('.ono-dims-section').forEach(sec => {
+                    sec.style.display = 'none';
+                });
+
+                // Show matching section
+                const target = fieldsDiv.querySelector('.ono-' + dimType);
+                if (target) target.style.display = 'block';
+            }
+
+            // Handle O.N.O. checkbox toggle (category-aware)
             document.querySelectorAll('.ono-checkbox').forEach(function (checkbox) {
                 checkbox.addEventListener('change', function () {
                     const itemId = this.getAttribute('data-item-id');
+                    const dimType = this.getAttribute('data-dim-type') || 'other';
                     const fieldsDiv = document.getElementById('ono_fields_' + itemId);
-                    if (fieldsDiv) {
-                        fieldsDiv.style.display = this.checked ? 'block' : 'none';
+
+                    if (!fieldsDiv) return;
+
+                    if (this.checked) {
+                        fieldsDiv.style.display = 'block';
+                        showONOSection(itemId, dimType);
+                    } else {
+                        fieldsDiv.style.display = 'none';
                     }
                 });
             });

@@ -33,12 +33,31 @@
                             <p><strong>{{ item.item_name }}</strong></p>
                             {% if item.brand %}<p>Brand / Specification: {{ item.brand }}</p>{% endif %}
                             <p>Quantity: {{ item.quantity }}</p>
+                            {% set cat = item.item_category %}
                             <p class="text-muted">
-                                {{ item.specification or '' }}
-                                {% if item.width or item.length or item.thickness %}
-                                    Dims: {{ item.width or '-' }} x {{ item.length or '-' }} x {{ item.thickness or '-' }}
+                                {# Optional free-text spec (if you still want it) #}
+                                {% if item.specification %}{{ item.specification }}<br>{% endif %}
+
+                                {% if cat in ['Steel Plates', 'Stainless Steel'] %}
+                                    <strong>Dims (W × L × Thk):</strong>
+                                    {{ item.width or '-' }} × {{ item.length or '-' }} × {{ item.thickness or '-' }} mm
+
+                                {% elif cat == 'Angle Bar' %}
+                                    <strong>Dims (A × B × L × Thk):</strong>
+                                    {{ item.dim_a or '-' }} × {{ item.dim_b or '-' }} × {{ item.length or '-' }} × {{ item.thickness or '-' }} mm
+
+                                {% elif cat in ['Bolts, Fasteners', 'Rebar'] %}
+                                    <strong>Dims (D × L):</strong>
+                                    {{ item.diameter or '-' }} × {{ item.length or '-' }} mm
+
+                                {% else %}
+                                    {% if item.uom_qty or item.uom %}
+                                        <strong>UOM:</strong>
+                                        {{ item.uom_qty or '-' }}{% if item.uom %} {{ item.uom }}{% endif %}
+                                    {% endif %}
                                 {% endif %}
                             </p>
+
                         </div>
                     </div>
                     {% endfor %}
