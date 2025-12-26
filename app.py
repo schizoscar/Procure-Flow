@@ -645,8 +645,11 @@ def email_preview(task_id):
         'SELECT * FROM pr_items WHERE task_id = ?', (task_id,)
     ).fetchall()
     
+    subject_key = f"email_subject_{task_id}"
+    content_key = f"email_content_{task_id}"
+
     # Initialize email_subject here, outside the POST block
-    email_subject = session.get('email_subject', f"Procurement Inquiry - {task['task_name']}")
+    email_subject = session.get(subject_key, f"Procurement Inquiry - {task['task_name']}")
     
     if request.method == 'POST':
         action = request.form.get('action')
@@ -655,8 +658,8 @@ def email_preview(task_id):
         
         if action == 'update_preview':
             # Just update the preview with new content
-            session['email_content'] = email_content
-            session['email_subject'] = email_subject
+            session[content_key] = email_content
+            session[subject_key] = email_subject
             flash('Preview updated!', 'success')
             
         elif action == 'send_emails':
@@ -684,7 +687,7 @@ def email_preview(task_id):
         
         if key not in email_templates:
             # Use session content if available, otherwise generate default
-            email_content = session.get('email_content')
+            email_content = session.get(content_key, '')
             if not email_content:
                 email_content = generate_email_content(
                     [item for item in pr_items if not assigned_item_ids or item['id'] in assigned_item_ids],
