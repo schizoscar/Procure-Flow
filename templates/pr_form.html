@@ -372,22 +372,29 @@
         return CATEGORY_DIMS[category] || 'other';
     }
 
+    function setSectionEnabled(section, enabled) {
+        section.querySelectorAll('input, select, textarea').forEach(el => {
+            el.disabled = !enabled;
+        });
+    }
+
     function updateDimensionFields(itemRow) {
         const select = itemRow.querySelector('.category-select');
         const category = select ? select.value : '';
         const dimType = getDimType(category);
 
-        // Hide all dimension sections
+        // Hide + disable all dimension sections
         itemRow.querySelectorAll('.dims-section').forEach(section => {
             section.style.display = 'none';
+            setSectionEnabled(section, false);
         });
 
-        // Show the appropriate section
+        // Show + enable the appropriate section
         if (category) {
-            const targetClass = '.dims-' + dimType;
-            const targetSection = itemRow.querySelector(targetClass);
+            const targetSection = itemRow.querySelector('.dims-' + dimType);
             if (targetSection) {
                 targetSection.style.display = 'block';
+                setSectionEnabled(targetSection, true);
             }
         }
 
