@@ -27,9 +27,31 @@
                             <h4>Item {{ loop.index }}: {{ item.item_name }}</h4>
                             <p class="text-muted">
                                 {{ item.specification or '' }}
-                                {% if item.width or item.length or item.thickness %}
-                                <br>Dims: {{ item.width or '-' }} x {{ item.length or '-' }} x {{ item.thickness or '-'
-                                }}
+
+                                {% set cat = item.item_category %}
+
+                                {% if cat in ['Steel Plates','Stainless Steel'] %}
+                                    <br>
+                                    Dims (W × L × Thk): {{ item.width if item.width is not none else '-' }}
+                                    x {{ item.length if item.length is not none else '-' }}
+                                    x {{ item.thickness if item.thickness is not none else '-' }} mm
+
+                                {% elif cat == 'Angle Bar' %}
+                                    <br>
+                                    Dims (A × B × L × Thk): {{ item.dim_a if item.dim_a is not none else '-' }}
+                                    x {{ item.dim_b if item.dim_b is not none else '-' }}
+                                    x {{ item.length if item.length is not none else '-' }}
+                                    x {{ item.thickness if item.thickness is not none else '-' }} mm
+
+                                {% elif cat in ['Bolts, Fasteners','Rebar','Nuts'] %}
+                                    <br>
+                                    Dims (D × L): {{ item.diameter if item.diameter is not none else '-' }}
+                                    x {{ item.length if item.length is not none else '-' }} mm
+
+                                {% else %}
+                                    <br>
+                                    Packing: {{ item.uom_qty if item.uom_qty is not none else '-' }}
+                                    {{ item.uom if item.uom is not none else '' }}
                                 {% endif %}
                             </p>
                         </div>

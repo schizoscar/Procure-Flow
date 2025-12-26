@@ -171,19 +171,19 @@ def generate_email_content(pr_items, task_name):
             l = item.get('length') or ''
             thk = item.get('thickness') or ''
             if w or l or thk:
-                dims = f"{w}mm x {l}mm x {thk}mm"
+                dims = f"Dims (W × L × Thk): {w} x {l} x {thk} mm"
         elif category == 'Angle Bar':
             a = item.get('dim_a') or ''
             b = item.get('dim_b') or ''
             l = item.get('length') or ''
             thk = item.get('thickness') or ''
             if a or b or l or thk:
-                dims = f"A={a}mm, B={b}mm, L={l}mm, Thk={thk}mm"
+                dims = f"Dims (A × B × L × Thk): {a} x {b} x {l} x {thk} mm"
         elif category in ['Rebar', 'Bolts, Fasteners']:
             d = item.get('diameter') or ''
             l = item.get('length') or ''
             if d or l:
-                dims = f"D={d}mm, L={l}mm"
+                dims = f"Dims (D × L): {d} x {l} mm"
         else:
             uom = item.get('uom') or ''
             uom_qty = item.get('uom_qty') or ''
@@ -217,12 +217,12 @@ def generate_email_content(pr_items, task_name):
         
         <p>Please provide us with your quotation including:</p>
         <ul>
-            <li>Unit Price</li>
-            <li>Delivery Lead Timeline</li>
+            <li>Payment Terms (Days)</li>
+            <li>Unit Price (RM)</li>
+            <li>Delivery Lead Timeline (Days)</li>
+            <li>Stock Availability</li>
             <li>Warranty (If Applicable)</li>
             <li>Mill Certificate / Certificate of Analysis (COA)</li>
-            <li>Payment Terms</li>
-            <li>Stock Availability</li>
         </ul>
         
         <p>We look forward to your prompt response.</p>
