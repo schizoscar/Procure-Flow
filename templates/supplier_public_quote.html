@@ -18,7 +18,7 @@
             <div class="card-body">
                 <form method="POST" enctype="multipart/form-data">
                     <div class="form-group">
-                        <label class="form-label">Payment Terms</label>
+                        <label class="form-label">Payment Terms (Days)</label>
                         <input type="text" class="form-control" name="payment_terms" placeholder="e.g., 30 days credit">
                     </div>
                     {% for item in pr_items %}
@@ -40,7 +40,7 @@
                                     name="unit_price_{{ item.id }}">
                             </div>
                             <div class="form-group">
-                                <label class="form-label">Delivery Lead Time</label>
+                                <label class="form-label">Delivery Lead Time (Days)</label>
                                 <input type="text" class="form-control" name="lead_time_{{ item.id }}"
                                     placeholder="e.g. 14 days">
                             </div>

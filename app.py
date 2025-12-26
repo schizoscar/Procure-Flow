@@ -1182,7 +1182,6 @@ def supplier_quote_form(token):
                            supplier=supplier,
                            pr_items=pr_items)
 
-
 @app.route('/debug/quotes/<int:task_id>/<int:supplier_id>', methods=['GET'])
 def debug_quotes(task_id, supplier_id):
     """Return JSON dump of supplier_quotes for debugging (task+supplier)."""
@@ -1278,15 +1277,15 @@ def export_comparison(task_id):
         # If user typed plain "7" assume days
         return num
 
-    SUPPLIER_BLOCK_COLS = 8
+    SUPPLIER_BLOCK_COLS = 7
     OFF_RATE  = 0
     OFF_PRICE = 1
     OFF_TOTAL = 2
     OFF_LEAD  = 3
     OFF_STOCK = 4
     OFF_COA   = 5
-    OFF_ONO   = 6
-    OFF_REMARKS = 7
+    OFF_REMARKS = 6
+
 
     suppliers = {}  # supplier_id -> supplier_name
     supplier_terms = {}  # supplier_id -> set(payment_terms)
@@ -1314,12 +1313,12 @@ def export_comparison(task_id):
     ws.title = "Comparison"
 
     row1 = [
-        "Item Name",
-        "Brand / Specification",
+        "Item Name (O.N.O.)",
+        "Brand/Specification",
         "Category",
-        "Dimensions", "", "", "",   # 4 cols for dimensions
+        "Dimensions (mm)", "", "", "",   # 4 cols for dimensions
         "Quantity",
-        "Weight (in Kg)"
+        "Weight (Kg)"
     ]
     for supplier_id, supplier_name in suppliers_list:
         row1.extend([supplier_header_label(supplier_id, supplier_name)] + [""] * (SUPPLIER_BLOCK_COLS - 1))
@@ -1338,10 +1337,9 @@ def export_comparison(task_id):
             "Rate (RM/Kg)",
             "Quoted Price (RM)",
             "Total Amount Quoted (RM)",
-            "Delivery Lead Time",
+            "Delivery Lead Time (Days)",
             "Stock Availability",
             "COA",
-            "O.N.O.",
             "Remarks"
         ])
     ws.append(row2)
@@ -1496,9 +1494,12 @@ def export_comparison(task_id):
             # Other: UOM integer only goes to Dim1 (as you requested)
             dim_display = [uom_qty or "", "", "", ""]
 
+        item_quotes = quotes_by_item.get(item['id'], {})
+        ono_mark = "✓" if any((qq.get("ono") or 0) for qq in item_quotes.values()) else "✗"
+        item_name_display = f"{item['item_name']} ({ono_mark})"
 
         row = [
-            item["item_name"],
+            item_name_display,
             item["brand"] or "",
             category,
             dim_display[0],
@@ -1551,7 +1552,6 @@ def export_comparison(task_id):
                     q.get('lead_time') or "",
                     q.get('stock_availability') or "",
                     cert_display,
-                    ono_display,
                     q.get('notes') or ""
                 ])
 
@@ -1586,7 +1586,7 @@ def export_comparison(task_id):
     totals_row = current_row
     ws.merge_cells(start_row=totals_row, start_column=1, end_row=totals_row, end_column=BASE_COLS)
     label_cell = ws.cell(row=totals_row, column=1)
-    label_cell.value = "TOTAL"
+    label_cell.value = "TOTAL (RM)"
     label_cell.font = Font(bold=True)
     label_cell.alignment = Alignment(horizontal="right", vertical="center")
     label_cell.fill = total_fill
