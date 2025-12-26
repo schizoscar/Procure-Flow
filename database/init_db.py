@@ -147,6 +147,17 @@ def init_database():
         )
     ''')
 
+    # File Assets table
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS file_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            filename TEXT NOT NULL,
+            data BLOB NOT NULL,
+            mime_type TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+
     # Category Items table
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS category_items (
@@ -193,6 +204,7 @@ def init_database():
     ensure_column('supplier_quotes', 'warranty', 'TEXT')
     ensure_column('supplier_quotes', 'stock_availability', 'TEXT')
     ensure_column('supplier_quotes', 'cert', 'TEXT')
+    ensure_column('supplier_quotes', 'cert_file_id', 'INTEGER')
     ensure_column('supplier_quotes', 'notes', 'TEXT')
 
 

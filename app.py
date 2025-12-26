@@ -46,34 +46,54 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 def save_uploaded_file(file, task_id, supplier_id, item_id):
-    """Save uploaded file and return relative path for database storage."""
+    """Save uploaded file to database and return file_id."""
     if not file or file.filename == '':
         return None
     
     if not allowed_file(file.filename):
         return None
     
-    # Check file size
+    # Check file size (approximate, reading entirely into memory)
     file.seek(0, os.SEEK_END)
     file_size = file.tell()
     file.seek(0)
     if file_size > MAX_FILE_SIZE:
         return None
     
-    # Generate unique filename
-    ext = secure_filename(file.filename).rsplit('.', 1)[1].lower()
-    unique_filename = f"task_{task_id}_supplier_{supplier_id}_item_{item_id}_{uuid.uuid4().hex}.{ext}"
+    # Read file data
+    file_data = file.read()
+    filename = secure_filename(file.filename)
+    mime_type = 'application/pdf'  # We enforce PDF only
     
-    # Create subdirectory for this task if needed
-    task_dir = os.path.join(UPLOADS_DIR, str(task_id))
-    os.makedirs(task_dir, exist_ok=True)
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute(
+        'INSERT INTO file_assets (filename, data, mime_type) VALUES (?, ?, ?)',
+        (filename, file_data, mime_type)
+    )
+    file_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
     
-    # Save file
-    file_path = os.path.join(task_dir, unique_filename)
-    file.save(file_path)
+    # Return file_id (as int)
+    return file_id
+
+@app.route('/file/<int:file_id>')
+def serve_file(file_id):
+    """Serve a file from the database."""
+    conn = get_db_connection()
+    file_asset = conn.execute('SELECT * FROM file_assets WHERE id = ?', (file_id,)).fetchone()
+    conn.close()
     
-    # Return relative path for database storage
-    return f"/uploads/certificates/{task_id}/{unique_filename}"
+    if not file_asset:
+        return "File not found", 404
+        
+    return send_file(
+        io.BytesIO(file_asset['data']),
+        mimetype=file_asset['mime_type'],
+        download_name=file_asset['filename'],
+        as_attachment=False # Open in browser
+    )
 
 def get_quote_serializer():
     return URLSafeSerializer(app.secret_key, salt="supplier-quote")
@@ -1056,24 +1076,24 @@ def capture_quotes(task_id, supplier_id):
             ono = 1 if request.form.get(f"ono_{uid}") else 0
             
             # Handle certificate file upload
-            cert_path = None
+            cert_file_id = None
             if f'cert_{uid}' in request.files:
                 cert_file = request.files[f'cert_{uid}']
                 if cert_file and cert_file.filename != '':
-                    cert_path = save_uploaded_file(cert_file, task_id, supplier_id, item['id'])
+                    cert_file_id = save_uploaded_file(cert_file, task_id, supplier_id, item['id'])
 
             # Log each parsed item value before insert (payment_terms is global)
-            app.logger.info('Captured quote values for item %s: unit_price=%s lead_time=%s payment_terms=%s ono=%s notes=%s cert=%s',
-                            uid, unit_price, lead_time, payment_terms_global, ono, notes, cert_path)
+            app.logger.info('Captured quote values for item %s: unit_price=%s lead_time=%s payment_terms=%s ono=%s notes=%s cert_file_id=%s',
+                            uid, unit_price, lead_time, payment_terms_global, ono, notes, cert_file_id)
 
             # Insert only when meaningful per-item data is present; apply global payment terms
-            if any([unit_price, lead_time, notes, ono, cert_path]):
+            if any([unit_price, lead_time, notes, ono, cert_file_id]):
                 conn.execute(
                     '''
-                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, stock_availability, cert, lead_time, payment_terms, ono, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, stock_availability, cert, cert_file_id, lead_time, payment_terms, ono, notes)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ''',
-                    (task_id, supplier_id, item['id'], unit_price, None, cert_path, lead_time, payment_terms_global, ono, notes)
+                    (task_id, supplier_id, item['id'], unit_price, None, str(cert_file_id) if cert_file_id else None, cert_file_id, lead_time, payment_terms_global, ono, notes)
                 )
 
         # Mark replied when quotes captured (always update to current time)
@@ -1476,116 +1496,157 @@ def export_comparison(task_id):
         else:
             weight = "N/A"
 
-        # Build dimension display based on category
+        # Build dimension display for this item
         # dim_display order = [Dim1, Dim2, Dim3, Dim4]
         # Dim1 = W/A/D/UOMQty, Dim2 = B, Dim3 = L, Dim4 = Thk
-        dim_display = ["", "", "", ""]
-
+        base_dim_display = ["", "", "", ""]
         if category in ["Steel Plates", "Stainless Steel"]:
-            # W -> Dim1, L -> Dim3, Thk -> Dim4
-            dim_display = [w or "", "", l or "", thk or ""]
-
+            w = item.get('width') or ''
+            l = item.get('length') or ''
+            thk = item.get('thickness') or ''
+            base_dim_display = [w, "", l, thk]
         elif category == "Angle Bar":
-            # A -> Dim1, B -> Dim2, L -> Dim3, Thk -> Dim4
-            dim_display = [dim_a or "", dim_b or "", l or "", thk or ""]
-
+            a = item.get('dim_a') or ''
+            b = item.get('dim_b') or ''
+            l = item.get('length') or ''
+            thk = item.get('thickness') or ''
+            base_dim_display = [a, b, l, thk]
         elif category in ["Rebar", "Bolts, Fasteners"]:
-            # D -> Dim1, L -> Dim3
-            dim_display = [diameter or "", "", l or "", ""]
-
+            d = item.get('diameter') or ''
+            l = item.get('length') or ''
+            base_dim_display = [d, "", l, ""]
         else:
-            # Other: UOM integer only goes to Dim1 (as you requested)
-            dim_display = [uom_qty or "", "", "", ""]
+            uom = item.get('uom') or ''
+            uom_qty = item.get('uom_qty') or ''
+            base_dim_display = [uom_qty, "", "", ""]
 
-        item_quotes = quotes_by_item.get(item['id'], {})
-        ono_mark = "✓" if any((qq.get("ono") or 0) for qq in item_quotes.values()) else "✗"
-        item_name_display = f"{item['item_name']} ({ono_mark})"
+        item_quotes_map = quotes_by_item.get(item['id'], {})
+        
+        # Check if we need to split this item into Standard vs O.N.O rows
+        # Case 1: Item has some quotes with O.N.O -> Create two rows
+        # Case 2: Item has NO quotes with O.N.O -> Create one row (Standard)
+        has_ono_quotes = any((q.get('ono') == 1) for q in item_quotes_map.values())
+        
+        # Define rows to render: (is_ono_row, row_label, dim_values)
+        rows_to_render = []
+        
+        # 1. Standard Row (Quotes that are NOT O.N.O)
+        rows_to_render.append((False, item['item_name'], base_dim_display))
+        
+        # 2. O.N.O Row (Quotes that ARE O.N.O) - only if they exist
+        if has_ono_quotes:
+            # For O.N.O row, we might want to show the O.N.O specific dimensions if they exist in the quote?
+            # Current requirement: Just split the row so we can compare O.N.O offers separately.
+            rows_to_render.append((True, f"{item['item_name']} (O.N.O Variation)", base_dim_display))
 
-        row = [
-            item_name_display,
-            item["brand"] or "",
-            category,
-            dim_display[0],
-            dim_display[1],
-            dim_display[2],
-            dim_display[3],
-            item["quantity"] or "",
-            weight
-        ]
+        for is_ono_row, row_label, dims in rows_to_render:
+            row = [
+                row_label,
+                item["brand"] or "",
+                category,
+                dims[0], dims[1], dims[2], dims[3],
+                item["quantity"] or "",
+                weight
+            ]
+            
+            # Fill supplier columns
+            col_idx = SUPPLIER_START_COL
+            for supplier_id, supplier_name in suppliers_list:
+                q = item_quotes_map.get(supplier_id)
+                
+                # Logic:
+                # If this is "Standard Row" (is_ono_row=False), only show quotes where q['ono'] != 1
+                # If this is "O.N.O Row" (is_ono_row=True), only show quotes where q['ono'] == 1
+                
+                should_include = False
+                if q:
+                    quote_is_ono = (q.get('ono') == 1)
+                    if is_ono_row and quote_is_ono:
+                        should_include = True
+                    elif not is_ono_row and not quote_is_ono:
+                        should_include = True
+                
+                if q and should_include:
+                    cert_display = ""
+                    cert_url = None
+                    
+                    # Handle File Asset ID (New) or Legacy Path
+                    if q.get('cert_file_id'):
+                        cert_display = "PDF"
+                        # Generate full URL pointing to /file/<id>
+                        cert_url = url_for('serve_file', file_id=q['cert_file_id'], _external=True)
+                    elif q.get('cert'):
+                        # Legacy fallback
+                        val = str(q['cert'])
+                        if val.isdigit():
+                             cert_display = "PDF"
+                             cert_url = url_for('serve_file', file_id=int(val), _external=True)
+                        else:
+                             # Old path style
+                             cert_display = "PDF"
+                             # Note: Local paths won't open in Excel, but preserving legacy behavior
+                             cert_url = val 
 
-        metric_candidates = {
-            "rate": [],
-            "price": [],
-            "total": [],
-            "lead": []
-        }
+                    unit_price = q['unit_price'] if q['unit_price'] is not None else ""
+                    unit_price_val = to_float(unit_price)
 
-        col_idx = SUPPLIER_START_COL
-        for supplier_id, supplier_name in suppliers_list:
-            q = quotes_by_item.get(item['id'], {}).get(supplier_id)
-            if q:
-                ono_val = q.get('ono')
-                ono_display = "✓" if ono_val else "✗"
+                    qty_val = to_float(item['quantity'])
+                    weight_val = to_float(weight)
 
-                cert_display = ""
-                cert_url = None
-                if q.get('cert'):
-                    cert_display = "PDF"
-                    cert_url = q['cert']
+                    rate_val = ""
+                    if unit_price_val is not None and weight_val not in (None, 0):
+                        rate_val = round(unit_price_val / weight_val, 4)
 
-                unit_price = q['unit_price'] if q['unit_price'] is not None else ""
-                unit_price_val = to_float(unit_price)
+                    total_amount_val = ""
+                    if unit_price_val is not None and qty_val is not None:
+                        total_amount_val = round(unit_price_val * qty_val, 2)
+                        if not is_ono_row: # Only sum standard quotes to total? Or sum lowest? 
+                            # Logic: If multiple rows exist for same item, usually you pick one.
+                            # For the "Total Amount" line at bottom, simplistic summation might be misleading if we have split rows.
+                            # Strategy: We accumulate totals based on "Standard" quotes only for the summary?
+                            # Or we sum everything? Let's sum everything for now, user can interpret.
+                            supplier_total_amounts[supplier_id] += float(total_amount_val)
 
-                qty_val = to_float(item['quantity'])
-                weight_val = to_float(weight)
+                    row.extend([
+                        rate_val,
+                        unit_price,
+                        total_amount_val,
+                        q.get('lead_time') or "",
+                        q.get('stock_availability') or "",
+                        cert_display,
+                        q.get('notes') or ""
+                    ])
 
-                rate_val = ""
-                if unit_price_val is not None and weight_val not in (None, 0):
-                    rate_val = round(unit_price_val / weight_val, 4)
+                    if cert_url:
+                        cert_links[(current_row, col_idx + OFF_COA)] = cert_url
 
-                total_amount_val = ""
-                if unit_price_val is not None and qty_val is not None:
-                    total_amount_val = round(unit_price_val * qty_val, 2)
-                    supplier_total_amounts[supplier_id] += float(total_amount_val)
+                    # highlight candidates
+                    metric_candidates["rate"].append((col_idx + OFF_RATE, to_float(rate_val)))
+                    metric_candidates["price"].append((col_idx + OFF_PRICE, unit_price_val))
+                    metric_candidates["total"].append((col_idx + OFF_TOTAL, to_float(total_amount_val)))
+                    metric_candidates["lead"].append((col_idx + OFF_LEAD, lead_time_to_days(q.get('lead_time'))))
 
-                row.extend([
-                    rate_val,
-                    unit_price,
-                    total_amount_val,
-                    q.get('lead_time') or "",
-                    q.get('stock_availability') or "",
-                    cert_display,
-                    q.get('notes') or ""
-                ])
+                    col_idx += SUPPLIER_BLOCK_COLS
+                else:
+                    # No quote from this supplier OR quote belongs to the other row type
+                    row.extend([""] * SUPPLIER_BLOCK_COLS)
+                    col_idx += SUPPLIER_BLOCK_COLS
 
-                if cert_url:
-                    cert_links[(current_row, col_idx + OFF_COA)] = cert_url
+            ws.append(row)
 
-                # highlight candidates
-                metric_candidates["rate"].append((col_idx + OFF_RATE, to_float(rate_val)))
-                metric_candidates["price"].append((col_idx + OFF_PRICE, unit_price_val))
-                metric_candidates["total"].append((col_idx + OFF_TOTAL, to_float(total_amount_val)))
-                metric_candidates["lead"].append((col_idx + OFF_LEAD, lead_time_to_days(q.get('lead_time'))))
+            # Apply per-row best highlighting (lowest wins)
+            for key in ["rate", "price", "total", "lead"]:
+                vals = [(col, v) for (col, v) in metric_candidates[key] if v is not None]
+                if not vals:
+                    continue
+                best_val = min(v for _, v in vals)
+                for col, v in vals:
+                    if v == best_val:
+                        ws.cell(row=current_row, column=col).fill = best_fill
 
-                col_idx += SUPPLIER_BLOCK_COLS
-            else:
-                row.extend([""] * SUPPLIER_BLOCK_COLS)
-                col_idx += SUPPLIER_BLOCK_COLS
-
-        ws.append(row)
-
-        # Apply per-row best highlighting (lowest wins)
-        for key in ["rate", "price", "total", "lead"]:
-            vals = [(col, v) for (col, v) in metric_candidates[key] if v is not None]
-            if not vals:
-                continue
-            best_val = min(v for _, v in vals)
-            for col, v in vals:
-                if v == best_val:
-                    ws.cell(row=current_row, column=col).fill = best_fill
-
-        current_row += 1
-
+            current_row += 1 
+    
+    # After rows loop
     totals_row = current_row
     ws.merge_cells(start_row=totals_row, start_column=1, end_row=totals_row, end_column=BASE_COLS)
     label_cell = ws.cell(row=totals_row, column=1)
