@@ -1,7 +1,5 @@
-
-
 # app.py
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file, abort
 import sqlite3
 import re
 from datetime import datetime
@@ -26,6 +24,10 @@ import uuid
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
+from sendgrid import SendGridAPIClient
+from sendgrid.helpers.mail import Mail, Email, To, Content
+import certifi
+from urllib.parse import urljoin
 
 
 load_dotenv()
@@ -38,6 +40,9 @@ UPLOADS_DIR = os.path.join('uploads', 'certificates')
 ALLOWED_EXTENSIONS = {'pdf'}  # PDF only
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
+PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
+app.config["PUBLIC_BASE_URL"] = PUBLIC_BASE_URL
+
 # Ensure uploads directory exists
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
@@ -45,38 +50,47 @@ def allowed_file(filename):
     """Check if file extension is allowed."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def save_uploaded_file(file, task_id, supplier_id, item_id):
-    """Save uploaded file to database and return file_id."""
-    if not file or file.filename == '':
-        return None
-    
-    if not allowed_file(file.filename):
-        return None
-    
-    # Check file size (approximate, reading entirely into memory)
-    file.seek(0, os.SEEK_END)
-    file_size = file.tell()
-    file.seek(0)
-    if file_size > MAX_FILE_SIZE:
-        return None
-    
-    # Read file data
-    file_data = file.read()
-    filename = secure_filename(file.filename)
-    mime_type = 'application/pdf'  # We enforce PDF only
-    
-    conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute(
-        'INSERT INTO file_assets (filename, data, mime_type) VALUES (?, ?, ?)',
-        (filename, file_data, mime_type)
+def save_uploaded_file(conn, file_obj, task_id, supplier_id, pr_item_id):
+    """
+    Store uploaded file into DB (SQLite) and return file_assets.id
+    """
+    filename = secure_filename(file_obj.filename or "document.pdf")
+    mime_type = file_obj.mimetype or "application/pdf"
+    data = file_obj.read()  # bytes
+
+    cur = conn.execute(
+        """
+        INSERT INTO file_assets (task_id, supplier_id, pr_item_id, filename, mime_type, data)
+        VALUES (?, ?, ?, ?, ?, ?)
+        """,
+        (task_id, supplier_id, pr_item_id, filename, mime_type, data)
     )
-    file_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    
-    # Return file_id (as int)
-    return file_id
+    return cur.lastrowid
+
+def public_url(endpoint: str, **values) -> str:
+    """
+    Build a fully-qualified URL using PUBLIC_BASE_URL (preferred),
+    otherwise fall back to Flask's _external=True behavior.
+    """
+    base = app.config.get("PUBLIC_BASE_URL")
+    if base:
+        # build path only, then prefix with base
+        path = url_for(endpoint, _external=False, **values)
+        return f"{base}{path}"
+    # fallback (will be localhost if you run locally)
+    return url_for(endpoint, _external=True, **values)
+
+def public_url_for(endpoint: str, **values) -> str:
+    """
+    Builds a public absolute URL.
+    - If PUBLIC_BASE_URL is set (recommended), it forces that domain.
+    - Otherwise falls back to Flask's _external=True (local dev).
+    """
+    # Always generate a path first
+    path = url_for(endpoint, **values)  # e.g. "/file/12"
+    if PUBLIC_BASE_URL:
+        return urljoin(PUBLIC_BASE_URL + "/", path.lstrip("/"))
+    return url_for(endpoint, _external=True, **values)
 
 @app.route('/file/<int:file_id>')
 def serve_file(file_id):
@@ -127,8 +141,8 @@ EMAIL_CONFIG = {
     'sender_email': os.getenv('SMTP_SENDER'),
     'sender_password': os.getenv('SMTP_PASSWORD')
 }
-SENDGRID_API_KEY = None
-SENDGRID_SENDER = None
+SENDGRID_API_KEY = os.environ.get("SENDGRID_API_KEY", "")
+SENDGRID_SENDER = os.environ.get("SENDGRID_SENDER", "")
 
 # IMAP configuration (for inbox polling)
 IMAP_SERVER = os.getenv('IMAP_SERVER', 'imap.gmail.com')
@@ -138,7 +152,7 @@ IMAP_PASSWORD = os.getenv('IMAP_PASSWORD', EMAIL_CONFIG['sender_password'])
 
 # Poll interval in seconds. Set `IMAP_POLL_INTERVAL` env var to change.
 # Setting to 0 disables automatic polling.
-IMAP_POLL_INTERVAL = int(os.getenv('IMAP_POLL_INTERVAL', '60'))
+# IMAP_POLL_INTERVAL = int(os.getenv('IMAP_POLL_INTERVAL', '60'))
 
 print("=== DEBUG FROM APP STARTUP ===")
 print("SMTP_SENDER env:", os.getenv('SMTP_SENDER'))
@@ -191,19 +205,19 @@ def generate_email_content(pr_items, task_name):
             l = item.get('length') or ''
             thk = item.get('thickness') or ''
             if w or l or thk:
-                dims = f"Dims (W × L × Thk): {w} x {l} x {thk} mm"
+                dims = f"(W × L × Thk): {w} x {l} x {thk} mm"
         elif category == 'Angle Bar':
             a = item.get('dim_a') or ''
             b = item.get('dim_b') or ''
             l = item.get('length') or ''
             thk = item.get('thickness') or ''
             if a or b or l or thk:
-                dims = f"Dims (A × B × L × Thk): {a} x {b} x {l} x {thk} mm"
+                dims = f"(A × B × L × Thk): {a} x {b} x {l} x {thk} mm"
         elif category in ['Rebar', 'Bolts, Fasteners']:
             d = item.get('diameter') or ''
             l = item.get('length') or ''
             if d or l:
-                dims = f"Dims (D × L): {d} x {l} mm"
+                dims = f"(D × L): {d} x {l} mm"
         else:
             uom = item.get('uom') or ''
             uom_qty = item.get('uom_qty') or ''
@@ -267,7 +281,6 @@ def dashboard():
     
     conn = get_db_connection()
     
-    # Get recent tasks (for admin, all tasks; for user, only their tasks)
     # Get recent tasks (for admin, all tasks; for user, only their tasks)
     if session.get('role') == 'admin':
         recent_tasks = conn.execute('''
@@ -769,6 +782,8 @@ def email_confirmation(task_id):
         success_count = 0
         for supplier in selected_suppliers:
             assigned_item_ids = None
+            quote_form_link = get_or_create_quote_form_link(conn, task_id, supplier['id'])
+
             if supplier['assigned_items']:
                 try:
                     assigned_item_ids = json.loads(supplier['assigned_items'])
@@ -783,7 +798,8 @@ def email_confirmation(task_id):
                 assigned_item_ids,
                 final_email_content,
                 final_email_subject,
-                supplier.get('contact_name') if isinstance(supplier, dict) else supplier['contact_name']
+                supplier.get('contact_name') if isinstance(supplier, dict) else supplier['contact_name'],
+                quote_form_link=quote_form_link
             )
             if sent_ok:
                 success_count += 1
@@ -923,6 +939,8 @@ def follow_up(task_id):
         sent = 0
         for supplier in pending_suppliers:
             assigned_item_ids = None
+            quote_form_link = get_or_create_quote_form_link(conn, task_id, supplier['id'])
+
             if supplier['assigned_items']:
                 try:
                     assigned_item_ids = json.loads(supplier['assigned_items'])
@@ -937,7 +955,8 @@ def follow_up(task_id):
                 assigned_item_ids,
                 body,
                 subject,
-                supplier.get('contact_name') if isinstance(supplier, dict) else supplier['contact_name']
+                supplier.get('contact_name') if isinstance(supplier, dict) else supplier['contact_name'],
+                quote_form_link=quote_form_link
             )
             if sent_ok:
                 sent += 1
@@ -1011,7 +1030,7 @@ def task_responses(task_id):
         conn.commit()
 
     suppliers = conn.execute('''
-        SELECT s.*, ts.assigned_items, ts.initial_sent_at, ts.followup_sent_at, ts.replied_at
+        SELECT s.*, ts.assigned_items, ts.initial_sent_at, ts.followup_sent_at, ts.replied_at, ts.quote_form_token
         FROM suppliers s
         JOIN task_suppliers ts ON s.id = ts.supplier_id
         WHERE ts.task_id = ? AND ts.is_selected = 1
@@ -1019,11 +1038,37 @@ def task_responses(task_id):
 
     form_links = {}
     for s in suppliers:
-        token = get_quote_serializer().dumps({'task_id': task_id, 'supplier_id': s['id']})
-        form_links[s['id']] = url_for('supplier_quote_form', token=token, _external=True)
+        token = s['quote_form_token']
+        if not token:
+            token = get_quote_serializer().dumps({'task_id': task_id, 'supplier_id': s['id']})
+            conn.execute(
+                "UPDATE task_suppliers SET quote_form_token = ? WHERE task_id = ? AND supplier_id = ?",
+                (token, task_id, s['id'])
+            )
+            conn.commit()
+
+        form_links[s['id']] = public_url_for('supplier_quote_form', token=token)
 
     conn.close()
     return render_template('responses.html', task=task, suppliers=suppliers, form_links=form_links)
+
+def get_or_create_quote_form_link(conn, task_id, supplier_id):
+    row = conn.execute(
+        "SELECT quote_form_token FROM task_suppliers WHERE task_id=? AND supplier_id=?",
+        (task_id, supplier_id)
+    ).fetchone()
+
+    token = row["quote_form_token"] if row else None
+    if not token:
+        token = get_quote_serializer().dumps({'task_id': task_id, 'supplier_id': supplier_id})
+        conn.execute(
+            "UPDATE task_suppliers SET quote_form_token=? WHERE task_id=? AND supplier_id=?",
+            (token, task_id, supplier_id)
+        )
+        conn.commit()
+
+    # IMPORTANT: use public_url instead of url_for(..., _external=True)
+    return public_url_for("supplier_quote_form", token=token)
 
 @app.route('/task/<int:task_id>/quotes/<int:supplier_id>', methods=['GET', 'POST'])
 def capture_quotes(task_id, supplier_id):
@@ -1071,30 +1116,47 @@ def capture_quotes(task_id, supplier_id):
         for item in pr_items:
             uid = str(item['id'])
             unit_price = request.form.get(f'unit_price_{uid}') or None
+            stock_availability = request.form.get(f'stock_availability_{uid}') or None
             lead_time = request.form.get(f'lead_time_{uid}') or None
+            warranty = request.form.get(f'warranty_{uid}') or None
             notes = request.form.get(f'notes_{uid}') or None
             ono = 1 if request.form.get(f"ono_{uid}") else 0
+            
+            # O.N.O. alternate dimensions
+            ono_width = request.form.get(f'ono_width_{uid}') or None
+            ono_length = request.form.get(f'ono_length_{uid}') or None
+            ono_thickness = request.form.get(f'ono_thickness_{uid}') or None
             
             # Handle certificate file upload
             cert_file_id = None
             if f'cert_{uid}' in request.files:
                 cert_file = request.files[f'cert_{uid}']
                 if cert_file and cert_file.filename != '':
-                    cert_file_id = save_uploaded_file(cert_file, task_id, supplier_id, item['id'])
+                    cert_file_id = save_uploaded_file(conn, cert_file, task_id, supplier_id, item['id'])
 
-            # Log each parsed item value before insert (payment_terms is global)
-            app.logger.info('Captured quote values for item %s: unit_price=%s lead_time=%s payment_terms=%s ono=%s notes=%s cert_file_id=%s',
-                            uid, unit_price, lead_time, payment_terms_global, ono, notes, cert_file_id)
-
-            # Insert only when meaningful per-item data is present; apply global payment terms
-            if any([unit_price, lead_time, notes, ono, cert_file_id]):
+            if any([unit_price, stock_availability, lead_time, warranty, notes, ono, cert_file_id]):
                 conn.execute(
-                    '''
-                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, stock_availability, cert, cert_file_id, lead_time, payment_terms, ono, notes)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''',
-                    (task_id, supplier_id, item['id'], unit_price, None, str(cert_file_id) if cert_file_id else None, cert_file_id, lead_time, payment_terms_global, ono, notes)
+                    """
+                    INSERT INTO supplier_quotes (
+                        task_id, supplier_id, pr_item_id,
+                        unit_price, stock_availability,
+                        cert_file_id,
+                        lead_time, warranty, payment_terms, ono,
+                        ono_width, ono_length, ono_thickness,
+                        notes
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        task_id, supplier_id, item['id'],
+                        unit_price, stock_availability,
+                        cert_file_id,
+                        lead_time, warranty, payment_terms_global, ono,
+                        ono_width, ono_length, ono_thickness,
+                        notes
+                    )
                 )
+
 
         # Mark replied when quotes captured (always update to current time)
         conn.execute(
@@ -1165,23 +1227,35 @@ def supplier_quote_form(token):
             ono_thickness = request.form.get(f'ono_thickness_{uid}') or None
             
             # Handle certificate file upload
-            cert_path = None
+            cert_file_id = None
             if f'cert_{uid}' in request.files:
                 cert_file = request.files[f'cert_{uid}']
                 if cert_file and cert_file.filename != '':
-                    cert_path = save_uploaded_file(cert_file, task_id, supplier_id, item['id'])
+                    cert_file_id = save_uploaded_file(conn, cert_file, task_id, supplier_id, item['id'])
 
-            if any([unit_price, stock_availability, lead_time, warranty, notes, ono, cert_path]):
+            if any([unit_price, stock_availability, lead_time, warranty, notes, ono, cert_file_id]):
                 conn.execute(
-                    '''
-                    INSERT INTO supplier_quotes (task_id, supplier_id, pr_item_id, unit_price, stock_availability, 
-                                                 cert, lead_time, warranty, payment_terms, ono, 
-                                                 ono_width, ono_length, ono_thickness, notes)
+                    """
+                    INSERT INTO supplier_quotes (
+                        task_id, supplier_id, pr_item_id,
+                        unit_price, stock_availability,
+                        cert_file_id,
+                        lead_time, warranty, payment_terms, ono,
+                        ono_width, ono_length, ono_thickness,
+                        notes
+                    )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''',
-                    (task_id, supplier_id, item['id'], unit_price, stock_availability, cert_path, 
-                     lead_time, warranty, payment_terms_global, ono, ono_width, ono_length, ono_thickness, notes)
+                    """,
+                    (
+                        task_id, supplier_id, item['id'],
+                        unit_price, stock_availability,
+                        cert_file_id,
+                        lead_time, warranty, payment_terms_global, ono,
+                        ono_width, ono_length, ono_thickness,
+                        notes
+                    )
                 )
+
 
         # mark replied and log
         conn.execute(
@@ -1233,6 +1307,7 @@ def export_comparison(task_id):
         return redirect(url_for('task_list'))
 
     pr_items = conn.execute('SELECT * FROM pr_items WHERE task_id = ?', (task_id,)).fetchall()
+    pr_items = [dict(r) for r in pr_items]
     quotes = conn.execute('''
         SELECT q.*, s.name as supplier_name, ts.replied_at as replied_at
         FROM supplier_quotes q
@@ -1241,29 +1316,6 @@ def export_comparison(task_id):
         WHERE q.task_id = ?
     ''', (task_id,)).fetchall()
     conn.close()
-
-    # def parse_dimensions(spec_str):
-    #     """Parse spec like '5x8.20mm' into (width, length, thickness)."""
-    #     if not spec_str:
-    #         return None, None, None
-    #     spec_str = str(spec_str).lower().replace('mm', '').strip()
-    #     parts = spec_str.split('x')
-    #     w = parts[0].strip() if len(parts) > 0 else None
-
-    #     l = None
-    #     thk = None
-    #     if len(parts) > 1:
-    #         rhs = parts[1].strip().replace(' ', '')
-    #         if '.' in rhs:
-    #             l_thk = rhs.split('.')
-    #         elif ',' in rhs:
-    #             l_thk = rhs.split(',')
-    #         else:
-    #             l_thk = [rhs]
-    #         l = l_thk[0].strip() if len(l_thk) > 0 else None
-    #         thk = l_thk[1].strip() if len(l_thk) > 1 else None
-
-    #     return w, l, thk
 
     def to_float(x):
         try:
@@ -1308,7 +1360,6 @@ def export_comparison(task_id):
     OFF_STOCK = 4
     OFF_COA   = 5
     OFF_REMARKS = 6
-
 
     suppliers = {}  # supplier_id -> supplier_name
     supplier_terms = {}  # supplier_id -> set(payment_terms)
@@ -1371,7 +1422,6 @@ def export_comparison(task_id):
     center = Alignment(horizontal="center", vertical="center")
 
     # ---- Header styling (Row 1–2) ----
-    # "Dark Blue 60%" (common Excel look). If you want a different shade, change the hex.
     header_fill = PatternFill(fill_type="solid", fgColor="8DB4E2")  # dark blue
     header_font = Font(bold=True, color="0000FF")
     header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -1522,6 +1572,13 @@ def export_comparison(task_id):
 
         item_quotes_map = quotes_by_item.get(item['id'], {})
         
+        metric_candidates = {
+            "rate": [],
+            "price": [],
+            "total": [],
+            "lead": []
+        }
+
         # Check if we need to split this item into Standard vs O.N.O rows
         # Case 1: Item has some quotes with O.N.O -> Create two rows
         # Case 2: Item has NO quotes with O.N.O -> Create one row (Standard)
@@ -1574,18 +1631,18 @@ def export_comparison(task_id):
                     if q.get('cert_file_id'):
                         cert_display = "PDF"
                         # Generate full URL pointing to /file/<id>
-                        cert_url = url_for('serve_file', file_id=q['cert_file_id'], _external=True)
+                        cert_url = public_url_for("serve_file", file_id=q["cert_file_id"])
                     elif q.get('cert'):
                         # Legacy fallback
                         val = str(q['cert'])
                         if val.isdigit():
-                             cert_display = "PDF"
-                             cert_url = url_for('serve_file', file_id=int(val), _external=True)
+                            cert_display = "PDF"
+                            cert_url = public_url_for("serve_file", file_id=q["cert_file_id"])
                         else:
-                             # Old path style
-                             cert_display = "PDF"
-                             # Note: Local paths won't open in Excel, but preserving legacy behavior
-                             cert_url = val 
+                            # Old path style
+                            cert_display = "PDF"
+                            # Note: Local paths won't open in Excel, but preserving legacy behavior
+                            cert_url = val 
 
                     unit_price = q['unit_price'] if q['unit_price'] is not None else ""
                     unit_price_val = to_float(unit_price)
@@ -1710,7 +1767,7 @@ def export_comparison(task_id):
     for (row, col), url in cert_links.items():
         cell = ws.cell(row=row, column=col)
         cell.hyperlink = url
-        cell.style = "Hyperlink"
+        cell.font = Font(underline="single")
 
     # Column widths
     for c in range(1, max_col + 1):
@@ -2007,7 +2064,11 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
                     <li>Mill Certificate / Certificate of Analysis (COA)</li>
                 </ul>
 
-                <p>Supplier form: {quote_form_link}</p>
+                <p>Please fill in the quotation in the link below:</p>
+                <p>Supplier form: </p>
+                <p>↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓</p>
+                {quote_form_link}
+                <p>↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑</p>
                 
                 <p>We look forward to your prompt response.</p>
                 
@@ -2017,30 +2078,34 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
             </html>
             """
 
-        # Prefer SendGrid if configured
-        # sendgrid_attempted = False
-        # if SENDGRID_API_KEY and SENDGRID_SENDER:
-        #     sendgrid_attempted = True
-        #     resp = requests.post(
-        #         "https://api.sendgrid.com/v3/mail/send",
-        #         headers={
-        #             "Authorization": f"Bearer {SENDGRID_API_KEY}",
-        #             "Content-Type": "application/json"
-        #         },
-        #         json={
-        #             "personalizations": [{
-        #                 "to": [{"email": supplier_email, "name": supplier_name}],
-        #                 "subject": subject
-        #             }],
-        #             "from": {"email": SENDGRID_SENDER, "name": "Procurement"},
-        #             "content": [{"type": "text/html", "value": body}]
-        #         },
-        #         timeout=10
-        #     )
-        #     if 200 <= resp.status_code < 300:
-        #         return True
-        #     else:
-        #         print(f"SendGrid failed with status {resp.status_code}: {resp.text}; falling back to SMTP if configured")
+        # ===== 1) Try SendGrid first (if configured) =====
+        if SENDGRID_API_KEY and SENDGRID_SENDER:
+            try:
+                # Force Python to use certifi CA bundle (often fixes Windows/proxy TLS issues)
+                os.environ["SSL_CERT_FILE"] = certifi.where()
+
+                sg = SendGridAPIClient(SENDGRID_API_KEY)
+
+                message = Mail(
+                    from_email=Email(SENDGRID_SENDER, "Procurement Department"),
+                    to_emails=To(supplier_email, supplier_name or ""),
+                    subject=subject,
+                    html_content=body,   # <-- send raw HTML string
+                )
+
+                print("USING SENDGRID")
+                resp = sg.send(message)
+
+                if 200 <= resp.status_code < 300:
+                    print(f"SendGrid OK: status={resp.status_code} to={supplier_email} subject={subject}")
+                    return True
+
+                print(f"SendGrid failed: status={resp.status_code} body={getattr(resp, 'body', None)}")
+                # fall through to SMTP
+
+            except Exception as e:
+                print(f"SendGrid exception, falling back to SMTP: {e}")
+                # fall through to SMTP
 
         # SMTP fallback
         msg = MIMEMultipart()
@@ -2048,6 +2113,7 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
         msg['To'] = supplier_email
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'html'))
+        print("USING SMTP HTTP")
         
         server = smtplib.SMTP(EMAIL_CONFIG['smtp_server'], EMAIL_CONFIG['smtp_port'])
         server.starttls()
@@ -2342,6 +2408,35 @@ def parse_reply_fields(body_text):
         "payment_terms": payment_terms,
     }
 
+# INBOUND_SECRET = os.environ.get("INBOUND_SECRET", "")  # set this in your env
+
+# @app.route("/webhooks/sendgrid/inbound/<secret>", methods=["POST"])
+# def sendgrid_inbound(secret):
+#     # simple security so random people can’t POST fake replies
+#     if not INBOUND_SECRET or secret != INBOUND_SECRET:
+#         abort(403)
+
+#     # SendGrid fields (multipart/form-data)
+#     from_addr = request.form.get("from", "")
+#     subject = request.form.get("subject", "")
+#     raw_headers = request.form.get("headers", "")
+
+#     # prefer text; fallback html
+#     body_text = request.form.get("text") or ""
+#     if not body_text:
+#         body_text = request.form.get("html") or ""
+
+#     # OPTIONAL: attachments are in request.files; you can ignore for now
+#     # e.g. request.files.get("attachment1"), etc.
+
+#     result = process_inbound_supplier_reply(
+#         subject=subject,
+#         from_addr=from_addr,
+#         body_text=body_text,
+#         raw_headers=raw_headers
+#     )
+
+#     return ("OK", 200)
 
 def get_email_body(msg):
     """Extract text/plain part (or fallback) from an email.message.Message."""
@@ -2365,248 +2460,228 @@ def get_email_body(msg):
         except Exception:
             return str(msg.get_payload())
 
-def check_inbox_and_mark_replies():
-    """
-    Connect to the inbox via IMAP, find unread emails,
-    match them by sender email to suppliers, and mark
-    task_suppliers.replied_at for any pending tasks.
-    Returns number of suppliers/tasks updated.
-    """
-    processed = 0
+# def check_inbox_and_mark_replies():
+#     """
+#     Connect to the inbox via IMAP, find unread emails,
+#     match them by sender email to suppliers, and mark
+#     task_suppliers.replied_at for any pending tasks.
+#     Returns number of suppliers/tasks updated.
+#     """
+#     processed = 0
 
-    print("=== IMAP CHECK START ===")
-    print("IMAP_SERVER:", IMAP_SERVER)
-    print("IMAP_USERNAME:", IMAP_USERNAME)
+#     print("=== IMAP CHECK START ===")
+#     print("IMAP_SERVER:", IMAP_SERVER)
+#     print("IMAP_USERNAME:", IMAP_USERNAME)
 
 
-    # 1. Connect to IMAP
-    try:
-        mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
-        mail.login(IMAP_USERNAME, IMAP_PASSWORD)
-    except Exception as e:
-        print(f"[IMAP] Login failed: {e}")
-        return 0
+#     # 1. Connect to IMAP
+#     try:
+#         mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
+#         mail.login(IMAP_USERNAME, IMAP_PASSWORD)
+#     except Exception as e:
+#         print(f"[IMAP] Login failed: {e}")
+#         return 0
 
-    try:
-        mail.select("INBOX")
-        status, messages = mail.search(None, '(UNSEEN)')
-        if status != "OK":
-            print("[IMAP] Search failed")
-            mail.logout()
-            return 0
+#     try:
+#         mail.select("INBOX")
+#         status, messages = mail.search(None, '(UNSEEN)')
+#         if status != "OK":
+#             print("[IMAP] Search failed")
+#             mail.logout()
+#             return 0
 
-        conn = get_db_connection()
+#         conn = get_db_connection()
 
-        for num in messages[0].split():
-            status, data = mail.fetch(num, "(RFC822)")
-            if status != "OK":
-                continue
+#         for num in messages[0].split():
+#             status, data = mail.fetch(num, "(RFC822)")
+#             if status != "OK":
+#                 continue
 
-            raw_email = data[0][1]
-            msg = email.message_from_bytes(raw_email)
+#             raw_email = data[0][1]
+#             msg = email.message_from_bytes(raw_email)
 
-            # Decode subject (not essential for matching, but useful for logs)
-            raw_subject = msg.get("Subject", "")
-            decoded = decode_header(raw_subject)
-            subject_parts = []
-            for part, enc in decoded:
-                if isinstance(part, bytes):
-                    subject_parts.append(part.decode(enc or "utf-8", errors="ignore"))
-                else:
-                    subject_parts.append(part)
-            subject = "".join(subject_parts)
+#             # Decode subject (not essential for matching, but useful for logs)
+#             raw_subject = msg.get("Subject", "")
+#             decoded = decode_header(raw_subject)
+#             subject_parts = []
+#             for part, enc in decoded:
+#                 if isinstance(part, bytes):
+#                     subject_parts.append(part.decode(enc or "utf-8", errors="ignore"))
+#                 else:
+#                     subject_parts.append(part)
+#             subject = "".join(subject_parts)
 
-            from_addr = email.utils.parseaddr(msg.get("From"))[1].strip().lower()
-            print(f"[IMAP] New email from {from_addr} subject={subject!r}")
+#             from_addr = email.utils.parseaddr(msg.get("From"))[1].strip().lower()
+#             print(f"[IMAP] New email from {from_addr} subject={subject!r}")
 
-            # ----- FIND SUPPLIER BY EMAIL -----
-            supplier = conn.execute(
-                "SELECT id FROM suppliers WHERE LOWER(email) = ?",
-                (from_addr,)
-            ).fetchone()
+#             # ----- FIND SUPPLIER BY EMAIL -----
+#             supplier = conn.execute(
+#                 "SELECT id FROM suppliers WHERE LOWER(email) = ?",
+#                 (from_addr,)
+#             ).fetchone()
 
-            if not supplier:
-                # Not from a known supplier; mark seen & skip
-                # mail.store(num, '+FLAGS', '\\Seen')
-                continue
+#             if not supplier:
+#                 # Not from a known supplier; mark seen & skip
+#                 # mail.store(num, '+FLAGS', '\\Seen')
+#                 continue
 
-            supplier_id = supplier['id']
+#             supplier_id = supplier['id']
 
-            # ----- FIND MATCHING TASKS FOR THIS SUPPLIER BY SUBJECT -----
-            # Only match tasks where the subject contains the task_name
-            # Email subjects are typically "Re: Procurement Inquiry - {task_name}" or similar
+#             # ----- FIND MATCHING TASKS FOR THIS SUPPLIER BY SUBJECT -----
+#             # Only match tasks where the subject contains the task_name
+#             # Email subjects are typically "Re: Procurement Inquiry - {task_name}" or similar
             
-            # First, get all task_names for this supplier
-            all_supplier_tasks = conn.execute(
-                """
-                SELECT ts.task_id, t.task_name 
-                FROM task_suppliers ts
-                JOIN tasks t ON ts.task_id = t.id
-                WHERE ts.supplier_id = ?
-                """,
-                (supplier_id,)
-            ).fetchall()
+#             # First, get all task_names for this supplier
+#             all_supplier_tasks = conn.execute(
+#                 """
+#                 SELECT ts.task_id, t.task_name 
+#                 FROM task_suppliers ts
+#                 JOIN tasks t ON ts.task_id = t.id
+#                 WHERE ts.supplier_id = ?
+#                 """,
+#                 (supplier_id,)
+#             ).fetchall()
             
-            if not all_supplier_tasks:
-                # No tasks for this supplier; leave unread
-                print(f"[IMAP] No tasks found for supplier {supplier_id}, leaving email unread")
-                continue
+#             if not all_supplier_tasks:
+#                 # No tasks for this supplier; leave unread
+#                 print(f"[IMAP] No tasks found for supplier {supplier_id}, leaving email unread")
+#                 continue
             
-            # Check if subject matches any task_name
-            matched_tasks = []
-            for task_row in all_supplier_tasks:
-                task_name = task_row['task_name']
-                # Check if task_name appears in subject (case-insensitive)
-                if task_name.lower() in subject.lower():
-                    matched_tasks.append(task_row)
-                    print(f"[IMAP] Subject matched task: {task_name}")
+#             # Check if subject matches any task_name
+#             matched_tasks = []
+#             for task_row in all_supplier_tasks:
+#                 task_name = task_row['task_name']
+#                 # Check if task_name appears in subject (case-insensitive)
+#                 if task_name.lower() in subject.lower():
+#                     matched_tasks.append(task_row)
+#                     print(f"[IMAP] Subject matched task: {task_name}")
             
-            if not matched_tasks:
-                # Subject doesn't match any known task - leave email UNREAD
-                print(f"[IMAP] Subject '{subject}' doesn't match any task for supplier {supplier_id}, leaving unread")
-                continue
+#             if not matched_tasks:
+#                 # Subject doesn't match any known task - leave email UNREAD
+#                 print(f"[IMAP] Subject '{subject}' doesn't match any task for supplier {supplier_id}, leaving unread")
+#                 continue
             
-            # Only process matched tasks (not all tasks for this supplier)
-            pending_rows = matched_tasks
+#             # Only process matched tasks (not all tasks for this supplier)
+#             pending_rows = matched_tasks
 
-            # Parse Date header -> replied_at timestamp string
-            raw_date = msg.get("Date")
-            reply_dt_str = None
-            if raw_date:
-                try:
-                    dt = parsedate_to_datetime(raw_date)
-                    dt = dt.replace(tzinfo=None)  # store naive local-ish time
-                    reply_dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-                except Exception as e:
-                    print(f"[IMAP] Failed to parse Date header {raw_date!r}: {e}")
+#             # Parse Date header -> replied_at timestamp string
+#             raw_date = msg.get("Date")
+#             reply_dt_str = None
+#             if raw_date:
+#                 try:
+#                     dt = parsedate_to_datetime(raw_date)
+#                     dt = dt.replace(tzinfo=None)  # store naive local-ish time
+#                     reply_dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
+#                 except Exception as e:
+#                     print(f"[IMAP] Failed to parse Date header {raw_date!r}: {e}")
 
-            if not reply_dt_str:
-                # Fallback to current time
-                now = datetime.now()
-                reply_dt_str = now.strftime("%Y-%m-%d %H:%M:%S")
+#             if not reply_dt_str:
+#                 # Fallback to current time
+#                 now = datetime.now()
+#                 reply_dt_str = now.strftime("%Y-%m-%d %H:%M:%S")
 
-            body_text = get_email_body(msg)
-            print(body_text)
+#             body_text = get_email_body(msg)
+#             print(body_text)
 
-            # ✨ NEW: try to parse structured quote from body
-            parsed = parse_reply_fields(body_text)
-            print("[IMAP PARSE FIELDS]", parsed)
+#             # ✨ NEW: try to parse structured quote from body
+#             parsed = parse_reply_fields(body_text)
+#             print("[IMAP PARSE FIELDS]", parsed)
 
-            try:
-                # For each pending task for this supplier, mark replied_at
-                for row in pending_rows:
-                    task_id = row['task_id']
+#             try:
+#                 # For each pending task for this supplier, mark replied_at
+#                 for row in pending_rows:
+#                     task_id = row['task_id']
 
-                    # 1) Mark replied_at (update every time a reply is seen)
-                    conn.execute(
-                        '''
-                        UPDATE task_suppliers
-                        SET replied_at = ?
-                        WHERE task_id = ? AND supplier_id = ?
-                        ''',
-                        (reply_dt_str, task_id, supplier_id)
-                    )
+#                     # 1) Mark replied_at (update every time a reply is seen)
+#                     conn.execute(
+#                         '''
+#                         UPDATE task_suppliers
+#                         SET replied_at = ?
+#                         WHERE task_id = ? AND supplier_id = ?
+#                         ''',
+#                         (reply_dt_str, task_id, supplier_id)
+#                     )
 
-                    # 2) Log the reply (same as before)
-                    conn.execute(
-                        '''
-                        INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        ''',
-                        (task_id, supplier_id, 'reply', subject, body_text, 'received')
-                    )
+#                     # 2) Log the reply (same as before)
+#                     conn.execute(
+#                         '''
+#                         INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
+#                         VALUES (?, ?, ?, ?, ?, ?)
+#                         ''',
+#                         (task_id, supplier_id, 'reply', subject, body_text, 'received')
+#                     )
 
-                    # 3) If we successfully parsed anything, auto-populate supplier_quotes
-                    if parsed and any(parsed.values()):
-                        # Check if there are already quotes; don't overwrite user's manual input
-                        existing = conn.execute(
-                            '''
-                            SELECT 1 FROM supplier_quotes
-                            WHERE task_id = ? AND supplier_id = ?
-                            LIMIT 1
-                            ''',
-                            (task_id, supplier_id)
-                        ).fetchone()
+#                     # 3) If we successfully parsed anything, auto-populate supplier_quotes
+#                     if parsed and any(parsed.values()):
+#                         # Check if there are already quotes; don't overwrite user's manual input
+#                         existing = conn.execute(
+#                             '''
+#                             SELECT 1 FROM supplier_quotes
+#                             WHERE task_id = ? AND supplier_id = ?
+#                             LIMIT 1
+#                             ''',
+#                             (task_id, supplier_id)
+#                         ).fetchone()
 
-                        if not existing:
-                            # Get all PR items for this task
-                            pr_items = conn.execute(
-                                'SELECT id FROM pr_items WHERE task_id = ?',
-                                (task_id,)
-                            ).fetchall()
+#                         if not existing:
+#                             # Get all PR items for this task
+#                             pr_items = conn.execute(
+#                                 'SELECT id FROM pr_items WHERE task_id = ?',
+#                                 (task_id,)
+#                             ).fetchall()
 
-                            # Build a notes field from warranty + payment terms
-                            notes_parts = []
-                            if parsed.get("warranty"):
-                                notes_parts.append(f"Warranty: {parsed['warranty']}")
-                            if parsed.get("payment_terms"):
-                                notes_parts.append(f"Payment terms: {parsed['payment_terms']}")
-                            notes = "\n".join(notes_parts) if notes_parts else None
+#                             # Build a notes field from warranty + payment terms
+#                             notes_parts = []
+#                             if parsed.get("warranty"):
+#                                 notes_parts.append(f"Warranty: {parsed['warranty']}")
+#                             if parsed.get("payment_terms"):
+#                                 notes_parts.append(f"Payment terms: {parsed['payment_terms']}")
+#                             notes = "\n".join(notes_parts) if notes_parts else None
 
-                            for item in pr_items:
-                                pr_item_id = item['id']
-                                conn.execute(
-                                    '''
-                                    INSERT INTO supplier_quotes
-                                        (task_id, supplier_id, pr_item_id,
-                                         unit_price, stock_availability, lead_time, payment_terms, ono, notes)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                    ''',
-                                    (
-                                        task_id,
-                                        supplier_id,
-                                        pr_item_id,
-                                        parsed.get("unit_price"),
-                                        parsed.get("stock_availability"),
-                                        parsed.get("lead_time"),
-                                        parsed.get("payment_terms"),
-                                        0,
-                                        notes
-                                    )
-                                )
+#                             for item in pr_items:
+#                                 pr_item_id = item['id']
+#                                 conn.execute(
+#                                     '''
+#                                     INSERT INTO supplier_quotes
+#                                         (task_id, supplier_id, pr_item_id,
+#                                          unit_price, stock_availability, lead_time, payment_terms, ono, notes)
+#                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+#                                     ''',
+#                                     (
+#                                         task_id,
+#                                         supplier_id,
+#                                         pr_item_id,
+#                                         parsed.get("unit_price"),
+#                                         parsed.get("stock_availability"),
+#                                         parsed.get("lead_time"),
+#                                         parsed.get("payment_terms"),
+#                                         0,
+#                                         notes
+#                                     )
+#                                 )
 
-                            print(f"[IMAP] Auto-captured quotes for task_id={task_id}, supplier_id={supplier_id}")
+#                             print(f"[IMAP] Auto-captured quotes for task_id={task_id}, supplier_id={supplier_id}")
 
-                    processed += 1
-                    print(f"[IMAP] Marked replied: task_id={task_id}, supplier_id={supplier_id}, at {reply_dt_str}")
+#                     processed += 1
+#                     print(f"[IMAP] Marked replied: task_id={task_id}, supplier_id={supplier_id}, at {reply_dt_str}")
 
-                conn.commit()
-            except Exception as e:
-                print(f"[IMAP] DB update failed for supplier {supplier_id}: {e}")
-                conn.rollback()
+#                 conn.commit()
+#             except Exception as e:
+#                 print(f"[IMAP] DB update failed for supplier {supplier_id}: {e}")
+#                 conn.rollback()
 
 
-            # Mark this email as seen so we don't process it again
-            mail.store(num, '+FLAGS', '\\Seen')
+#             # Mark this email as seen so we don't process it again
+#             mail.store(num, '+FLAGS', '\\Seen')
 
-        conn.close()
-    finally:
-        try:
-            mail.logout()
-        except Exception:
-            pass
+#         conn.close()
+#     finally:
+#         try:
+#             mail.logout()
+#         except Exception:
+#             pass
 
-    return processed
-
-# background polling helpers
-def _inbox_polling_loop(interval):
-    if interval <= 0:
-        print(f"[IMAP Poll] Disabled (interval={interval})")
-        return
-    print(f"[IMAP Poll] Loop starting with interval={interval} seconds")
-    while True:
-        try:
-            processed = check_inbox_and_mark_replies()
-            if processed:
-                print(f"[IMAP Poll] Processed {processed} replies")
-        except Exception as e:
-            print(f"[IMAP Poll] Error while polling: {e}")
-        time.sleep(interval)
-
-def start_inbox_polling(interval):
-    t = threading.Thread(target=_inbox_polling_loop, args=(interval,), daemon=True, name="IMAPPoller")
-    t.start()
-    print(f"[IMAP Poll] Started background thread (daemon) polling every {interval} seconds")
+#     return processed
 
 # Do not run inbox checks at import time. This was causing side-effects
 # during the Flask debug reloader (multiple Python processes) and could
@@ -2614,15 +2689,15 @@ def start_inbox_polling(interval):
 # `/admin/check-replies` or a scheduled job to trigger inbox checks.
 # print(check_inbox_and_mark_replies())
     
-@app.route('/admin/check-replies')
-def admin_check_replies():
-    if 'user_id' not in session or session.get('role') != 'admin':
-        flash('Access denied', 'error')
-        return redirect(url_for('index'))
+# @app.route('/admin/check-replies')
+# def admin_check_replies():
+#     if 'user_id' not in session or session.get('role') != 'admin':
+#         flash('Access denied', 'error')
+#         return redirect(url_for('index'))
 
-    processed = check_inbox_and_mark_replies()
-    flash(f'Inbox checked. Auto-marked {processed} reply entries.', 'success')
-    return redirect(url_for('task_list'))
+#     processed = check_inbox_and_mark_replies()
+#     flash(f'Inbox checked. Auto-marked {processed} reply entries.', 'success')
+#     return redirect(url_for('task_list'))
     
 
 # ==================================== DEBUG ====================================
@@ -2742,15 +2817,5 @@ if __name__ == '__main__':
     print("Starting Procure Flow...")
     print("Access the application at: http://localhost:5000")
     print("Default admin login: username='admin', password='admin123'")
-    # Start the inbox poller only in the actual Flask child process when
-    # the reloader is active. WERKZEUG_RUN_MAIN is set to 'true' in the
-    # reloader's child process. This prevents duplicate polling threads.
-    try:
-        if os.environ.get('WERKZEUG_RUN_MAIN') == 'true' or not app.debug:
-            # Start polling in background if configured (interval > 0)
-            if IMAP_POLL_INTERVAL > 0:
-                start_inbox_polling(IMAP_POLL_INTERVAL)
-    except Exception as e:
-        print(f"[IMAP Poll] Failed to start poller: {e}")
 
     app.run(host='0.0.0.0', port=5000, debug=True)

@@ -137,6 +137,11 @@ def init_database():
             stock_availability TEXT,
             cert TEXT,
             lead_time TEXT,
+            warranty TEXT,
+            cert_file_id INTEGER,
+            ono_width INTEGER,
+            ono_length INTEGER,
+            ono_thickness INTEGER,
             payment_terms TEXT,
             ono BOOLEAN DEFAULT 0,
             notes TEXT,
@@ -147,16 +152,23 @@ def init_database():
         )
     ''')
 
-    # File Assets table
+    # File assets table (store PDFs in DB)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS file_assets (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER,
+            supplier_id INTEGER,
+            pr_item_id INTEGER,
             filename TEXT NOT NULL,
-            data BLOB NOT NULL,
             mime_type TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            data BLOB NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES tasks (id),
+            FOREIGN KEY (supplier_id) REFERENCES suppliers (id),
+            FOREIGN KEY (pr_item_id) REFERENCES pr_items (id)
         )
     ''')
+
 
     # Category Items table
     cursor.execute('''
@@ -179,6 +191,7 @@ def init_database():
     ensure_column('task_suppliers', 'initial_sent_at', 'TIMESTAMP')
     ensure_column('task_suppliers', 'followup_sent_at', 'TIMESTAMP')
     ensure_column('task_suppliers', 'replied_at', 'TIMESTAMP')
+    ensure_column('task_suppliers', 'quote_form_token', 'TEXT')
     # pr_items dimension columns
     ensure_column('pr_items', 'width', 'INTEGER')
     ensure_column('pr_items', 'length', 'INTEGER')
