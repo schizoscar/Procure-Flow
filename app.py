@@ -1579,24 +1579,80 @@ def export_comparison(task_id):
             "lead": []
         }
 
-        # Check if we need to split this item into Standard vs O.N.O rows
-        # Case 1: Item has some quotes with O.N.O -> Create two rows
-        # Case 2: Item has NO quotes with O.N.O -> Create one row (Standard)
-        has_ono_quotes = any((q.get('ono') == 1) for q in item_quotes_map.values())
+        # ---------------------------------------------------------
+        # Group quotes by "Dimension Key"
+        # Key: (is_ono, (dim1, dim2, dim3, dim4))
+        #   - Standard Quote: (False, base_dim_display)
+        #   - O.N.O Quote:    (True, (d1, d2, d3... from ono cols))
+        # ---------------------------------------------------------
         
-        # Define rows to render: (is_ono_row, row_label, dim_values)
-        rows_to_render = []
+        # Structure: key -> { supplier_id: quote }
+        grouped_quotes = {}
         
-        # 1. Standard Row (Quotes that are NOT O.N.O)
-        rows_to_render.append((False, item['item_name'], base_dim_display))
+        # Ensure the "Standard" group always exists
+        standard_key = (False, tuple(base_dim_display))
+        grouped_quotes[standard_key] = {} 
         
-        # 2. O.N.O Row (Quotes that ARE O.N.O) - only if they exist
-        if has_ono_quotes:
-            # For O.N.O row, we might want to show the O.N.O specific dimensions if they exist in the quote?
-            # Current requirement: Just split the row so we can compare O.N.O offers separately.
-            rows_to_render.append((True, f"{item['item_name']} (O.N.O Variation)", base_dim_display))
+        # Distribute quotes into groups
+        for supplier_id, supplier_name in suppliers_list:
+            q = item_quotes_map.get(supplier_id)
+            if q:
+                if q.get('ono') == 1:
+                    # It's an O.N.O quote - Determine its specific dimensions
+                    ono_dims = ["", "", "", ""]
+                    
+                    if category in ["Steel Plates", "Stainless Steel"]:
+                         w = q.get('ono_width')
+                         l = q.get('ono_length')
+                         thk = q.get('ono_thickness')
+                         ono_dims = [str(w) if w else "", "", str(l) if l else "", str(thk) if thk else ""]
+                         
+                    elif category == "Angle Bar":
+                        a = q.get('ono_dim_a')
+                        b = q.get('ono_dim_b')
+                        l = q.get('ono_length')
+                        thk = q.get('ono_thickness')
+                        ono_dims = [str(a) if a else "", str(b) if b else "", str(l) if l else "", str(thk) if thk else ""]
 
-        for is_ono_row, row_label, dims in rows_to_render:
+                    elif category in ["Rebar", "Bolts, Fasteners"]:
+                         d = q.get('ono_diameter')
+                         l = q.get('ono_length')
+                         ono_dims = [str(d) if d else "", "", str(l) if l else "", ""]
+                         
+                    else:
+                        uom_qty = q.get('ono_uom_qty')
+                        ono_dims = [str(uom_qty) if uom_qty else "", "", "", ""]
+                    
+                    # Create Key
+                    key = (True, tuple(ono_dims))
+                    if key not in grouped_quotes:
+                        grouped_quotes[key] = {}
+                    grouped_quotes[key][supplier_id] = q
+                    
+                else:
+                    # Standard Quote
+                    grouped_quotes[standard_key][supplier_id] = q
+
+        # ---------------------------------------------------------
+        # Render Rows
+        # ---------------------------------------------------------
+        def sort_keys(k):
+            is_ono, dims = k
+            return (is_ono, dims)
+            
+        sorted_keys = sorted(grouped_quotes.keys(), key=sort_keys)
+        
+        for key in sorted_keys:
+            is_ono, dims = key
+            quotes_for_row_map = grouped_quotes[key]
+            
+            # Skip empty O.N.O rows
+            if is_ono and not quotes_for_row_map:
+                continue
+
+            # Construct Label
+            row_label = f"{item['item_name']} (O.N.O)" if is_ono else item['item_name']
+
             row = [
                 row_label,
                 item["brand"] or "",
@@ -1607,21 +1663,25 @@ def export_comparison(task_id):
             ]
             
             # Fill supplier columns
+            # Metric candidates for highlighting *within this row*
+            row_metric_candidates = {
+                "rate": [],
+                "price": [],
+                "total": [],
+                "lead": []
+            }
+
             col_idx = SUPPLIER_START_COL
             for supplier_id, supplier_name in suppliers_list:
-                q = item_quotes_map.get(supplier_id)
+                q = quotes_for_row_map.get(supplier_id)
                 
-                # Logic:
-                # If this is "Standard Row" (is_ono_row=False), only show quotes where q['ono'] != 1
-                # If this is "O.N.O Row" (is_ono_row=True), only show quotes where q['ono'] == 1
+                # Logic: Quotes are already pre-filtered by the group key
+                # So we just render 'q' if it exists.
                 
-                should_include = False
+                should_include = True # effectively always true if q exists in this map
                 if q:
-                    quote_is_ono = (q.get('ono') == 1)
-                    if is_ono_row and quote_is_ono:
-                        should_include = True
-                    elif not is_ono_row and not quote_is_ono:
-                        should_include = True
+                    # q is guaranteed to match the row type thanks to grouping logic
+                    pass
                 
                 if q and should_include:
                     cert_display = ""
@@ -1657,7 +1717,7 @@ def export_comparison(task_id):
                     total_amount_val = ""
                     if unit_price_val is not None and qty_val is not None:
                         total_amount_val = round(unit_price_val * qty_val, 2)
-                        if not is_ono_row: # Only sum standard quotes to total? Or sum lowest? 
+                        if not is_ono: # Only sum standard quotes to total? Or sum lowest? 
                             # Logic: If multiple rows exist for same item, usually you pick one.
                             # For the "Total Amount" line at bottom, simplistic summation might be misleading if we have split rows.
                             # Strategy: We accumulate totals based on "Standard" quotes only for the summary?
@@ -1678,10 +1738,10 @@ def export_comparison(task_id):
                         cert_links[(current_row, col_idx + OFF_COA)] = cert_url
 
                     # highlight candidates
-                    metric_candidates["rate"].append((col_idx + OFF_RATE, to_float(rate_val)))
-                    metric_candidates["price"].append((col_idx + OFF_PRICE, unit_price_val))
-                    metric_candidates["total"].append((col_idx + OFF_TOTAL, to_float(total_amount_val)))
-                    metric_candidates["lead"].append((col_idx + OFF_LEAD, lead_time_to_days(q.get('lead_time'))))
+                    row_metric_candidates["rate"].append((col_idx + OFF_RATE, to_float(rate_val)))
+                    row_metric_candidates["price"].append((col_idx + OFF_PRICE, unit_price_val))
+                    row_metric_candidates["total"].append((col_idx + OFF_TOTAL, to_float(total_amount_val)))
+                    row_metric_candidates["lead"].append((col_idx + OFF_LEAD, lead_time_to_days(q.get('lead_time'))))
 
                     col_idx += SUPPLIER_BLOCK_COLS
                 else:
@@ -1693,7 +1753,7 @@ def export_comparison(task_id):
 
             # Apply per-row best highlighting (lowest wins)
             for key in ["rate", "price", "total", "lead"]:
-                vals = [(col, v) for (col, v) in metric_candidates[key] if v is not None]
+                vals = [(col, v) for (col, v) in row_metric_candidates[key] if v is not None]
                 if not vals:
                     continue
                 best_val = min(v for _, v in vals)
