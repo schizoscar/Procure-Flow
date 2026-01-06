@@ -190,16 +190,30 @@
 <script>
 document.addEventListener('DOMContentLoaded', function() {
 
+    function setEnabled(el, enabled) {
+        el.querySelectorAll('input, select, textarea').forEach(inp => {
+            inp.disabled = !enabled;
+        });
+    }
+
     function showONOForItem(itemId, dimType) {
         const wrap = document.getElementById('ono_dims_' + itemId);
         if (!wrap) return;
 
-        // Hide all sections
-        wrap.querySelectorAll('.ono-dims-section').forEach(sec => sec.style.display = 'none');
+        const sections = wrap.querySelectorAll('.ono-dims-section');
 
-        // Show the correct one
+        // Hide + disable all sections first
+        sections.forEach(sec => {
+            sec.style.display = 'none';
+            setEnabled(sec, false);
+        });
+
+        // Show + enable only the correct one
         const target = wrap.querySelector('.ono-' + dimType);
-        if (target) target.style.display = 'block';
+        if (target) {
+            target.style.display = 'block';
+            setEnabled(target, true);
+        }
     }
 
     // Hook up ONO checkboxes
@@ -215,29 +229,15 @@ document.addEventListener('DOMContentLoaded', function() {
                 showONOForItem(itemId, dimType);
             } else {
                 wrap.style.display = 'none';
+                // Disable everything so hidden ONO inputs don't submit blanks
+                wrap.querySelectorAll('.ono-dims-section').forEach(sec => setEnabled(sec, false));
             }
         }
 
         cb.addEventListener('change', sync);
-        sync(); // auto apply on load (important for edit mode)
+        sync();
     });
 
-    // Handle file input change to display filename
-    {% for item in pr_items %}
-    const certInput_{{ item.id }} = document.getElementById('cert_{{ item.id }}');
-    if (certInput_{{ item.id }}) {
-        certInput_{{ item.id }}.addEventListener('change', function() {
-            const filenameDiv = document.getElementById('cert_filename_{{ item.id }}');
-            const filenameSpan = document.getElementById('cert_name_{{ item.id }}');
-            if (this.files && this.files.length > 0) {
-                filenameSpan.textContent = this.files[0].name;
-                filenameDiv.style.display = 'block';
-            } else {
-                filenameDiv.style.display = 'none';
-            }
-        });
-    }
-    {% endfor %}
 });
 </script>
 {% endblock %}

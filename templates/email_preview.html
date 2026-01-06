@@ -96,12 +96,15 @@
                                         <li>Mill Certificate / Certificate of Analysis (COA)</li>
                                     </ul>
 
-                                    <p>Please fill in the quotation above using the quotation form below:</p>
+                                    <p>Please fill in the quotation in the link below:</p>
+                                    <p>Supplier form:</p>
+                                    <p>↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓</p>
                                     <td>
                                         {% if form_links and form_links.get(s.id) %}
                                         <a href="{{ form_links.get(s.id) }}" target="_blank">Open Form</a>
                                         {% else %}—{% endif %}
                                     </td>
+                                    <p>↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑</p>
                                     
                                     <p>We look forward to your prompt response.</p>
                                     
@@ -180,10 +183,13 @@ Please provide us with your quotation including:
 • Warranty (If Applicable)
 • Mill Certificate / Certificate of Analysis (COA)
 
-Please fill in the quotation above using the quotation form below:
+Please fill in the quotation in the link below:
+Supplier form: 
+↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
 {%- if form_links and form_links.get(s.id) -%}
 {{ form_links.get(s.id) }}
 {% endif %}
+↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
 
 We look forward to your prompt response.
 

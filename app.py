@@ -150,20 +150,6 @@ IMAP_PORT = int(os.getenv('IMAP_PORT', '993'))
 IMAP_USERNAME = os.getenv('IMAP_USERNAME', EMAIL_CONFIG['sender_email'])
 IMAP_PASSWORD = os.getenv('IMAP_PASSWORD', EMAIL_CONFIG['sender_password'])
 
-# Poll interval in seconds. Set `IMAP_POLL_INTERVAL` env var to change.
-# Setting to 0 disables automatic polling.
-# IMAP_POLL_INTERVAL = int(os.getenv('IMAP_POLL_INTERVAL', '60'))
-
-print("=== DEBUG FROM APP STARTUP ===")
-print("SMTP_SENDER env:", os.getenv('SMTP_SENDER'))
-print("EMAIL_CONFIG sender_email:", EMAIL_CONFIG['sender_email'])
-print("APP_SECRET_KEY env:", os.getenv('APP_SECRET_KEY'))
-
-print("EMAIL_CONFIG sender_email:", IMAP_USERNAME)
-print("EMAIL_CONFIG sender_email:", IMAP_PASSWORD)
-print("EMAIL_CONFIG sender_email:", IMAP_SERVER)
-print("=== END DEBUG ===")
-
 # Database connection helper
 def get_db_connection():
     """Return SQLite connection with row factory."""
@@ -1082,6 +1068,17 @@ def capture_quotes(task_id, supplier_id):
         flash('Task or supplier not found, or access denied', 'error')
         conn.close()
         return redirect(url_for('task_list'))
+    
+    def form_last_nonempty(key: str):
+        vals = request.form.getlist(key)  # gets ALL values if the key appears multiple times
+        for v in reversed(vals):
+            if v is None:
+                continue
+            s = str(v).strip()
+            if s != "":
+                return s
+        return None
+
 
     pr_items = conn.execute('SELECT * FROM pr_items WHERE task_id = ?', (task_id,)).fetchall()
 
@@ -1124,8 +1121,12 @@ def capture_quotes(task_id, supplier_id):
             
             # O.N.O. alternate dimensions
             ono_width = request.form.get(f'ono_width_{uid}') or None
-            ono_length = request.form.get(f'ono_length_{uid}') or None
+            ono_length = form_last_nonempty(f'ono_length_{uid}')
             ono_thickness = request.form.get(f'ono_thickness_{uid}') or None
+            ono_dim_a = request.form.get(f'ono_dim_a_{uid}') or None
+            ono_dim_b = request.form.get(f'ono_dim_b_{uid}') or None
+            ono_diameter = request.form.get(f'ono_diameter_{uid}') or None
+            ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
             
             # Handle certificate file upload
             cert_file_id = None
@@ -1143,9 +1144,12 @@ def capture_quotes(task_id, supplier_id):
                         cert_file_id,
                         lead_time, warranty, payment_terms, ono,
                         ono_width, ono_length, ono_thickness,
+                        ono_dim_a, ono_dim_b,
+                        ono_diameter,
+                        ono_uom_qty,
                         notes
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         task_id, supplier_id, item['id'],
@@ -1153,6 +1157,9 @@ def capture_quotes(task_id, supplier_id):
                         cert_file_id,
                         lead_time, warranty, payment_terms_global, ono,
                         ono_width, ono_length, ono_thickness,
+                        ono_dim_a, ono_dim_b,
+                        ono_diameter,
+                        ono_uom_qty,
                         notes
                     )
                 )
@@ -1191,6 +1198,16 @@ def supplier_quote_form(token):
     if not task or not supplier:
         conn.close()
         return "Task or supplier not found", 404
+    
+    def form_last_nonempty(key: str):
+        vals = request.form.getlist(key)  # gets ALL values if the key appears multiple times
+        for v in reversed(vals):
+            if v is None:
+                continue
+            s = str(v).strip()
+            if s != "":
+                return s
+        return None
 
     ts_row = conn.execute(
         'SELECT assigned_items FROM task_suppliers WHERE task_id = ? AND supplier_id = ?',
@@ -1223,8 +1240,12 @@ def supplier_quote_form(token):
             
             # O.N.O. alternate dimensions
             ono_width = request.form.get(f'ono_width_{uid}') or None
-            ono_length = request.form.get(f'ono_length_{uid}') or None
+            ono_length = form_last_nonempty(f'ono_length_{uid}')
             ono_thickness = request.form.get(f'ono_thickness_{uid}') or None
+            ono_dim_a = request.form.get(f'ono_dim_a_{uid}') or None
+            ono_dim_b = request.form.get(f'ono_dim_b_{uid}') or None
+            ono_diameter = request.form.get(f'ono_diameter_{uid}') or None
+            ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
             
             # Handle certificate file upload
             cert_file_id = None
@@ -1242,9 +1263,12 @@ def supplier_quote_form(token):
                         cert_file_id,
                         lead_time, warranty, payment_terms, ono,
                         ono_width, ono_length, ono_thickness,
+                        ono_dim_a, ono_dim_b,
+                        ono_diameter,
+                        ono_uom_qty,
                         notes
                     )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         task_id, supplier_id, item['id'],
@@ -1252,6 +1276,9 @@ def supplier_quote_form(token):
                         cert_file_id,
                         lead_time, warranty, payment_terms_global, ono,
                         ono_width, ono_length, ono_thickness,
+                        ono_dim_a, ono_dim_b,
+                        ono_diameter,
+                        ono_uom_qty,
                         notes
                     )
                 )
@@ -1351,6 +1378,75 @@ def export_comparison(task_id):
 
         # If user typed plain "7" assume days
         return num
+
+    def _norm(x):
+        """Normalize dimension cell value to a clean string for Excel + grouping."""
+        if x is None:
+            return ""
+        s = str(x).strip()
+        return "" if s.lower() in ("none", "null") else s
+
+    def _num(x):
+        """Convert dimension to float if possible."""
+        try:
+            s = _norm(x)
+            return None if s == "" else float(s)
+        except Exception:
+            return None
+
+    def dims_for_row(category, base_dim_display, q):
+        """
+        Return dims tuple (d1,d2,d3,d4) for this quote row.
+        If q is ONO and has overrides, use them; otherwise fall back to base dims.
+        """
+        d1, d2, d3, d4 = base_dim_display
+
+        if not q or q.get("ono") != 1:
+            return (_norm(d1), _norm(d2), _norm(d3), _norm(d4))
+
+        if category in ["Steel Plates", "Stainless Steel"]:
+            w = _norm(q.get("ono_width")) or _norm(d1)
+            L = _norm(q.get("ono_length")) or _norm(d3)
+            thk = _norm(q.get("ono_thickness")) or _norm(d4)
+            return (w, "", L, thk)
+
+        if category == "Angle Bar":
+            a = _norm(q.get("ono_dim_a")) or _norm(d1)
+            b = _norm(q.get("ono_dim_b")) or _norm(d2)
+            L = _norm(q.get("ono_length")) or _norm(d3)
+            thk = _norm(q.get("ono_thickness")) or _norm(d4)
+            return (a, b, L, thk)
+
+        if category in ["Rebar", "Bolts, Fasteners"]:
+            d = _norm(q.get("ono_diameter")) or _norm(d1)
+            L = _norm(q.get("ono_length")) or _norm(d3)
+            return (d, "", L, "")
+
+        # other categories
+        uq = _norm(q.get("ono_uom_qty")) or _norm(d1)
+        return (uq, "", "", "")
+
+    def weight_for_dims(category, dims, base_weight):
+        """
+        Compute weight for the row dims. If cannot compute, return base_weight.
+        """
+        if category in ["Steel Plates", "Stainless Steel"]:
+            w = _num(dims[0]); L = _num(dims[2]); thk = _num(dims[3])
+            if w and L and thk:
+                return round((w * L * thk * 7.85) / 1_000_000, 2)
+
+        elif category in ["Rebar", "Bolts, Fasteners"]:
+            d = _num(dims[0]); L = _num(dims[2])
+            if d and L:
+                import math
+                return round((math.pi / 4) * (d ** 2) * L * 7.85 * 0.000001, 2)
+
+        elif category == "Angle Bar":
+            a = _num(dims[0]); b = _num(dims[1]); L = _num(dims[2]); thk = _num(dims[3])
+            if a and b and L and thk:
+                return round((L * thk * (a + b - thk) * 7.85) / 1_000_000, 2)
+
+        return base_weight
 
     SUPPLIER_BLOCK_COLS = 7
     OFF_RATE  = 0
@@ -1594,44 +1690,25 @@ def export_comparison(task_id):
         grouped_quotes[standard_key] = {} 
         
         # Distribute quotes into groups
+        # Normalize standard dims so grouping is consistent
+        standard_dims = tuple(_norm(x) for x in base_dim_display)
+        standard_key = (False, standard_dims)
+        grouped_quotes = {standard_key: {}}
+
+        # Distribute quotes into groups (STANDARD vs ONO with fallback)
         for supplier_id, supplier_name in suppliers_list:
             q = item_quotes_map.get(supplier_id)
-            if q:
-                if q.get('ono') == 1:
-                    # It's an O.N.O quote - Determine its specific dimensions
-                    ono_dims = ["", "", "", ""]
-                    
-                    if category in ["Steel Plates", "Stainless Steel"]:
-                         w = q.get('ono_width')
-                         l = q.get('ono_length')
-                         thk = q.get('ono_thickness')
-                         ono_dims = [str(w) if w else "", "", str(l) if l else "", str(thk) if thk else ""]
-                         
-                    elif category == "Angle Bar":
-                        a = q.get('ono_dim_a')
-                        b = q.get('ono_dim_b')
-                        l = q.get('ono_length')
-                        thk = q.get('ono_thickness')
-                        ono_dims = [str(a) if a else "", str(b) if b else "", str(l) if l else "", str(thk) if thk else ""]
+            if not q:
+                continue
 
-                    elif category in ["Rebar", "Bolts, Fasteners"]:
-                         d = q.get('ono_diameter')
-                         l = q.get('ono_length')
-                         ono_dims = [str(d) if d else "", "", str(l) if l else "", ""]
-                         
-                    else:
-                        uom_qty = q.get('ono_uom_qty')
-                        ono_dims = [str(uom_qty) if uom_qty else "", "", "", ""]
-                    
-                    # Create Key
-                    key = (True, tuple(ono_dims))
-                    if key not in grouped_quotes:
-                        grouped_quotes[key] = {}
-                    grouped_quotes[key][supplier_id] = q
-                    
-                else:
-                    # Standard Quote
-                    grouped_quotes[standard_key][supplier_id] = q
+            if q.get("ono") == 1:
+                # ✅ this applies ONO dims but falls back to base dims when ONO fields are blank
+                eff_dims = dims_for_row(category, base_dim_display, q)   # returns 4-tuple of strings
+                key = (True, tuple(eff_dims))
+                grouped_quotes.setdefault(key, {})[supplier_id] = q
+            else:
+                grouped_quotes[standard_key][supplier_id] = q
+
 
         # ---------------------------------------------------------
         # Render Rows

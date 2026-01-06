@@ -196,57 +196,73 @@
     </div>
 
     <script>
-        document.addEventListener('DOMContentLoaded', function () {
+    document.addEventListener('DOMContentLoaded', function () {
 
-            function showONOSection(itemId, dimType) {
-                const fieldsDiv = document.getElementById('ono_fields_' + itemId);
-                if (!fieldsDiv) return;
+        function setEnabled(container, enabled) {
+            container.querySelectorAll('input, select, textarea').forEach(el => {
+                el.disabled = !enabled;
+            });
+        }
 
-                // Hide all ONO dim sections first
-                fieldsDiv.querySelectorAll('.ono-dims-section').forEach(sec => {
-                    sec.style.display = 'none';
-                });
+        function showONOSection(itemId, dimType) {
+            const fieldsDiv = document.getElementById('ono_fields_' + itemId);
+            if (!fieldsDiv) return;
 
-                // Show matching section
-                const target = fieldsDiv.querySelector('.ono-' + dimType);
-                if (target) target.style.display = 'block';
+            // Hide + disable all ONO dim sections first
+            fieldsDiv.querySelectorAll('.ono-dims-section').forEach(sec => {
+                sec.style.display = 'none';
+                setEnabled(sec, false);
+            });
+
+            // Show + enable matching section
+            const target = fieldsDiv.querySelector('.ono-' + dimType);
+            if (target) {
+                target.style.display = 'block';
+                setEnabled(target, true);
+            }
+        }
+
+        // Handle O.N.O. checkbox toggle
+        document.querySelectorAll('.ono-checkbox').forEach(function (checkbox) {
+            const itemId = checkbox.getAttribute('data-item-id');
+            const dimType = checkbox.getAttribute('data-dim-type') || 'other';
+            const fieldsDiv = document.getElementById('ono_fields_' + itemId);
+
+            if (!fieldsDiv) return;
+
+            function sync() {
+                if (checkbox.checked) {
+                    fieldsDiv.style.display = 'block';
+                    showONOSection(itemId, dimType);
+                } else {
+                    fieldsDiv.style.display = 'none';
+                    // Disable ALL ONO inputs so hidden blanks won't submit
+                    fieldsDiv.querySelectorAll('.ono-dims-section').forEach(sec => setEnabled(sec, false));
+                }
             }
 
-            // Handle O.N.O. checkbox toggle (category-aware)
-            document.querySelectorAll('.ono-checkbox').forEach(function (checkbox) {
-                checkbox.addEventListener('change', function () {
-                    const itemId = this.getAttribute('data-item-id');
-                    const dimType = this.getAttribute('data-dim-type') || 'other';
-                    const fieldsDiv = document.getElementById('ono_fields_' + itemId);
+            checkbox.addEventListener('change', sync);
+            sync(); // important: ensure correct disabled state on page load
+        });
 
-                    if (!fieldsDiv) return;
-
-                    if (this.checked) {
-                        fieldsDiv.style.display = 'block';
-                        showONOSection(itemId, dimType);
+        // Handle file input change to display filename
+        document.querySelectorAll('input[type="file"][name^="cert_"]').forEach(function (input) {
+            input.addEventListener('change', function () {
+                const itemId = this.name.replace('cert_', '');
+                const filenameDiv = document.getElementById('cert_filename_' + itemId);
+                const filenameSpan = document.getElementById('cert_name_' + itemId);
+                if (filenameDiv && filenameSpan) {
+                    if (this.files && this.files.length > 0) {
+                        filenameSpan.textContent = this.files[0].name;
+                        filenameDiv.style.display = 'block';
                     } else {
-                        fieldsDiv.style.display = 'none';
+                        filenameDiv.style.display = 'none';
                     }
-                });
-            });
-
-            // Handle file input change to display filename
-            document.querySelectorAll('input[type="file"][name^="cert_"]').forEach(function (input) {
-                input.addEventListener('change', function () {
-                    const itemId = this.name.replace('cert_', '');
-                    const filenameDiv = document.getElementById('cert_filename_' + itemId);
-                    const filenameSpan = document.getElementById('cert_name_' + itemId);
-                    if (filenameDiv && filenameSpan) {
-                        if (this.files && this.files.length > 0) {
-                            filenameSpan.textContent = this.files[0].name;
-                            filenameDiv.style.display = 'block';
-                        } else {
-                            filenameDiv.style.display = 'none';
-                        }
-                    }
-                });
+                }
             });
         });
+
+    });
     </script>
 </body>
 
