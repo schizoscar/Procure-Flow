@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>Page not found (404)</h2>
+  </div>
+  <div class="card-body">
+    <p>The page you’re looking for doesn’t exist, or the link may be outdated.</p>
+
+    <div class="d-flex gap-1 mt-2">
+      <a class="btn btn-primary" href="{{ url_for('dashboard') }}">Go to Dashboard</a>
+      <a class="btn btn-secondary" href="javascript:history.back()">Go Back</a>
+    </div>
+
+    <p class="text-muted" style="margin-top:1rem;">
+      Tip: Check the URL or return to the task list.
+    </p>
+  </div>
+</div>
+{% endblock %}

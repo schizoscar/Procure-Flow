@@ -28,12 +28,17 @@ from sendgrid import SendGridAPIClient
 from sendgrid.helpers.mail import Mail, Email, To, Content
 import certifi
 from urllib.parse import urljoin
+import logging
+from werkzeug.exceptions import HTTPException
 
 
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.getenv('APP_SECRET_KEY', 'procure-flow-secret-key-2024')
+secret = os.getenv("APP_SECRET_KEY")
+if not secret:
+    raise RuntimeError("APP_SECRET_KEY is not set")
+app.secret_key = secret
 
 # File upload configuration
 UPLOADS_DIR = os.path.join('uploads', 'certificates')
@@ -45,6 +50,12 @@ app.config["PUBLIC_BASE_URL"] = PUBLIC_BASE_URL
 
 # Ensure uploads directory exists
 os.makedirs(UPLOADS_DIR, exist_ok=True)
+
+# Basic logging setup (works for dev + prod)
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s"
+)
 
 def allowed_file(filename):
     """Check if file extension is allowed."""
@@ -124,9 +135,9 @@ def init_database_on_startup():
         cursor = conn.cursor()
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
         tables = [table[0] for table in cursor.fetchall()]
-        print(f"Database initialized. Tables: {tables}")
+        app.logger.info("Database initialized. Tables=%s", tables)
     except Exception as e:
-        print(f"Database initialization failed: {e}")
+        app.logger.exception("Database initialization failed")
     finally:
         if conn:
             conn.close()
@@ -149,6 +160,8 @@ IMAP_SERVER = os.getenv('IMAP_SERVER', 'imap.gmail.com')
 IMAP_PORT = int(os.getenv('IMAP_PORT', '993'))
 IMAP_USERNAME = os.getenv('IMAP_USERNAME', EMAIL_CONFIG['sender_email'])
 IMAP_PASSWORD = os.getenv('IMAP_PASSWORD', EMAIL_CONFIG['sender_password'])
+
+ENABLE_DEBUG_ROUTES = os.getenv("ENABLE_DEBUG_ROUTES", "0") == "1"
 
 # Database connection helper
 def get_db_connection():
@@ -1100,11 +1113,31 @@ def capture_quotes(task_id, supplier_id):
         app.logger.info('capture_quotes POST received for task %s supplier %s', task_id, supplier_id)
         # Log raw form keys/values (useful to debug duplicate-value issues)
         try:
-            app.logger.debug('Form data keys: %s', list(request.form.keys()))
-            # For readability, convert to a normal dict (note: duplicates will be collapsed)
-            app.logger.debug('Form data snapshot: %s', {k: request.form.get(k) for k in request.form.keys()})
-        except Exception:
-            pass
+            conn.execute('DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id))
+
+            payment_terms_global = request.form.get('payment_terms') or None
+
+            for item in pr_items:
+                ...
+                if any([unit_price, stock_availability, lead_time, warranty, notes, ono, cert_file_id]):
+                    conn.execute("""INSERT ...""", (...))
+
+            conn.execute(
+                'UPDATE task_suppliers SET replied_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
+                (task_id, supplier_id)
+            )
+
+            conn.commit()
+            flash('Quotes saved.', 'success')
+            return redirect(url_for('task_responses', task_id=task_id))
+
+        except sqlite3.Error:
+            conn.rollback()
+            app.logger.exception("DB error while saving quotes (task_id=%s supplier_id=%s)", task_id, supplier_id)
+            flash("We couldn't save the quotes due to a system issue. Please try again.", "error")
+
+        finally:
+            conn.close()
 
         conn.execute('DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id))
         # Single payment terms value for the whole submission
@@ -1225,6 +1258,33 @@ def supplier_quote_form(token):
         pr_items = [item for item in pr_items if item['id'] in assigned_ids]
 
     if request.method == 'POST':
+        try:
+            conn.execute('DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id))
+
+            payment_terms_global = request.form.get('payment_terms') or None
+
+            for item in pr_items:
+                ...
+                if any([unit_price, stock_availability, lead_time, warranty, notes, ono, cert_file_id]):
+                    conn.execute("""INSERT ...""", (...))
+
+            conn.execute(
+                'UPDATE task_suppliers SET replied_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
+                (task_id, supplier_id)
+            )
+
+            conn.commit()
+            flash('Quotes saved.', 'success')
+            return redirect(url_for('task_responses', task_id=task_id))
+
+        except sqlite3.Error:
+            conn.rollback()
+            app.logger.exception("DB error while saving quotes (task_id=%s supplier_id=%s)", task_id, supplier_id)
+            flash("We couldn't save the quotes due to a system issue. Please try again.", "error")
+
+        finally:
+            conn.close()
+
         conn.execute('DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id))
         # Single payment terms value for the whole submission
         payment_terms_global = request.form.get('payment_terms') or None
@@ -2230,7 +2290,7 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
                     html_content=body,   # <-- send raw HTML string
                 )
 
-                print("USING SENDGRID")
+                app.logger.info("Sending email via SendGrid")
                 resp = sg.send(message)
 
                 if 200 <= resp.status_code < 300:
@@ -2250,7 +2310,7 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
         msg['To'] = supplier_email
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'html'))
-        print("USING SMTP HTTP")
+        app.logger.info("Sending email via SMTP fallback")
         
         server = smtplib.SMTP(EMAIL_CONFIG['smtp_server'], EMAIL_CONFIG['smtp_port'])
         server.starttls()
@@ -2260,7 +2320,7 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
         
         return True
     except Exception as e:
-        print(f"Email sending failed: {e}")
+        app.logger.exception("Email sending failed")
         return False
 
 
@@ -2841,8 +2901,10 @@ def get_email_body(msg):
 # Add this route to your app.py temporarily
 @app.route('/debug-db')
 def debug_db():
+    if not ENABLE_DEBUG_ROUTES:
+        abort(404)
     if 'user_id' not in session or session.get('role') != 'admin':
-        return "Access denied", 403
+        abort(403)
 
     conn = get_db_connection()
     
@@ -2879,8 +2941,10 @@ def debug_db():
 
 @app.route('/debug-info')
 def debug_info():
+    if not ENABLE_DEBUG_ROUTES:
+        abort(404)
     if 'user_id' not in session or session.get('role') != 'admin':
-        return "Access denied", 403
+        abort(403)
 
     import os
     import sqlite3
@@ -2918,8 +2982,10 @@ def debug_info():
 
 @app.route('/db-location')
 def db_location():
+    if not ENABLE_DEBUG_ROUTES:
+        abort(404)
     if 'user_id' not in session or session.get('role') != 'admin':
-        return "Access denied", 403
+        abort(403)
 
     import os
     import sqlite3
@@ -2950,9 +3016,35 @@ def db_location():
     return info
 # ==================================== END OF DEBUG ====================================
 
-if __name__ == '__main__':
-    print("Starting Procure Flow...")
-    print("Access the application at: http://localhost:5000")
-    print("Default admin login: username='admin', password='admin123'")
+@app.errorhandler(404)
+def not_found(e):
+    return render_template("errors/404.html"), 404
 
-    app.run(host='0.0.0.0', port=5000, debug=True)
+@app.errorhandler(403)
+def forbidden(e):
+    return render_template("errors/403.html"), 403
+
+@app.errorhandler(400)
+def bad_request(e):
+    return render_template("errors/400.html"), 400
+
+@app.errorhandler(500)
+def server_error(e):
+    # Log the real error internally
+    app.logger.exception("500 Server Error")
+    return render_template("errors/500.html"), 500
+
+@app.errorhandler(Exception)
+def unhandled_exception(e):
+    # Let HTTP errors pass through (404, 403, etc.)
+    if isinstance(e, HTTPException):
+        return e
+    app.logger.exception("Unhandled exception")
+    return render_template("errors/500.html"), 500
+
+if __name__ == '__main__':
+    debug_mode = os.getenv("FLASK_DEBUG", "0") == "1"
+    host = os.getenv("FLASK_HOST", "127.0.0.1")   # safer default than 0.0.0.0
+    port = int(os.getenv("PORT", "5000"))
+
+    app.run(host=host, port=port, debug=debug_mode)
