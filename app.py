@@ -2240,9 +2240,6 @@ def add_supplier():
         products_services = request.form['products_services']
         selected_categories = request.form.getlist('categories')
         
-        print(f"Adding supplier: {name}, {email}")
-        print(f"Categories selected: {selected_categories}")
-        
         # Validate email
         if not validate_email(email):
             flash('Invalid email format', 'error')
@@ -2251,6 +2248,12 @@ def add_supplier():
         # Validate phone
         if contact_number and not validate_phone(contact_number):
             flash('Invalid phone number format', 'error')
+            return render_template('edit_supplier.html', categories=conn.execute('SELECT * FROM categories').fetchall())
+
+        # Check for duplicate supplier (Name or Email)
+        existing = conn.execute('SELECT id, name FROM suppliers WHERE name = ? OR email = ?', (name, email)).fetchone()
+        if existing:
+            flash(f'Supplier already exists (Name: {existing["name"]}). Duplicate entry prevented.', 'error')
             return render_template('edit_supplier.html', categories=conn.execute('SELECT * FROM categories').fetchall())
         
         # Add supplier
@@ -2261,7 +2264,6 @@ def add_supplier():
         ''', (name, contact_name, email, contact_number, address, products_services))
         
         supplier_id = cursor.lastrowid
-        print(f"Supplier added with ID: {supplier_id}")
         
         # Add categories
         for category_id in selected_categories:
@@ -2269,18 +2271,8 @@ def add_supplier():
                 'INSERT INTO supplier_categories (supplier_id, category_id) VALUES (?, ?)',
                 (supplier_id, category_id)
             )
-            print(f"Added category {category_id} to supplier {supplier_id}")
         
         conn.commit()
-        print("Changes committed to database")
-        
-        # Verify the supplier was added
-        verify_supplier = conn.execute('SELECT * FROM suppliers WHERE id = ?', (supplier_id,)).fetchone()
-        if verify_supplier:
-            print(f"Verification: Supplier found in database - {verify_supplier['name']}")
-        else:
-            print("Verification: Supplier NOT found in database!")
-        
         conn.close()
         flash('Supplier added successfully!', 'success')
         return redirect(url_for('suppliers'))
