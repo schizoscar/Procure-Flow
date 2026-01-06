@@ -537,10 +537,15 @@
                                 </div>
                                 
                                 <div class="dims-other dims-section" style="display:none;">
-                                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: .5rem;">
+                                    <div
+                                        style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: .5rem;">
+                                        <div class="form-group" style="margin:0;">
+                                            <label class="form-label">Packing</label>
+                                            <input type="number" class="form-control" name="items[0][uom_qty]" min="1" step="1" placeholder="e.g., 10">
+                                        </div>  
                                         <div class="form-group" style="margin:0;">
                                             <label class="form-label">Unit of Measure (UOM)</label>
-                                            <select class="form-control form-select" name="items[${itemCount - 1}][uom]">
+                                            <select class="form-control form-select" name="items[0][uom]">
                                                 <option value="">Select UOM</option>
                                                 <option value="pcs">pcs</option>
                                                 <option value="kg">kg</option>

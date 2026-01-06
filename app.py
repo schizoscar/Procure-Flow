@@ -123,6 +123,20 @@ def serve_file(file_id):
 def get_quote_serializer():
     return URLSafeSerializer(app.secret_key, salt="supplier-quote")
 
+def get_reset_serializer():
+    return URLSafeSerializer(app.secret_key, salt="password-reset")
+
+def make_reset_token(user_id: int, email: str) -> str:
+    return get_reset_serializer().dumps({"user_id": user_id, "email": email})
+
+def verify_reset_token(token: str):
+    return get_reset_serializer().loads(token)  # we’ll enforce expiry via our own timestamp check if desired
+
+def generate_temp_password(length: int = 10) -> str:
+    # simple temp password: letters+digits (no symbols to avoid email copy issues)
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
+    return "".join(alphabet[uuid.uuid4().int % len(alphabet)] for _ in range(length))
+
 def init_database_on_startup():
     """Ensure the SQLite database exists with expected tables."""
     conn = None
@@ -394,39 +408,153 @@ def create_user():
     if 'user_id' not in session or session.get('role') != 'admin':
         flash('Access denied', 'error')
         return redirect(url_for('index'))
-    
+
     if request.method == 'POST':
-        username = request.form['username']
-        email = request.form['email']
-        password = request.form['password']
+        username = request.form['username'].strip()
+        email_addr = request.form['email'].strip().lower()
+        password = (request.form.get('password') or "").strip()
         role = request.form['role']
-        
+
         # Validation
-        if not validate_email(email):
+        if not validate_email(email_addr):
             flash('Invalid email format', 'error')
             return render_template('create_user.html')
-        
+
+        # If password empty, generate temp password
+        is_temp_password = False
+        if not password:
+            password = generate_temp_password(10)
+            is_temp_password = True
+
         if not validate_password(password):
             flash('Password must contain at least 5 letters and 1 number', 'error')
             return render_template('create_user.html')
-        
+
         password_hash = generate_password_hash(password)
-        
+
         conn = get_db_connection()
         try:
-            conn.execute(
+            cur = conn.execute(
                 'INSERT INTO users (username, password_hash, email, role) VALUES (?, ?, ?, ?)',
-                (username, password_hash, email, role)
+                (username, password_hash, email_addr, role)
             )
+            new_user_id = cur.lastrowid
             conn.commit()
-            flash('User created successfully', 'success')
+
+            # Build reset link
+            token = make_reset_token(new_user_id, email_addr)
+            reset_link = public_url_for("reset_password", token=token)
+
+            # Email login details + reset link
+            subject = "Your Procure-Flow account details"
+            html = f"""
+            <html><body>
+            <p>Hello {username},</p>
+            <p>An account has been created for you in Procure-Flow.</p>
+
+            <p><strong>Login details:</strong><br>
+            Username: <code>{username}</code><br>
+            Email: <code>{email_addr}</code><br>
+            Password: <code>{password}</code></p>
+
+            <p><strong>Reset your password now (recommended):</strong><br>
+            <a href="{reset_link}">{reset_link}</a></p>
+
+            <p>If you did not expect this email, please contact the administrator.</p>
+            </body></html>
+            """
+
+            email_ok = send_email_html(email_addr, subject, html, to_name=username)
+            if email_ok:
+                flash('User created successfully and email sent.', 'success')
+            else:
+                flash('User created, but failed to send email. Please verify email settings.', 'error')
+
             return redirect(url_for('index'))
+
         except sqlite3.IntegrityError:
+            conn.rollback()
             flash('Username already exists', 'error')
         finally:
             conn.close()
-    
+
     return render_template('create_user.html')
+
+@app.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    if request.method == 'POST':
+        email_addr = (request.form.get('email') or '').strip().lower()
+        if not validate_email(email_addr):
+            flash("Please enter a valid email address.", "error")
+            return render_template("forgot_password.html")
+
+        conn = get_db_connection()
+        try:
+            user = conn.execute('SELECT id, username, email FROM users WHERE LOWER(email) = ?', (email_addr,)).fetchone()
+            # Always respond success to avoid account enumeration
+            if user:
+                token = make_reset_token(user['id'], user['email'])
+                reset_link = public_url_for("reset_password", token=token)
+
+                subject = "Reset your Procure-Flow password"
+                html = f"""
+                <html><body>
+                <p>Hello {user['username']},</p>
+                <p>Click the link below to reset your password:</p>
+                <p><a href="{reset_link}">{reset_link}</a></p>
+                <p>If you did not request this, you can ignore this email.</p>
+                </body></html>
+                """
+                send_email_html(user['email'], subject, html, to_name=user['username'])
+
+            flash("If an account exists for that email, a reset link has been sent.", "success")
+            return redirect(url_for("login"))
+        finally:
+            conn.close()
+
+    return render_template("forgot_password.html")
+
+@app.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    # Optional expiry control:
+    # If you want expiry, embed created_at in token payload and check it.
+    try:
+        data = get_reset_serializer().loads(token)
+        user_id = data.get("user_id")
+        email_addr = (data.get("email") or "").lower()
+        if not user_id or not email_addr:
+            return render_template("errors/400.html"), 400
+    except BadSignature:
+        return render_template("errors/400.html"), 400
+
+    conn = get_db_connection()
+    try:
+        user = conn.execute('SELECT id, username, email FROM users WHERE id = ? AND LOWER(email) = ?', (user_id, email_addr)).fetchone()
+        if not user:
+            return render_template("errors/404.html"), 404
+
+        if request.method == 'POST':
+            new_password = (request.form.get("password") or "").strip()
+            confirm = (request.form.get("confirm_password") or "").strip()
+
+            if new_password != confirm:
+                flash("Passwords do not match.", "error")
+                return render_template("reset_password.html", username=user["username"])
+
+            if not validate_password(new_password):
+                flash("Password must contain at least 5 letters and 1 number.", "error")
+                return render_template("reset_password.html", username=user["username"])
+
+            new_hash = generate_password_hash(new_password)
+            conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user_id))
+            conn.commit()
+
+            flash("Password reset successful. Please log in.", "success")
+            return redirect(url_for("login"))
+
+        return render_template("reset_password.html", username=user["username"])
+    finally:
+        conn.close()
 
 @app.route('/new-task', methods=['GET', 'POST'])
 @app.route('/edit-task/<int:task_id>', methods=['GET', 'POST'])
@@ -1074,16 +1202,8 @@ def capture_quotes(task_id, supplier_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    conn = get_db_connection()
-    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-    supplier = conn.execute('SELECT * FROM suppliers WHERE id = ?', (supplier_id,)).fetchone()
-    if not task or not supplier or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
-        flash('Task or supplier not found, or access denied', 'error')
-        conn.close()
-        return redirect(url_for('task_list'))
-    
     def form_last_nonempty(key: str):
-        vals = request.form.getlist(key)  # gets ALL values if the key appears multiple times
+        vals = request.form.getlist(key)
         for v in reversed(vals):
             if v is None:
                 continue
@@ -1092,129 +1212,152 @@ def capture_quotes(task_id, supplier_id):
                 return s
         return None
 
+    conn = get_db_connection()
+    try:
+        task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        supplier = conn.execute('SELECT * FROM suppliers WHERE id = ?', (supplier_id,)).fetchone()
 
-    pr_items = conn.execute('SELECT * FROM pr_items WHERE task_id = ?', (task_id,)).fetchall()
+        if not task or not supplier or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
+            flash('Task or supplier not found, or access denied.', 'error')
+            return redirect(url_for('task_list'))
 
-    existing_quotes = conn.execute(
-        'SELECT * FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
-        (task_id, supplier_id)
-    ).fetchall()
-    quotes_map = {(q['pr_item_id']): q for q in existing_quotes}
-    # Determine existing payment terms (use first quote's payment_terms if present)
-    payment_terms_default = ''
-    if existing_quotes:
-        try:
-            payment_terms_default = existing_quotes[0]['payment_terms'] or ''
-        except Exception:
-            payment_terms_default = ''
+        pr_items = conn.execute(
+            'SELECT * FROM pr_items WHERE task_id = ?',
+            (task_id,)
+        ).fetchall()
 
-    if request.method == 'POST':
-        # Replace existing quotes for this supplier/task
-        app.logger.info('capture_quotes POST received for task %s supplier %s', task_id, supplier_id)
-        # Log raw form keys/values (useful to debug duplicate-value issues)
-        try:
-            conn.execute('DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id))
-
-            payment_terms_global = request.form.get('payment_terms') or None
-
-            for item in pr_items:
-                ...
-                if any([unit_price, stock_availability, lead_time, warranty, notes, ono, cert_file_id]):
-                    conn.execute("""INSERT ...""", (...))
-
-            conn.execute(
-                'UPDATE task_suppliers SET replied_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
+        def load_existing_quotes():
+            existing = conn.execute(
+                'SELECT * FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
                 (task_id, supplier_id)
-            )
+            ).fetchall()
+            quotes_map_local = {q['pr_item_id']: q for q in existing}
 
-            conn.commit()
-            flash('Quotes saved.', 'success')
-            return redirect(url_for('task_responses', task_id=task_id))
+            payment_terms_default_local = ''
+            if existing:
+                try:
+                    payment_terms_default_local = existing[0]['payment_terms'] or ''
+                except Exception:
+                    payment_terms_default_local = ''
+            return quotes_map_local, payment_terms_default_local
 
-        except sqlite3.Error:
-            conn.rollback()
-            app.logger.exception("DB error while saving quotes (task_id=%s supplier_id=%s)", task_id, supplier_id)
-            flash("We couldn't save the quotes due to a system issue. Please try again.", "error")
+        quotes_map, payment_terms_default = load_existing_quotes()
 
-        finally:
-            conn.close()
+        if request.method == 'POST':
+            app.logger.info('capture_quotes POST received for task %s supplier %s', task_id, supplier_id)
 
-        conn.execute('DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id))
-        # Single payment terms value for the whole submission
-        payment_terms_global = request.form.get('payment_terms') or None
-
-        for item in pr_items:
-            uid = str(item['id'])
-            unit_price = request.form.get(f'unit_price_{uid}') or None
-            stock_availability = request.form.get(f'stock_availability_{uid}') or None
-            lead_time = request.form.get(f'lead_time_{uid}') or None
-            warranty = request.form.get(f'warranty_{uid}') or None
-            notes = request.form.get(f'notes_{uid}') or None
-            ono = 1 if request.form.get(f"ono_{uid}") else 0
-            
-            # O.N.O. alternate dimensions
-            ono_width = request.form.get(f'ono_width_{uid}') or None
-            ono_length = form_last_nonempty(f'ono_length_{uid}')
-            ono_thickness = request.form.get(f'ono_thickness_{uid}') or None
-            ono_dim_a = request.form.get(f'ono_dim_a_{uid}') or None
-            ono_dim_b = request.form.get(f'ono_dim_b_{uid}') or None
-            ono_diameter = request.form.get(f'ono_diameter_{uid}') or None
-            ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
-            
-            # Handle certificate file upload
-            cert_file_id = None
-            if f'cert_{uid}' in request.files:
-                cert_file = request.files[f'cert_{uid}']
-                if cert_file and cert_file.filename != '':
-                    cert_file_id = save_uploaded_file(conn, cert_file, task_id, supplier_id, item['id'])
-
-            if any([unit_price, stock_availability, lead_time, warranty, notes, ono, cert_file_id]):
+            try:
+                # 1) clear old quotes for this supplier+task
                 conn.execute(
-                    """
-                    INSERT INTO supplier_quotes (
-                        task_id, supplier_id, pr_item_id,
-                        unit_price, stock_availability,
-                        cert_file_id,
-                        lead_time, warranty, payment_terms, ono,
-                        ono_width, ono_length, ono_thickness,
-                        ono_dim_a, ono_dim_b,
-                        ono_diameter,
-                        ono_uom_qty,
-                        notes
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        task_id, supplier_id, item['id'],
-                        unit_price, stock_availability,
-                        cert_file_id,
-                        lead_time, warranty, payment_terms_global, ono,
-                        ono_width, ono_length, ono_thickness,
-                        ono_dim_a, ono_dim_b,
-                        ono_diameter,
-                        ono_uom_qty,
-                        notes
-                    )
+                    'DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
+                    (task_id, supplier_id)
                 )
 
+                payment_terms_global = request.form.get('payment_terms') or None
 
-        # Mark replied when quotes captured (always update to current time)
-        conn.execute(
-            'UPDATE task_suppliers SET replied_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
-            (task_id, supplier_id)
+                # 2) insert new
+                for item in pr_items:
+                    uid = str(item['id'])
+                    app.logger.debug("Processing pr_item_id=%s uid=%s", item["id"], uid)
+
+                    unit_price = request.form.get(f'unit_price_{uid}') or None
+                    stock_availability = request.form.get(f'stock_availability_{uid}') or None
+                    lead_time = request.form.get(f'lead_time_{uid}') or None
+                    warranty = request.form.get(f'warranty_{uid}') or None
+                    notes = request.form.get(f'notes_{uid}') or None
+                    ono = 1 if request.form.get(f"ono_{uid}") else 0
+
+                    ono_width = request.form.get(f'ono_width_{uid}') or None
+                    ono_length = form_last_nonempty(f'ono_length_{uid}')
+                    ono_thickness = request.form.get(f'ono_thickness_{uid}') or None
+                    ono_dim_a = request.form.get(f'ono_dim_a_{uid}') or None
+                    ono_dim_b = request.form.get(f'ono_dim_b_{uid}') or None
+                    ono_diameter = request.form.get(f'ono_diameter_{uid}') or None
+                    ono_uom = request.form.get(f'ono_uom_{uid}') or None
+                    ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
+
+                    cert_file_id = None
+                    file_key = f'cert_{uid}'
+                    if file_key in request.files:
+                        cert_file = request.files[file_key]
+                        if cert_file and cert_file.filename:
+                            cert_file_id = save_uploaded_file(conn, cert_file, task_id, supplier_id, item['id'])
+
+                    has_any_input = any([
+                        unit_price, stock_availability, lead_time, warranty, notes,
+                        cert_file_id,
+                        ono_width, ono_length, ono_thickness,
+                        ono_dim_a, ono_dim_b,
+                        ono_diameter,
+                        ono_uom, ono_uom_qty
+                    ]) or (ono == 1)
+
+                    if has_any_input:
+                        conn.execute(
+                            """
+                            INSERT INTO supplier_quotes (
+                                task_id, supplier_id, pr_item_id,
+                                unit_price, stock_availability,
+                                cert_file_id,
+                                lead_time, warranty, payment_terms, ono,
+                                ono_width, ono_length, ono_thickness,
+                                ono_dim_a, ono_dim_b,
+                                ono_diameter,
+                                ono_uom,
+                                ono_uom_qty,
+                                notes
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                task_id, supplier_id, item['id'],
+                                unit_price, stock_availability,
+                                cert_file_id,
+                                lead_time, warranty, payment_terms_global, ono,
+                                ono_width, ono_length, ono_thickness,
+                                ono_dim_a, ono_dim_b,
+                                ono_diameter,
+                                ono_uom,
+                                ono_uom_qty,
+                                notes
+                            )
+                        )
+
+                # 3) mark replied
+                conn.execute(
+                    'UPDATE task_suppliers SET replied_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
+                    (task_id, supplier_id)
+                )
+
+                conn.commit()
+                flash('Quotes saved.', 'success')
+                return redirect(url_for('task_responses', task_id=task_id))
+
+            except sqlite3.Error:
+                conn.rollback()
+                app.logger.exception("DB error while saving quotes (task_id=%s supplier_id=%s)", task_id, supplier_id)
+                flash("We couldn't save the quotes due to a database issue. Please try again.", "error")
+
+            except Exception:
+                conn.rollback()
+                app.logger.exception("Unhandled error while saving quotes (task_id=%s supplier_id=%s)", task_id, supplier_id)
+                flash("Something went wrong while saving. Please try again.", "error")
+
+            # If we reach here: POST failed, re-load what’s currently in DB (after rollback)
+            quotes_map, payment_terms_default = load_existing_quotes()
+
+        # GET or failed POST -> show form
+        return render_template(
+            'quotes_form.html',
+            task=task,
+            supplier=supplier,
+            pr_items=pr_items,
+            quotes_map=quotes_map,
+            payment_terms_default=payment_terms_default
         )
-        conn.commit()
-        conn.close()
-        flash('Quotes saved.', 'success')
-        return redirect(url_for('task_responses', task_id=task_id))
 
-    conn.close()
-    return render_template('quotes_form.html',
-                           task=task,
-                           supplier=supplier,
-                           pr_items=pr_items,
-                           quotes_map=quotes_map,
-                           payment_terms_default=payment_terms_default)
+    finally:
+        conn.close()
 
 @app.route('/supplier/quote-form/<token>', methods=['GET', 'POST'])
 def supplier_quote_form(token):
@@ -1223,148 +1366,167 @@ def supplier_quote_form(token):
         task_id = data.get('task_id')
         supplier_id = data.get('supplier_id')
     except BadSignature:
+        # Better: render_template("errors/400.html", message="Invalid or expired link"), 400
         return "Invalid or expired link", 400
 
     conn = get_db_connection()
-    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-    supplier = conn.execute('SELECT * FROM suppliers WHERE id = ?', (supplier_id,)).fetchone()
-    if not task or not supplier:
-        conn.close()
-        return "Task or supplier not found", 404
-    
-    def form_last_nonempty(key: str):
-        vals = request.form.getlist(key)  # gets ALL values if the key appears multiple times
-        for v in reversed(vals):
-            if v is None:
-                continue
-            s = str(v).strip()
-            if s != "":
-                return s
-        return None
+    try:
+        task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        supplier = conn.execute('SELECT * FROM suppliers WHERE id = ?', (supplier_id,)).fetchone()
+        if not task or not supplier:
+            # Better: render_template("errors/404.html", message="Task or supplier not found"), 404
+            return "Task or supplier not found", 404
 
-    ts_row = conn.execute(
-        'SELECT assigned_items FROM task_suppliers WHERE task_id = ? AND supplier_id = ?',
-        (task_id, supplier_id)
-    ).fetchone()
-    assigned_ids = None
-    if ts_row and ts_row['assigned_items']:
-        try:
-            assigned_ids = [int(x) for x in json.loads(ts_row['assigned_items'])]
-        except Exception:
-            assigned_ids = None
+        def form_last_nonempty(key: str):
+            vals = request.form.getlist(key)
+            for v in reversed(vals):
+                if v is None:
+                    continue
+                s = str(v).strip()
+                if s != "":
+                    return s
+            return None
 
-    pr_items = conn.execute('SELECT * FROM pr_items WHERE task_id = ?', (task_id,)).fetchall()
-    if assigned_ids:
-        pr_items = [item for item in pr_items if item['id'] in assigned_ids]
+        ts_row = conn.execute(
+            'SELECT assigned_items FROM task_suppliers WHERE task_id = ? AND supplier_id = ?',
+            (task_id, supplier_id)
+        ).fetchone()
 
-    if request.method == 'POST':
-        try:
-            conn.execute('DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id))
+        assigned_ids = None
+        if ts_row and ts_row['assigned_items']:
+            try:
+                assigned_ids = [int(x) for x in json.loads(ts_row['assigned_items'])]
+            except Exception:
+                assigned_ids = None
 
-            payment_terms_global = request.form.get('payment_terms') or None
+        pr_items = conn.execute(
+            'SELECT * FROM pr_items WHERE task_id = ?',
+            (task_id,)
+        ).fetchall()
 
-            for item in pr_items:
-                ...
-                if any([unit_price, stock_availability, lead_time, warranty, notes, ono, cert_file_id]):
-                    conn.execute("""INSERT ...""", (...))
+        if assigned_ids:
+            pr_items = [item for item in pr_items if item['id'] in assigned_ids]
 
-            conn.execute(
-                'UPDATE task_suppliers SET replied_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
-                (task_id, supplier_id)
-            )
-
-            conn.commit()
-            flash('Quotes saved.', 'success')
-            return redirect(url_for('task_responses', task_id=task_id))
-
-        except sqlite3.Error:
-            conn.rollback()
-            app.logger.exception("DB error while saving quotes (task_id=%s supplier_id=%s)", task_id, supplier_id)
-            flash("We couldn't save the quotes due to a system issue. Please try again.", "error")
-
-        finally:
-            conn.close()
-
-        conn.execute('DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id))
-        # Single payment terms value for the whole submission
-        payment_terms_global = request.form.get('payment_terms') or None
-
-        for item in pr_items:
-            uid = str(item['id'])
-            unit_price = request.form.get(f'unit_price_{uid}') or None
-            stock_availability = request.form.get(f'stock_availability_{uid}') or None
-            lead_time = request.form.get(f'lead_time_{uid}') or None
-            warranty = request.form.get(f'warranty_{uid}') or None
-            notes = request.form.get(f'notes_{uid}') or None
-            ono = 1 if request.form.get(f"ono_{uid}") else 0
-            
-            # O.N.O. alternate dimensions
-            ono_width = request.form.get(f'ono_width_{uid}') or None
-            ono_length = form_last_nonempty(f'ono_length_{uid}')
-            ono_thickness = request.form.get(f'ono_thickness_{uid}') or None
-            ono_dim_a = request.form.get(f'ono_dim_a_{uid}') or None
-            ono_dim_b = request.form.get(f'ono_dim_b_{uid}') or None
-            ono_diameter = request.form.get(f'ono_diameter_{uid}') or None
-            ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
-            
-            # Handle certificate file upload
-            cert_file_id = None
-            if f'cert_{uid}' in request.files:
-                cert_file = request.files[f'cert_{uid}']
-                if cert_file and cert_file.filename != '':
-                    cert_file_id = save_uploaded_file(conn, cert_file, task_id, supplier_id, item['id'])
-
-            if any([unit_price, stock_availability, lead_time, warranty, notes, ono, cert_file_id]):
+        if request.method == 'POST':
+            try:
+                # 1) clear old
                 conn.execute(
-                    """
-                    INSERT INTO supplier_quotes (
-                        task_id, supplier_id, pr_item_id,
-                        unit_price, stock_availability,
-                        cert_file_id,
-                        lead_time, warranty, payment_terms, ono,
-                        ono_width, ono_length, ono_thickness,
-                        ono_dim_a, ono_dim_b,
-                        ono_diameter,
-                        ono_uom_qty,
-                        notes
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        task_id, supplier_id, item['id'],
-                        unit_price, stock_availability,
-                        cert_file_id,
-                        lead_time, warranty, payment_terms_global, ono,
-                        ono_width, ono_length, ono_thickness,
-                        ono_dim_a, ono_dim_b,
-                        ono_diameter,
-                        ono_uom_qty,
-                        notes
-                    )
+                    'DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
+                    (task_id, supplier_id)
                 )
 
+                payment_terms_global = request.form.get('payment_terms') or None
 
-        # mark replied and log
-        conn.execute(
-            'UPDATE task_suppliers SET replied_at = COALESCE(replied_at, CURRENT_TIMESTAMP) WHERE task_id = ? AND supplier_id = ?',
-            (task_id, supplier_id)
+                # 2) insert new
+                for item in pr_items:
+                    uid = str(item['id'])
+
+                    unit_price = request.form.get(f'unit_price_{uid}') or None
+                    stock_availability = request.form.get(f'stock_availability_{uid}') or None
+                    lead_time = request.form.get(f'lead_time_{uid}') or None
+                    warranty = request.form.get(f'warranty_{uid}') or None
+                    notes = request.form.get(f'notes_{uid}') or None
+                    ono = 1 if request.form.get(f"ono_{uid}") else 0
+
+                    # O.N.O. alternate dimensions
+                    ono_width = request.form.get(f'ono_width_{uid}') or None
+                    ono_length = form_last_nonempty(f'ono_length_{uid}')
+                    ono_thickness = request.form.get(f'ono_thickness_{uid}') or None
+                    ono_dim_a = request.form.get(f'ono_dim_a_{uid}') or None
+                    ono_dim_b = request.form.get(f'ono_dim_b_{uid}') or None
+                    ono_diameter = request.form.get(f'ono_diameter_{uid}') or None
+                    ono_uom = request.form.get(f'ono_uom_{uid}') or None
+                    ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
+
+                    # Handle certificate file upload
+                    cert_file_id = None
+                    if f'cert_{uid}' in request.files:
+                        cert_file = request.files[f'cert_{uid}']
+                        if cert_file and cert_file.filename:
+                            # optional: validate allowed extension here (pdf only)
+                            # if not allowed_file(cert_file.filename): raise ValueError("Only PDF allowed")
+                            cert_file_id = save_uploaded_file(conn, cert_file, task_id, supplier_id, item['id'])
+
+                    # Save row if ANY meaningful input exists, OR ONO checked
+                    has_any_input = any([
+                        unit_price, stock_availability, lead_time, warranty, notes,
+                        cert_file_id,
+                        ono_width, ono_length, ono_thickness,
+                        ono_dim_a, ono_dim_b, ono_diameter,
+                        ono_uom, ono_uom_qty
+                    ]) or (ono == 1)
+
+                    if has_any_input:
+                        conn.execute(
+                            """
+                            INSERT INTO supplier_quotes (
+                                task_id, supplier_id, pr_item_id,
+                                unit_price, stock_availability,
+                                cert_file_id,
+                                lead_time, warranty, payment_terms, ono,
+                                ono_width, ono_length, ono_thickness,
+                                ono_dim_a, ono_dim_b,
+                                ono_diameter,
+                                ono_uom,
+                                ono_uom_qty,
+                                notes
+                            )
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            """,
+                            (
+                                task_id, supplier_id, item['id'],
+                                unit_price, stock_availability,
+                                cert_file_id,
+                                lead_time, warranty, payment_terms_global, ono,
+                                ono_width, ono_length, ono_thickness,
+                                ono_dim_a, ono_dim_b,
+                                ono_diameter,
+                                ono_uom,
+                                ono_uom_qty,
+                                notes
+                            )
+                        )
+
+                # 3) mark replied + log
+                conn.execute(
+                    'UPDATE task_suppliers SET replied_at = COALESCE(replied_at, CURRENT_TIMESTAMP) WHERE task_id = ? AND supplier_id = ?',
+                    (task_id, supplier_id)
+                )
+
+                conn.execute(
+                    '''
+                    INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
+                    VALUES (?, ?, ?, ?, ?, ?)
+                    ''',
+                    (task_id, supplier_id, 'supplier_form', f'Quote submitted by {supplier["name"]}', None, 'received')
+                )
+
+                conn.commit()
+                return render_template('supplier_form_success.html', supplier=supplier, task=task)
+
+            except sqlite3.Error:
+                conn.rollback()
+                app.logger.exception("DB error while saving supplier form (task_id=%s supplier_id=%s)", task_id, supplier_id)
+                # Show supplier-friendly message on the same page
+                flash("We couldn't save your quotation due to a system issue. Please try again.", "error")
+                # fall through to re-render the form
+
+            except Exception:
+                conn.rollback()
+                app.logger.exception("Unexpected error while saving supplier form (task_id=%s supplier_id=%s)", task_id, supplier_id)
+                flash("Something went wrong while submitting your quotation. Please review and try again.", "error")
+                # fall through to re-render the form
+
+        # GET or POST failure -> show form again
+        return render_template(
+            'supplier_public_quote.html',
+            task=task,
+            supplier=supplier,
+            pr_items=pr_items
         )
-        conn.execute(
-            '''
-            INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
-            VALUES (?, ?, ?, ?, ?, ?)
-            ''',
-            (task_id, supplier_id, 'supplier_form', f'Quote submitted by {supplier["name"]}', None, 'received')
-        )
-        conn.commit()
+
+    finally:
         conn.close()
-        return render_template('supplier_form_success.html', supplier=supplier, task=task)
-
-    conn.close()
-    return render_template('supplier_public_quote.html',
-                           task=task,
-                           supplier=supplier,
-                           pr_items=pr_items)
 
 @app.route('/debug/quotes/<int:task_id>/<int:supplier_id>', methods=['GET'])
 def debug_quotes(task_id, supplier_id):
@@ -2160,6 +2322,67 @@ def logout():
     flash('You have been logged out successfully', 'success')
     return redirect(url_for('login'))
 
+def _send_email_via_sendgrid(to_email: str, to_name: str, subject: str, html_body: str) -> bool:
+    """
+    Send via SendGrid. Returns True on success; False if not configured or failed.
+    """
+    if not (SENDGRID_API_KEY and SENDGRID_SENDER):
+        return False
+
+    try:
+        # Often fixes Windows/proxy TLS issues
+        os.environ["SSL_CERT_FILE"] = certifi.where()
+
+        sg = SendGridAPIClient(SENDGRID_API_KEY)
+        message = Mail(
+            from_email=Email(SENDGRID_SENDER, "Procurement Department"),
+            to_emails=To(to_email, to_name or ""),
+            subject=subject,
+            html_content=html_body,
+        )
+        app.logger.info("Sending email via SendGrid to=%s subject=%s", to_email, subject)
+        resp = sg.send(message)
+        return 200 <= resp.status_code < 300
+    except Exception:
+        app.logger.exception("SendGrid send failed")
+        return False
+
+
+def _send_email_via_smtp(to_email: str, subject: str, html_body: str) -> bool:
+    """
+    Send via SMTP. Returns True on success, False on failure.
+    """
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = EMAIL_CONFIG['sender_email']
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(html_body, 'html'))
+
+        app.logger.info("Sending email via SMTP to=%s subject=%s", to_email, subject)
+
+        server = smtplib.SMTP(EMAIL_CONFIG['smtp_server'], EMAIL_CONFIG['smtp_port'])
+        server.starttls()
+        server.login(EMAIL_CONFIG['sender_email'], EMAIL_CONFIG['sender_password'])
+        server.send_message(msg)
+        server.quit()
+        return True
+    except Exception:
+        app.logger.exception("SMTP send failed")
+        return False
+
+
+def send_email_html(to_email: str, subject: str, html_body: str, to_name: str = "") -> bool:
+    """
+    Unified reusable email sender:
+    - Try SendGrid first (if configured)
+    - Fall back to SMTP
+    """
+    if _send_email_via_sendgrid(to_email, to_name, subject, html_body):
+        return True
+    return _send_email_via_smtp(to_email, subject, html_body)
+
+
 # Email sending function
 def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, assigned_item_ids=None, custom_content=None, subject=None, supplier_contact=None, quote_form_link=None):
     try:
@@ -2275,53 +2498,18 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
             </html>
             """
 
-        # ===== 1) Try SendGrid first (if configured) =====
-        if SENDGRID_API_KEY and SENDGRID_SENDER:
-            try:
-                # Force Python to use certifi CA bundle (often fixes Windows/proxy TLS issues)
-                os.environ["SSL_CERT_FILE"] = certifi.where()
+        ok = send_email_html(
+            to_email=supplier_email,
+            to_name=supplier_name or "",
+            subject=subject,
+            html_body=body
+        )
+        return ok
 
-                sg = SendGridAPIClient(SENDGRID_API_KEY)
-
-                message = Mail(
-                    from_email=Email(SENDGRID_SENDER, "Procurement Department"),
-                    to_emails=To(supplier_email, supplier_name or ""),
-                    subject=subject,
-                    html_content=body,   # <-- send raw HTML string
-                )
-
-                app.logger.info("Sending email via SendGrid")
-                resp = sg.send(message)
-
-                if 200 <= resp.status_code < 300:
-                    print(f"SendGrid OK: status={resp.status_code} to={supplier_email} subject={subject}")
-                    return True
-
-                print(f"SendGrid failed: status={resp.status_code} body={getattr(resp, 'body', None)}")
-                # fall through to SMTP
-
-            except Exception as e:
-                print(f"SendGrid exception, falling back to SMTP: {e}")
-                # fall through to SMTP
-
-        # SMTP fallback
-        msg = MIMEMultipart()
-        msg['From'] = EMAIL_CONFIG['sender_email']
-        msg['To'] = supplier_email
-        msg['Subject'] = subject
-        msg.attach(MIMEText(body, 'html'))
-        app.logger.info("Sending email via SMTP fallback")
-        
-        server = smtplib.SMTP(EMAIL_CONFIG['smtp_server'], EMAIL_CONFIG['smtp_port'])
-        server.starttls()
-        server.login(EMAIL_CONFIG['sender_email'], EMAIL_CONFIG['sender_password'])
-        server.send_message(msg)
-        server.quit()
-        
-        return True
-    except Exception as e:
+    except Exception:
         app.logger.exception("Email sending failed")
         return False
+
 
 
 @app.route('/task/<int:task_id>/suppliers', methods=['GET', 'POST'])
