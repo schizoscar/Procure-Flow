@@ -192,7 +192,7 @@ def validate_email(email):
 
 def validate_phone(phone):
     # Malaysian phone number validation
-    pattern = r'^(\+?6?01)[0-46-9]-*[0-9]{7,8}$'
+    pattern = r'^(\+?6?0)[0-46-9]-*[0-9]{7,8}$'
     return re.match(pattern, phone.replace(' ', '').replace('-', '')) is not None
 
 def validate_password(password):
@@ -2161,6 +2161,7 @@ def suppliers():
         LEFT JOIN categories c ON sc.category_id = c.id
         WHERE s.is_active = 1
         GROUP BY s.id
+        ORDER BY LOWER(TRIM(s.name)) ASC
     ''').fetchall()
     
     categories = conn.execute('SELECT * FROM categories').fetchall()
@@ -2246,9 +2247,9 @@ def add_supplier():
             return render_template('edit_supplier.html', categories=conn.execute('SELECT * FROM categories').fetchall())
         
         # Validate phone
-        if contact_number and not validate_phone(contact_number):
-            flash('Invalid phone number format', 'error')
-            return render_template('edit_supplier.html', categories=conn.execute('SELECT * FROM categories').fetchall())
+        # if contact_number and not validate_phone(contact_number):
+        #     flash('Invalid phone number format', 'error')
+        #     return render_template('edit_supplier.html', categories=conn.execute('SELECT * FROM categories').fetchall())
 
         # Check for duplicate supplier (Name or Email)
         existing = conn.execute('SELECT id, name FROM suppliers WHERE name = ? OR email = ?', (name, email)).fetchone()

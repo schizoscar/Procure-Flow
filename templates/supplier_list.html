@@ -11,9 +11,29 @@
         </a>
         {% endif %}
     </div>
+
     <div class="card-body">
+
+        <!-- Search bar (below title, above table) -->
+        <div style="margin: 10px 0 14px; max-width: 420px;">
+            <label for="supplierSearch" class="form-label" style="display:block; margin-bottom: 6px;">
+                Search by Name
+            </label>
+            <input
+                id="supplierSearch"
+                type="text"
+                class="form-control"
+                placeholder="Type a supplier name..."
+                style="width: 100%;"
+                autocomplete="off"
+            />
+            <small style="display:block; margin-top:6px; opacity:0.75;">
+                Showing matches as you type.
+            </small>
+        </div>
+
         {% if suppliers %}
-        <table class="table">
+        <table class="table" id="suppliersTable">
             <thead>
                 <tr>
                     <th>Name</th>
@@ -28,8 +48,11 @@
             </thead>
             <tbody>
                 {% for supplier in suppliers %}
-                <tr>
-                    <td>{{ supplier.name }}</td>
+                <tr class="supplier-row">
+                    <!-- Add a data-name attribute for fast filtering -->
+                    <td class="supplier-name" data-name="{{ (supplier.name or '')|lower }}">
+                        {{ supplier.name }}
+                    </td>
                     <td>{{ supplier.contact_name or 'N/A' }}</td>
                     <td>{{ supplier.email }}</td>
                     <td>{{ supplier.contact_number or 'N/A' }}</td>
@@ -51,9 +74,91 @@
                 {% endfor %}
             </tbody>
         </table>
+
+        <!-- No results message -->
+        <p id="noResultsMsg" class="text-center" style="display:none; margin-top: 12px;">
+            No matching suppliers found.
+        </p>
+
         {% else %}
         <p class="text-center">No suppliers found.</p>
         {% endif %}
     </div>
 </div>
+
+<!-- Scroll-to-top floating button (bottom-right) -->
+<button
+    id="scrollTopBtn"
+    type="button"
+    title="Back to top"
+    aria-label="Back to top"
+    style="
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 1px solid rgba(0,0,0,0.25);
+        background: rgba(255,255,255,0.35);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        cursor: pointer;
+        display: none; /* hidden until user scrolls */
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    "
+>
+    <i class="fas fa-arrow-up"></i>
+</button>
+
+<script>
+(function () {
+    // ---- Live filter by supplier name ----
+    const input = document.getElementById("supplierSearch");
+    const rows = document.querySelectorAll("#suppliersTable tbody tr.supplier-row");
+    const noResultsMsg = document.getElementById("noResultsMsg");
+
+    function filterRows() {
+        const q = (input.value || "").trim().toLowerCase();
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const nameCell = row.querySelector(".supplier-name");
+            const name = (nameCell?.dataset?.name || "").toLowerCase();
+
+            const match = q === "" || name.includes(q);
+            row.style.display = match ? "" : "none";
+            if (match) visibleCount++;
+        });
+
+        if (noResultsMsg) {
+            noResultsMsg.style.display = (rows.length > 0 && visibleCount === 0) ? "" : "none";
+        }
+    }
+
+    if (input) {
+        input.addEventListener("input", filterRows);
+    }
+
+    // ---- Scroll-to-top button behavior ----
+    const btn = document.getElementById("scrollTopBtn");
+
+    function toggleScrollBtn() {
+        if (!btn) return;
+        // show after scrolling down a bit
+        btn.style.display = (window.scrollY > 200) ? "flex" : "none";
+    }
+
+    if (btn) {
+        btn.addEventListener("click", () => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+    }
+
+    window.addEventListener("scroll", toggleScrollBtn);
+    toggleScrollBtn(); // initial
+})();
+</script>
 {% endblock %}
