@@ -14,23 +14,57 @@
 
     <div class="card-body">
 
-        <!-- Search bar (below title, above table) -->
-        <div style="margin: 10px 0 14px; max-width: 420px;">
-            <label for="supplierSearch" class="form-label" style="display:block; margin-bottom: 6px;">
-                Search by Name
-            </label>
-            <input
-                id="supplierSearch"
-                type="text"
-                class="form-control"
-                placeholder="Type a supplier name..."
-                style="width: 100%;"
-                autocomplete="off"
-            />
-            <small style="display:block; margin-top:6px; opacity:0.75;">
-                Showing matches as you type.
+        <!-- Search bar row (below title, above table) -->
+        <div style="margin: 10px 0 14px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; max-width: 900px;">
+                
+                <!-- Name -->
+                <div>
+                    <label for="searchName" class="form-label" style="display:block; margin-bottom: 6px;">
+                        Search Name
+                    </label>
+                    <input
+                        id="searchName"
+                        type="text"
+                        class="form-control"
+                        placeholder="e.g. aa t"
+                        autocomplete="off"
+                    />
+                </div>
+
+                <!-- Email -->
+                <div>
+                    <label for="searchEmail" class="form-label" style="display:block; margin-bottom: 6px;">
+                        Search Email
+                    </label>
+                    <input
+                        id="searchEmail"
+                        type="text"
+                        class="form-control"
+                        placeholder="e.g. gmail"
+                        autocomplete="off"
+                    />
+                </div>
+
+                <!-- Category (dropdown) -->
+                <div>
+                    <label for="searchCategory" class="form-label" style="display:block; margin-bottom: 6px;">
+                        Category
+                    </label>
+
+                    <select id="searchCategory" class="form-control">
+                        <option value="">All categories</option>
+                        {% for c in categories %}
+                        <option value="{{ c.id }}">{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>  
+            <small style="display:block; margin-top:8px; opacity:0.75;">
+                Tip: matches are word-based and in-order (e.g. “aa t” matches “AA Technic…” but not “Agensi…”).
             </small>
         </div>
+
 
         {% if suppliers %}
         <table class="table" id="suppliersTable">
@@ -48,9 +82,13 @@
             </thead>
             <tbody>
                 {% for supplier in suppliers %}
-                <tr class="supplier-row">
+                <tr class="supplier-row"
+                    data-name="{{ (supplier.name or '')|lower }}"
+                    data-email="{{ (supplier.email or '')|lower }}"
+                    data-categories="{{ (supplier.categories or '')|lower }}"
+                    data-catids="{{ supplier.category_ids or '' }}">
                     <!-- Add a data-name attribute for fast filtering -->
-                    <td class="supplier-name" data-name="{{ (supplier.name or '')|lower }}">
+                    <td class="supplier-name" data-name="{{ supplier.name or '' }}">
                         {{ supplier.name }}
                     </td>
                     <td>{{ supplier.contact_name or 'N/A' }}</td>
@@ -115,20 +153,76 @@
 
 <script>
 (function () {
-    // ---- Live filter by supplier name ----
-    const input = document.getElementById("supplierSearch");
+    const nameInput = document.getElementById("searchName");
+    const emailInput = document.getElementById("searchEmail");
+    const catSelect  = document.getElementById("searchCategory");
+
     const rows = document.querySelectorAll("#suppliersTable tbody tr.supplier-row");
     const noResultsMsg = document.getElementById("noResultsMsg");
 
+    function normalizeWords(s) {
+        return (s || "")
+        .toLowerCase()
+        .replace(/&/g, " and ")
+        .replace(/[^\p{L}\p{N}]+/gu, " ") // punctuation -> space
+        .replace(/\s+/g, " ")
+        .trim()
+        .split(" ")
+        .filter(Boolean);
+    }
+
+    // tokens must match START of words, in order (e.g. "aa t" matches "AA Technic...")
+    function matchesWordPrefixesInOrder(text, query) {
+        const tokens = normalizeWords(query);
+        if (tokens.length === 0) return true;
+
+        const words = normalizeWords(text);
+        let i = 0;
+
+        for (const t of tokens) {
+            let found = false;
+            while (i < words.length) {
+                if (words[i].startsWith(t)) {
+                    found = true;
+                    i++;
+                    break;
+                }
+                i++;
+            }
+            if (!found) return false;
+        }
+        return true;
+    }
+
+    function matchesCategoryIds(catIdsText, selectedId) {
+        const sel = String(selectedId || "").trim();
+        if (!sel) return true;
+
+        const list = String(catIdsText || "")
+            .split(",")
+            .map(s => s.trim())
+            .filter(Boolean);
+
+        return list.includes(sel);
+    }
+
     function filterRows() {
-        const q = (input.value || "").trim().toLowerCase();
+        const qName = (nameInput?.value || "").trim();
+        const qEmail = (emailInput?.value || "").trim();
+        const qCat = (catSelect?.value || "").trim(); // dropdown
+
         let visibleCount = 0;
 
         rows.forEach(row => {
-            const nameCell = row.querySelector(".supplier-name");
-            const name = (nameCell?.dataset?.name || "").toLowerCase();
+            const nameText = row.dataset.name || "";
+            const emailText = row.dataset.email || "";
+            const catText = row.dataset.categories || "";
 
-            const match = q === "" || name.includes(q);
+            const okName = matchesWordPrefixesInOrder(nameText, qName);
+            const okEmail = matchesWordPrefixesInOrder(emailText, qEmail);
+            const okCat = matchesCategoryIds(row.dataset.catids || "", qCat);
+
+            const match = okName && okEmail && okCat;
             row.style.display = match ? "" : "none";
             if (match) visibleCount++;
         });
@@ -138,27 +232,14 @@
         }
     }
 
-    if (input) {
-        input.addEventListener("input", filterRows);
-    }
+    [nameInput, emailInput, catSelect].forEach(el => {
+        if (el) el.addEventListener("input", filterRows);   // works for text inputs
+        if (el) el.addEventListener("change", filterRows);  // important for dropdown
+    });
 
-    // ---- Scroll-to-top button behavior ----
-    const btn = document.getElementById("scrollTopBtn");
-
-    function toggleScrollBtn() {
-        if (!btn) return;
-        // show after scrolling down a bit
-        btn.style.display = (window.scrollY > 200) ? "flex" : "none";
-    }
-
-    if (btn) {
-        btn.addEventListener("click", () => {
-            window.scrollTo({ top: 0, behavior: "smooth" });
-        });
-    }
-
-    window.addEventListener("scroll", toggleScrollBtn);
-    toggleScrollBtn(); // initial
+    filterRows();
 })();
 </script>
+
+
 {% endblock %}

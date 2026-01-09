@@ -2154,15 +2154,18 @@ def suppliers():
         return redirect(url_for('login'))
     
     conn = get_db_connection()
-    suppliers_list = conn.execute('''
-        SELECT s.*, GROUP_CONCAT(c.name) as categories
+    suppliers_list = conn.execute("""
+        SELECT
+            s.*,
+            GROUP_CONCAT(DISTINCT c.name) AS categories,
+            GROUP_CONCAT(DISTINCT sc.category_id) AS category_ids
         FROM suppliers s
         LEFT JOIN supplier_categories sc ON s.id = sc.supplier_id
         LEFT JOIN categories c ON sc.category_id = c.id
         WHERE s.is_active = 1
         GROUP BY s.id
-        ORDER BY LOWER(TRIM(s.name)) ASC
-    ''').fetchall()
+        ORDER BY LOWER(s.name) ASC
+    """).fetchall()
     
     categories = conn.execute('SELECT * FROM categories').fetchall()
     conn.close()
