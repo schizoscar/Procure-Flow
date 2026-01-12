@@ -17,11 +17,25 @@
         </div>
 
         <form method="POST">
-            <div class="form-group">
-                <label class="form-label required">Project Reference</label>
-                <input type="text" class="form-control" name="task_name" required
-                    value="{{ task.task_name if task else '' }}"
-                    placeholder="Enter project reference (e.g., Office Supplies Q4 2024)">
+            <div class="grid-2">
+                <div class="form-group">
+                    <label class="form-label required">Project Reference</label>
+                    <input type="text" class="form-control" name="project_reference" required
+                        value="{{ task.task_name.split(' - ')[0] if task else '' }}"
+                        placeholder="Enter project reference (e.g., Office Supplies Q4 2024)">
+                </div>
+                <div class="form-group">
+                    <label class="form-label required">Category (Applies to all items)</label>
+                    <select class="form-control form-select" id="globalCategory" name="global_category" required>
+                        <option value="">Select Category</option>
+                        {% for category in categories %}
+                        <option value="{{ category.name }}" {% if existing_items and
+                            existing_items[0].item_category==category.name %}selected{% endif %}>
+                            {{ category.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
 
             <div class="items-container" id="itemsContainer"
@@ -39,19 +53,7 @@
                         {% endif %}
                     </div>
                     <div class="grid-2">
-                        <div class="form-group">
-                            <label class="form-label required">Item Category</label>
-                            <select class="form-control form-select category-select"
-                                name="items[{{ loop.index0 }}][item_category]" required>
-                                <option value="">Select Category</option>
-                                {% for category in categories %}
-                                <option value="{{ category.name }}" {% if item.item_category==category.name %}selected{%
-                                    endif %}>
-                                    {{ category.name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
+                        <!-- Category removed from here -->
                         <div class="form-group">
                             <label class="form-label required">Item Name</label>
                             <input type="text" class="form-control" name="items[{{ loop.index0 }}][item_name]"
@@ -152,10 +154,8 @@
                                     <div class="form-group" style="margin:0;">
                                         <label class="form-label">UOM Amount</label>
                                         <input type="number" class="form-control"
-                                            name="items[{{ loop.index0 }}][uom_qty]"
-                                            value="{{ item.uom_qty or '' }}"
-                                            min="1" step="1"
-                                            placeholder="e.g., 10">
+                                            name="items[{{ loop.index0 }}][uom_qty]" value="{{ item.uom_qty or '' }}"
+                                            min="1" step="1" placeholder="e.g., 10">
                                     </div>
                                     <div class="form-group" style="margin:0;">
                                         <label class="form-label">Unit of Measure (UOM)</label>
@@ -198,16 +198,7 @@
                         <h4>Item 1</h4>
                     </div>
                     <div class="grid-2">
-                        <div class="form-group">
-                            <label class="form-label required">Item Category</label>
-                            <select class="form-control form-select category-select" name="items[0][item_category]"
-                                required>
-                                <option value="">Select Category</option>
-                                {% for category in categories %}
-                                <option value="{{ category.name }}">{{ category.name }}</option>
-                                {% endfor %}
-                            </select>
-                        </div>
+                        <!-- Category removed -->
                         <div class="form-group">
                             <label class="form-label required">Item Name</label>
                             <input type="text" class="form-control" name="items[0][item_name]" list="items-list-0"
@@ -300,8 +291,9 @@
                                     style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: .5rem;">
                                     <div class="form-group" style="margin:0;">
                                         <label class="form-label">Packing</label>
-                                        <input type="number" class="form-control" name="items[0][uom_qty]" min="1" step="1" placeholder="e.g., 10">
-                                    </div>  
+                                        <input type="number" class="form-control" name="items[0][uom_qty]" min="1"
+                                            step="1" placeholder="e.g., 10">
+                                    </div>
                                     <div class="form-group" style="margin:0;">
                                         <label class="form-label">Unit of Measure (UOM)</label>
                                         <select class="form-control form-select" name="items[0][uom]">
@@ -422,18 +414,62 @@
         const container = document.getElementById('itemsContainer');
         let itemCount = parseInt(container.getAttribute('data-item-count') || '1', 10);
 
-        // Initialize dimension fields for existing items
-        document.querySelectorAll('.item-row').forEach(row => {
-            updateDimensionFields(row);
-        });
+        // Initialize dimension fields for all items based on initial global category
+        const globalCategorySelect = document.getElementById('globalCategory');
 
-        // Listen for category changes
+        function updateAllRows() {
+            const category = globalCategorySelect.value;
+            const dimType = getDimType(category);
+            const categoryItemsData = JSON.parse(document.getElementById('categoryItemsData').textContent);
+
+            document.querySelectorAll('.item-row').forEach(row => {
+                // Hide + disable all
+                row.querySelectorAll('.dims-section').forEach(section => {
+                    section.style.display = 'none';
+                    setSectionEnabled(section, false);
+                });
+
+                // Show matching
+                if (category) {
+                    const targetSection = row.querySelector('.dims-' + dimType);
+                    if (targetSection) {
+                        targetSection.style.display = 'block';
+                        setSectionEnabled(targetSection, true);
+                    }
+                }
+
+                // Update datalist
+                const dataList = row.querySelector('datalist');
+                if (dataList) {
+                    dataList.innerHTML = '';
+                    if (category && categoryItemsData[category]) {
+                        categoryItemsData[category].forEach(item => {
+                            const option = document.createElement('option');
+                            option.value = item;
+                            dataList.appendChild(option);
+                        });
+                    }
+                }
+            });
+        }
+
+        // Listen for global category changes
+        globalCategorySelect.addEventListener('change', updateAllRows);
+
+        // Initial run
+        updateAllRows();
+
+        // Listen for adding items - must apply current category to new item
+        // (Handled by updateAllRows, or we call it after adding)
+
+        /*
         document.getElementById('itemsContainer').addEventListener('change', function (e) {
             if (e.target.classList.contains('category-select')) {
                 const itemRow = e.target.closest('.item-row');
                 updateDimensionFields(itemRow);
             }
-        });
+        }); 
+        */
 
         // Add item button
         const addButton = document.getElementById('addItem');
@@ -446,13 +482,6 @@
                 e.stopPropagation();
                 itemCount++;
 
-                // Build categories options from JSON data
-                const categoriesData = JSON.parse(document.getElementById('categoriesData').textContent);
-                let categoriesOptions = '<option value="">Select Category</option>';
-                categoriesData.forEach(function (catName) {
-                    categoriesOptions += '<option value="' + catName + '">' + catName + '</option>';
-                });
-
                 const newItem = `
                     <div class="card mb-2 item-row" data-index="${itemCount - 1}">
                         <div class="d-flex justify-between align-center">
@@ -462,12 +491,6 @@
                             </button>
                         </div>
                         <div class="grid-2">
-                            <div class="form-group">
-                                <label class="form-label required">Item Category</label>
-                                <select class="form-control form-select category-select" name="items[${itemCount - 1}][item_category]" required>
-                                    ${categoriesOptions}
-                                </select>
-                            </div>
                             <div class="form-group">
                                 <label class="form-label required">Item Name</label>
                                 <input type="text" class="form-control" name="items[${itemCount - 1}][item_name]" list="items-list-${itemCount - 1}" required>
@@ -537,15 +560,14 @@
                                 </div>
                                 
                                 <div class="dims-other dims-section" style="display:none;">
-                                    <div
-                                        style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: .5rem;">
+                                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: .5rem;">
                                         <div class="form-group" style="margin:0;">
                                             <label class="form-label">Packing</label>
-                                            <input type="number" class="form-control" name="items[0][uom_qty]" min="1" step="1" placeholder="e.g., 10">
+                                            <input type="number" class="form-control" name="items[${itemCount - 1}][uom_qty]" min="1" step="1" placeholder="e.g., 10">
                                         </div>  
                                         <div class="form-group" style="margin:0;">
                                             <label class="form-label">Unit of Measure (UOM)</label>
-                                            <select class="form-control form-select" name="items[0][uom]">
+                                            <select class="form-control form-select" name="items[${itemCount - 1}][uom]">
                                                 <option value="">Select UOM</option>
                                                 <option value="pcs">pcs</option>
                                                 <option value="kg">kg</option>
@@ -576,6 +598,7 @@
 
                 document.getElementById('itemsContainer').insertAdjacentHTML('beforeend', newItem);
                 updateItemNumbers();
+                updateAllRows();
             });
         }
 
@@ -594,11 +617,32 @@
         function updateItemNumbers() {
             const items = document.querySelectorAll('.item-row');
             let currentCount = 0;
-            items.forEach((item) => {
+            items.forEach((item, index) => {
                 currentCount++;
                 const title = item.querySelector('h4');
                 if (title) {
                     title.textContent = `Item ${currentCount}`;
+                }
+
+                item.setAttribute('data-index', index);
+
+                const inputs = item.querySelectorAll('input, select, textarea');
+                inputs.forEach(input => {
+                    const name = input.getAttribute('name');
+                    if (name) {
+                        const newName = name.replace(/items\[\d+\]/, `items[${index}]`);
+                        input.setAttribute('name', newName);
+
+                        const list = input.getAttribute('list');
+                        if (list) {
+                            input.setAttribute('list', `items-list-${index}`);
+                        }
+                    }
+                });
+
+                const datalist = item.querySelector('datalist');
+                if (datalist) {
+                    datalist.setAttribute('id', `items-list-${index}`);
                 }
             });
             itemCount = currentCount;
