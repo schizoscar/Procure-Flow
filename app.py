@@ -192,7 +192,7 @@ def validate_email(email):
 
 def validate_phone(phone):
     # Malaysian phone number validation
-    pattern = r'^(\+?6?0)[0-46-9]-*[0-9]{7,8}$'
+    pattern = r'^(\+?6?01)[0-46-9]-*[0-9]{7,8}$'
     return re.match(pattern, phone.replace(' ', '').replace('-', '')) is not None
 
 def validate_password(password):
@@ -206,51 +206,78 @@ def validate_password(password):
     return True
 
 def generate_email_content(pr_items, task_name):
-    items_html = "<ul>"
-    for item in pr_items:
-        # Build dimensions display based on category
+    items_html = """
+    <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; border: 1px solid #ddd; font-family: Arial, sans-serif;">
+        <thead style="background-color: #f2f2f2;">
+            <tr>
+                <th style="text-align: center; width: 5%;">No.</th>
+                <th style="text-align: left;">Description</th>
+                <th style="text-align: left;">Specification</th>
+                <th style="text-align: left;">Brand/Model</th>
+                <th style="text-align: center; width: 10%;">Qty</th>
+                <th style="text-align: left;">Remark</th>
+            </tr>
+        </thead>
+        <tbody>
+    """
+    
+    for idx, item in enumerate(pr_items, 1):
         item = dict(item) if item is not None else {}
         category = (item.get('item_category') or '').strip()
 
-        dims = 'N/A'
+        # Build Specification (Dimensions)
+        spec = ''
         if category in ['Steel Plates', 'Stainless Steel']:
             w = item.get('width') or ''
             l = item.get('length') or ''
             thk = item.get('thickness') or ''
             if w or l or thk:
-                dims = f"(W × L × Thk): {w} x {l} x {thk} mm"
+                spec = f"{w} x {l} x {thk} mm (W x L x Thk)"
         elif category == 'Angle Bar':
             a = item.get('dim_a') or ''
             b = item.get('dim_b') or ''
             l = item.get('length') or ''
             thk = item.get('thickness') or ''
             if a or b or l or thk:
-                dims = f"(A × B × L × Thk): {a} x {b} x {l} x {thk} mm"
+                spec = f"{a} x {b} x {l} x {thk} mm (A x B x L x Thk)"
         elif category in ['Rebar', 'Bolts, Fasteners']:
             d = item.get('diameter') or ''
             l = item.get('length') or ''
             if d or l:
-                dims = f"(D × L): {d} x {l} mm"
+                spec = f"{d} x {l} mm (D x L)"
         else:
             uom = item.get('uom') or ''
             uom_qty = item.get('uom_qty') or ''
             if uom_qty and uom:
-                dims = f"{uom_qty} {uom}"
+                spec = f"{uom_qty} {uom}"
             elif uom_qty:
-                dims = f"Qty: {uom_qty}"
+                spec = f"Qty: {uom_qty}"
             elif uom:
-                dims = f"UOM: {uom}"
-
+                spec = f"UOM: {uom}"
         
+        # Fallback to direct spec field if dynamic dim is empty, or append?
+        # User image shows "Specification" column often having sizes. try to use 'specification' field if dims are empty?
+        # Actually in pr_items we have 'specification' column.
+        original_spec = item.get('specification') or ''
+        if spec and original_spec:
+            final_spec = f"{spec}<br><small>{original_spec}</small>"
+        elif spec:
+            final_spec = spec
+        else:
+            final_spec = original_spec or 'N/A'
+
         items_html += f"""
-        <li>
-            <strong>Item:</strong> {item['item_name']}<br>
-            <strong>Dimensions:</strong> {dims}<br>
-            <strong>Brand / Specification:</strong> {item.get('brand') or 'N/A'}<br>
-            <strong>Quantity:</strong> {item['quantity']}<br>
-        </li>
+            <tr>
+                <td style="text-align: center;">{idx}</td>
+                <td>{item['item_name']}</td>
+                <td>{final_spec}</td>
+                <td>{item.get('brand') or ''}</td>
+                <td style="text-align: center;">{item['quantity']}</td>
+                <td></td> <!-- Empty Remark for now, as in image -->
+            </tr>
         """
-    items_html += "</ul>"
+
+    items_html += "</tbody></table>"
     
     return f"""
     <html>
@@ -597,14 +624,19 @@ def new_task(task_id=None):
         existing_items = []
     
     if request.method == 'POST':
-        task_name = request.form['task_name']
+        project_ref = request.form['project_reference']
+        global_category = request.form['global_category']
+        
+        # Format task name
+        task_name = f"{project_ref} - {global_category}"
+        
         items = []
         
         # Process items from form
         item_index = 0
         while f'items[{item_index}][item_name]' in request.form:
             items.append({
-                'item_category': request.form[f'items[{item_index}][item_category]'],
+                'item_category': global_category, # Use global category
                 'item_name': request.form[f'items[{item_index}][item_name]'],
                 'brand': request.form.get(f'items[{item_index}][brand]') or None,
                 'quantity': request.form.get(f'items[{item_index}][quantity]') or None,
@@ -1417,6 +1449,17 @@ def supplier_quote_form(token):
 
                 payment_terms_global = request.form.get('payment_terms') or None
 
+                # Handle Master Quotation File
+                quotation_file = request.files.get('quotation_file')
+                if quotation_file and quotation_file.filename:
+                    # Save file (pr_item_id is None for general task files)
+                    q_file_id = save_uploaded_file(conn, quotation_file, task_id, supplier_id, None)
+                    if q_file_id:
+                        conn.execute(
+                            'UPDATE task_suppliers SET quotation_file_id = ? WHERE task_id = ? AND supplier_id = ?',
+                            (q_file_id, task_id, supplier_id)
+                        )
+
                 # 2) insert new
                 for item in pr_items:
                     uid = str(item['id'])
@@ -1646,7 +1689,8 @@ def export_comparison(task_id):
 
         # other categories
         uq = _norm(q.get("ono_uom_qty")) or _norm(d1)
-        return (uq, "", "", "")
+        uom = _norm(q.get("ono_uom")) or _norm(d2)
+        return (uq, uom, "", "")
 
     def weight_for_dims(category, dims, base_weight):
         """
@@ -1716,12 +1760,26 @@ def export_comparison(task_id):
         row1.extend([supplier_header_label(supplier_id, supplier_name)] + [""] * (SUPPLIER_BLOCK_COLS - 1))
     ws.append(row1)
 
+    # Determine dynamic dimension headers based on PR category
+    dim_headers = ["W/A/D/UOM", "B", "L", "Thk"] # Default fallback
+    if pr_items:
+        cat = pr_items[0].get('item_category', '')
+        if cat in ["Steel Plates", "Stainless Steel"]:
+            dim_headers = ["Width", "", "Length", "Thk"]
+        elif cat == "Angle Bar":
+            dim_headers = ["A", "B", "Length", "Thk"]
+        elif cat in ["Rebar", "Bolts, Fasteners"]:
+            dim_headers = ["Dia", "", "Length", ""]
+        else:
+            # Check if it uses UOM logic (category not in specific list)
+            dim_headers = ["Qty", "UOM", "", ""]
+
     row2 = [
         "", "", "",
-        "W/A/D/UOM",
-        "B",
-        "L",
-        "Thk",
+        dim_headers[0],
+        dim_headers[1],
+        dim_headers[2],
+        dim_headers[3],
         "", ""
     ]
     for supplier_id, supplier_name in suppliers_list:
@@ -1874,10 +1932,7 @@ def export_comparison(task_id):
             thk = item.get('thickness') or ''
             base_dim_display = [w, "", l, thk]
         elif category == "Angle Bar":
-            a = item.get('dim_a') or ''
-            b = item.get('dim_b') or ''
-            l = item.get('length') or ''
-            thk = item.get('thickness') or ''
+  
             base_dim_display = [a, b, l, thk]
         elif category in ["Rebar", "Bolts, Fasteners"]:
             d = item.get('diameter') or ''
@@ -2154,18 +2209,14 @@ def suppliers():
         return redirect(url_for('login'))
     
     conn = get_db_connection()
-    suppliers_list = conn.execute("""
-        SELECT
-            s.*,
-            GROUP_CONCAT(DISTINCT c.name) AS categories,
-            GROUP_CONCAT(DISTINCT sc.category_id) AS category_ids
+    suppliers_list = conn.execute('''
+        SELECT s.*, GROUP_CONCAT(c.name) as categories
         FROM suppliers s
         LEFT JOIN supplier_categories sc ON s.id = sc.supplier_id
         LEFT JOIN categories c ON sc.category_id = c.id
         WHERE s.is_active = 1
         GROUP BY s.id
-        ORDER BY LOWER(s.name) ASC
-    """).fetchall()
+    ''').fetchall()
     
     categories = conn.execute('SELECT * FROM categories').fetchall()
     conn.close()
@@ -2250,9 +2301,9 @@ def add_supplier():
             return render_template('edit_supplier.html', categories=conn.execute('SELECT * FROM categories').fetchall())
         
         # Validate phone
-        # if contact_number and not validate_phone(contact_number):
-        #     flash('Invalid phone number format', 'error')
-        #     return render_template('edit_supplier.html', categories=conn.execute('SELECT * FROM categories').fetchall())
+        if contact_number and not validate_phone(contact_number):
+            flash('Invalid phone number format', 'error')
+            return render_template('edit_supplier.html', categories=conn.execute('SELECT * FROM categories').fetchall())
 
         # Check for duplicate supplier (Name or Email)
         existing = conn.execute('SELECT id, name FROM suppliers WHERE name = ? OR email = ?', (name, email)).fetchone()
