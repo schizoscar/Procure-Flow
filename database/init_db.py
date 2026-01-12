@@ -191,6 +191,8 @@ def init_database():
     ensure_column('task_suppliers', 'initial_sent_at', 'TIMESTAMP')
     ensure_column('task_suppliers', 'followup_sent_at', 'TIMESTAMP')
     ensure_column('task_suppliers', 'replied_at', 'TIMESTAMP')
+    ensure_column('task_suppliers', 'reply_token', 'TEXT')
+    ensure_column('task_suppliers', 'quotation_file_id', 'INTEGER')
     ensure_column('task_suppliers', 'quote_form_token', 'TEXT')
     # pr_items dimension columns
     ensure_column('pr_items', 'width', 'INTEGER')
