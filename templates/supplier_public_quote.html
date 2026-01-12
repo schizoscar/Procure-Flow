@@ -21,6 +21,20 @@
                         <label class="form-label">Payment Terms (Days)</label>
                         <input type="text" class="form-control" name="payment_terms" placeholder="e.g., 30 days credit">
                     </div>
+
+                    <div class="card mb-3" style="border: 1px solid #1a73e8; background-color: #f8faff;">
+                        <div class="card-body">
+                            <label class="form-label" style="font-weight: 600; color: #1a73e8;">Upload Master Quotation
+                                (PDF)</label>
+                            <p class="text-muted" style="font-size: 0.9em; margin-bottom: 0.5rem;">
+                                If you have a formal quotation document, please upload it here. You may still fill in
+                                the unit prices below for faster processing.
+                            </p>
+                            <input type="file" class="form-control" name="quotation_file"
+                                accept=".pdf,.doc,.docx,.xls,.xlsx">
+                            <small class="text-muted">Accepted formats: PDF, Word, Excel</small>
+                        </div>
+                    </div>
                     {% for item in pr_items %}
                     <div class="card mb-2" style="border:1px solid #e0e0e0;">
                         <div class="card-header">
@@ -31,27 +45,27 @@
                                 {% set cat = item.item_category %}
 
                                 {% if cat in ['Steel Plates','Stainless Steel'] %}
-                                    <br>
-                                    Dims (W × L × Thk): {{ item.width if item.width is not none else '-' }}
-                                    x {{ item.length if item.length is not none else '-' }}
-                                    x {{ item.thickness if item.thickness is not none else '-' }} mm
+                                <br>
+                                Dims (W × L × Thk): {{ item.width if item.width is not none else '-' }}
+                                x {{ item.length if item.length is not none else '-' }}
+                                x {{ item.thickness if item.thickness is not none else '-' }} mm
 
                                 {% elif cat == 'Angle Bar' %}
-                                    <br>
-                                    Dims (A × B × L × Thk): {{ item.dim_a if item.dim_a is not none else '-' }}
-                                    x {{ item.dim_b if item.dim_b is not none else '-' }}
-                                    x {{ item.length if item.length is not none else '-' }}
-                                    x {{ item.thickness if item.thickness is not none else '-' }} mm
+                                <br>
+                                Dims (A × B × L × Thk): {{ item.dim_a if item.dim_a is not none else '-' }}
+                                x {{ item.dim_b if item.dim_b is not none else '-' }}
+                                x {{ item.length if item.length is not none else '-' }}
+                                x {{ item.thickness if item.thickness is not none else '-' }} mm
 
                                 {% elif cat in ['Bolts, Fasteners','Rebar','Nuts'] %}
-                                    <br>
-                                    Dims (D × L): {{ item.diameter if item.diameter is not none else '-' }}
-                                    x {{ item.length if item.length is not none else '-' }} mm
+                                <br>
+                                Dims (D × L): {{ item.diameter if item.diameter is not none else '-' }}
+                                x {{ item.length if item.length is not none else '-' }} mm
 
                                 {% else %}
-                                    <br>
-                                    Packing: {{ item.uom_qty if item.uom_qty is not none else '-' }}
-                                    {{ item.uom if item.uom is not none else '' }}
+                                <br>
+                                Packing: {{ item.uom_qty if item.uom_qty is not none else '-' }}
+                                {{ item.uom if item.uom is not none else '' }}
                                 {% endif %}
                             </p>
                         </div>
@@ -89,71 +103,84 @@
                             <div class="form-group">
                                 <label class="form-label">O.N.O. (On Nearest Offer)</label>
                                 <div style="display:flex;align-items:center;gap:0.5rem;">
-                                    <input type="checkbox"
-                                        name="ono_{{ item.id }}"
-                                        class="ono-checkbox"
-                                        data-item-id="{{ item.id }}"
-                                        data-category="{{ item.item_category or '' }}"
+                                    <input type="checkbox" name="ono_{{ item.id }}" class="ono-checkbox"
+                                        data-item-id="{{ item.id }}" data-category="{{ item.item_category or '' }}"
                                         data-dim-type="{% if item.item_category in ['Steel Plates','Stainless Steel'] %}steel-plates{% elif item.item_category == 'Angle Bar' %}angle-bar{% elif item.item_category in ['Bolts, Fasteners','Rebar'] %}bolts-rebar{% else %}other{% endif %}">
                                     <span>Check if offering alternate dimensions</span>
                                 </div>
 
-                                <div id="ono_fields_{{ item.id }}"
-                                    class="ono-dimensions"
+                                <div id="ono_fields_{{ item.id }}" class="ono-dimensions"
                                     style="display:none; margin-top:0.75rem; padding:0.75rem; background:#f8f9fa; border-radius:6px;">
 
                                     <label class="form-label" style="font-weight:600;">O.N.O. Dimensions</label>
 
                                     <!-- Steel Plates / Stainless Steel: W, L, Thk -->
-                                    <div class="ono-dims-section ono-steel-plates" style="display:none; margin-top:0.5rem;">
+                                    <div class="ono-dims-section ono-steel-plates"
+                                        style="display:none; margin-top:0.5rem;">
                                         <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
                                             <div>
                                                 <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
-                                                <input type="number" class="form-control" name="ono_width_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                                <input type="number" class="form-control" name="ono_width_{{ item.id }}"
+                                                    min="0" step="1" placeholder="mm">
                                             </div>
                                             <div>
                                                 <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                                                <input type="number" class="form-control" name="ono_length_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                                <input type="number" class="form-control"
+                                                    name="ono_length_{{ item.id }}" min="0" step="1" placeholder="mm">
                                             </div>
                                             <div>
-                                                <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                                                <input type="number" class="form-control" name="ono_thickness_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                                <label class="form-label" style="font-size:0.85rem;">Thickness
+                                                    (mm)</label>
+                                                <input type="number" class="form-control"
+                                                    name="ono_thickness_{{ item.id }}" min="0" step="1"
+                                                    placeholder="mm">
                                             </div>
                                         </div>
                                     </div>
 
                                     <!-- Angle Bar: A, B, L, Thk -->
-                                    <div class="ono-dims-section ono-angle-bar" style="display:none; margin-top:0.5rem;">
+                                    <div class="ono-dims-section ono-angle-bar"
+                                        style="display:none; margin-top:0.5rem;">
                                         <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
                                             <div>
                                                 <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
-                                                <input type="number" class="form-control" name="ono_dim_a_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                                <input type="number" class="form-control" name="ono_dim_a_{{ item.id }}"
+                                                    min="0" step="1" placeholder="mm">
                                             </div>
                                             <div>
                                                 <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
-                                                <input type="number" class="form-control" name="ono_dim_b_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                                <input type="number" class="form-control" name="ono_dim_b_{{ item.id }}"
+                                                    min="0" step="1" placeholder="mm">
                                             </div>
                                             <div>
                                                 <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                                                <input type="number" class="form-control" name="ono_length_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                                <input type="number" class="form-control"
+                                                    name="ono_length_{{ item.id }}" min="0" step="1" placeholder="mm">
                                             </div>
                                             <div>
-                                                <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                                                <input type="number" class="form-control" name="ono_thickness_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                                <label class="form-label" style="font-size:0.85rem;">Thickness
+                                                    (mm)</label>
+                                                <input type="number" class="form-control"
+                                                    name="ono_thickness_{{ item.id }}" min="0" step="1"
+                                                    placeholder="mm">
                                             </div>
                                         </div>
                                     </div>
 
                                     <!-- Bolts/Rebar: D, L -->
-                                    <div class="ono-dims-section ono-bolts-rebar" style="display:none; margin-top:0.5rem;">
+                                    <div class="ono-dims-section ono-bolts-rebar"
+                                        style="display:none; margin-top:0.5rem;">
                                         <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
                                             <div>
-                                                <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
-                                                <input type="number" class="form-control" name="ono_diameter_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                                <label class="form-label" style="font-size:0.85rem;">Diameter
+                                                    (mm)</label>
+                                                <input type="number" class="form-control"
+                                                    name="ono_diameter_{{ item.id }}" min="0" step="1" placeholder="mm">
                                             </div>
                                             <div>
                                                 <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                                                <input type="number" class="form-control" name="ono_length_{{ item.id }}" min="0" step="1" placeholder="mm">
+                                                <input type="number" class="form-control"
+                                                    name="ono_length_{{ item.id }}" min="0" step="1" placeholder="mm">
                                             </div>
                                         </div>
                                     </div>
@@ -163,7 +190,9 @@
                                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
                                             <div>
                                                 <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
-                                                <input type="number" class="form-control" name="ono_uom_qty_{{ item.id }}" min="1" step="1" placeholder="e.g. 10">
+                                                <input type="number" class="form-control"
+                                                    name="ono_uom_qty_{{ item.id }}" min="1" step="1"
+                                                    placeholder="e.g. 10">
                                             </div>
                                             <div>
                                                 <label class="form-label" style="font-size:0.85rem;">UOM</label>
@@ -196,73 +225,73 @@
     </div>
 
     <script>
-    document.addEventListener('DOMContentLoaded', function () {
+        document.addEventListener('DOMContentLoaded', function () {
 
-        function setEnabled(container, enabled) {
-            container.querySelectorAll('input, select, textarea').forEach(el => {
-                el.disabled = !enabled;
-            });
-        }
-
-        function showONOSection(itemId, dimType) {
-            const fieldsDiv = document.getElementById('ono_fields_' + itemId);
-            if (!fieldsDiv) return;
-
-            // Hide + disable all ONO dim sections first
-            fieldsDiv.querySelectorAll('.ono-dims-section').forEach(sec => {
-                sec.style.display = 'none';
-                setEnabled(sec, false);
-            });
-
-            // Show + enable matching section
-            const target = fieldsDiv.querySelector('.ono-' + dimType);
-            if (target) {
-                target.style.display = 'block';
-                setEnabled(target, true);
+            function setEnabled(container, enabled) {
+                container.querySelectorAll('input, select, textarea').forEach(el => {
+                    el.disabled = !enabled;
+                });
             }
-        }
 
-        // Handle O.N.O. checkbox toggle
-        document.querySelectorAll('.ono-checkbox').forEach(function (checkbox) {
-            const itemId = checkbox.getAttribute('data-item-id');
-            const dimType = checkbox.getAttribute('data-dim-type') || 'other';
-            const fieldsDiv = document.getElementById('ono_fields_' + itemId);
+            function showONOSection(itemId, dimType) {
+                const fieldsDiv = document.getElementById('ono_fields_' + itemId);
+                if (!fieldsDiv) return;
 
-            if (!fieldsDiv) return;
+                // Hide + disable all ONO dim sections first
+                fieldsDiv.querySelectorAll('.ono-dims-section').forEach(sec => {
+                    sec.style.display = 'none';
+                    setEnabled(sec, false);
+                });
 
-            function sync() {
-                if (checkbox.checked) {
-                    fieldsDiv.style.display = 'block';
-                    showONOSection(itemId, dimType);
-                } else {
-                    fieldsDiv.style.display = 'none';
-                    // Disable ALL ONO inputs so hidden blanks won't submit
-                    fieldsDiv.querySelectorAll('.ono-dims-section').forEach(sec => setEnabled(sec, false));
+                // Show + enable matching section
+                const target = fieldsDiv.querySelector('.ono-' + dimType);
+                if (target) {
+                    target.style.display = 'block';
+                    setEnabled(target, true);
                 }
             }
 
-            checkbox.addEventListener('change', sync);
-            sync(); // important: ensure correct disabled state on page load
-        });
+            // Handle O.N.O. checkbox toggle
+            document.querySelectorAll('.ono-checkbox').forEach(function (checkbox) {
+                const itemId = checkbox.getAttribute('data-item-id');
+                const dimType = checkbox.getAttribute('data-dim-type') || 'other';
+                const fieldsDiv = document.getElementById('ono_fields_' + itemId);
 
-        // Handle file input change to display filename
-        document.querySelectorAll('input[type="file"][name^="cert_"]').forEach(function (input) {
-            input.addEventListener('change', function () {
-                const itemId = this.name.replace('cert_', '');
-                const filenameDiv = document.getElementById('cert_filename_' + itemId);
-                const filenameSpan = document.getElementById('cert_name_' + itemId);
-                if (filenameDiv && filenameSpan) {
-                    if (this.files && this.files.length > 0) {
-                        filenameSpan.textContent = this.files[0].name;
-                        filenameDiv.style.display = 'block';
+                if (!fieldsDiv) return;
+
+                function sync() {
+                    if (checkbox.checked) {
+                        fieldsDiv.style.display = 'block';
+                        showONOSection(itemId, dimType);
                     } else {
-                        filenameDiv.style.display = 'none';
+                        fieldsDiv.style.display = 'none';
+                        // Disable ALL ONO inputs so hidden blanks won't submit
+                        fieldsDiv.querySelectorAll('.ono-dims-section').forEach(sec => setEnabled(sec, false));
                     }
                 }
-            });
-        });
 
-    });
+                checkbox.addEventListener('change', sync);
+                sync(); // important: ensure correct disabled state on page load
+            });
+
+            // Handle file input change to display filename
+            document.querySelectorAll('input[type="file"][name^="cert_"]').forEach(function (input) {
+                input.addEventListener('change', function () {
+                    const itemId = this.name.replace('cert_', '');
+                    const filenameDiv = document.getElementById('cert_filename_' + itemId);
+                    const filenameSpan = document.getElementById('cert_name_' + itemId);
+                    if (filenameDiv && filenameSpan) {
+                        if (this.files && this.files.length > 0) {
+                            filenameSpan.textContent = this.files[0].name;
+                            filenameDiv.style.display = 'block';
+                        } else {
+                            filenameDiv.style.display = 'none';
+                        }
+                    }
+                });
+            });
+
+        });
     </script>
 </body>
 
