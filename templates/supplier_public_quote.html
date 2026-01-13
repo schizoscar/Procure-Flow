@@ -31,8 +31,11 @@
                                 the unit prices below for faster processing.
                             </p>
                             <input type="file" class="form-control" name="quotation_file"
-                                accept=".pdf,.doc,.docx,.xls,.xlsx">
-                            <small class="text-muted">Accepted formats: PDF, Word, Excel</small>
+                                accept=".pdf">
+                            <small class="text-muted">PDF files only</small>
+                            <div id="quotation_filename" style="margin-top:0.5rem;display:none;">
+                                <small class="text-success"><i class="fas fa-check"></i> <span id="quotation_name"></span></small>
+                            </div>
                         </div>
                     </div>
                     {% for item in pr_items %}
@@ -290,6 +293,23 @@
                     }
                 });
             });
+
+            // Handle master quotation file name display
+            const quotationFileInput = document.getElementById('quotation_file');
+            if (quotationFileInput) {
+                quotationFileInput.addEventListener('change', function() {
+                    const filename = document.getElementById('quotation_filename');
+                    const filenameSpan = document.getElementById('quotation_name');
+                    if (filename && filenameSpan) {
+                        if (this.files && this.files[0]) {
+                            filenameSpan.textContent = this.files[0].name;
+                            filename.style.display = 'block';
+                        } else {
+                            filename.style.display = 'none';
+                        }
+                    }
+                });
+            }
 
         });
     </script>

@@ -12,6 +12,29 @@
                 <label class="form-label">Payment Terms (Days)</label>
                 <input type="text" class="form-control" name="payment_terms" value="{{ payment_terms_default or '' }}" placeholder="e.g., 30 days credit">
             </div>
+            <div class="card mb-3" style="border:1px solid #e0e0e0; background-color: #f9f9f9;">
+                <div class="card-header">
+                    <h4>Master Quotation</h4>
+                </div>
+                <div class="card-body">
+                    <div class="form-group">
+                        <label class="form-label">Upload Master Quotation (PDF)</label>
+                        <input type="file" class="form-control" name="quotation_file" accept=".pdf" id="quotation_file">
+                        <small class="text-muted">Optional: Upload a comprehensive quotation document covering all items (PDF)</small>
+                        {% if master_quotation_file %}
+                            <div style="margin-top:0.5rem;">
+                                <small class="text-success" style="font-weight: 600;"><i class="fas fa-file-pdf"></i> File already uploaded</small>
+                                <a href="{{ url_for('serve_file', file_id=master_quotation_file) }}" target="_blank" class="btn btn-sm btn-outline-primary" style="margin-left: 0.5rem;">
+                                    <i class="fas fa-download"></i> View/Download
+                                </a>
+                            </div>
+                        {% endif %}
+                        <div id="quotation_filename" style="margin-top:0.5rem;display:none;">
+                            <small class="text-success"><i class="fas fa-check"></i> <span id="quotation_name"></span></small>
+                        </div>
+                    </div>
+                </div>
+            </div>
             {% for item in pr_items %}
             {% set existing = quotes_map.get(item.id) %}
             <div class="card mb-2" style="border:1px solid #e0e0e0;">
@@ -68,9 +91,12 @@
                         <label class="form-label">Mill Certificate / Certificate of Analysis (COA)</label>
                         <input type="file" class="form-control" name="cert_{{ item.id }}" accept=".pdf" id="cert_{{ item.id }}">
                         <small class="text-muted">PDF files only</small>
-                        {% if existing and existing.cert %}
+                        {% if existing and existing.cert_file_id %}
                             <div style="margin-top:0.5rem;">
-                                <small class="text-muted">Current: <a href="{{ existing.cert }}" target="_blank">View file</a></small>
+                                <small class="text-success" style="font-weight: 600;"><i class="fas fa-file-pdf"></i> File already uploaded</small>
+                                <a href="{{ url_for('serve_file', file_id=existing.cert_file_id) }}" target="_blank" class="btn btn-sm btn-outline-primary" style="margin-left: 0.5rem;">
+                                    <i class="fas fa-download"></i> View/Download
+                                </a>
                             </div>
                         {% endif %}
                         <div id="cert_filename_{{ item.id }}" style="margin-top:0.5rem;display:none;">
@@ -189,6 +215,37 @@
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
+
+    // Handle master quotation file name display
+    const quotationFileInput = document.getElementById('quotation_file');
+    if (quotationFileInput) {
+        quotationFileInput.addEventListener('change', function() {
+            const filename = document.getElementById('quotation_filename');
+            const filenameSpan = document.getElementById('quotation_name');
+            if (this.files && this.files[0]) {
+                filenameSpan.textContent = this.files[0].name;
+                filename.style.display = 'block';
+            } else {
+                filename.style.display = 'none';
+            }
+        });
+    }
+
+    // Handle individual cert file name displays
+    document.querySelectorAll('[name^="cert_"]').forEach(function(input) {
+        const itemId = input.name.replace('cert_', '');
+        const filenameDiv = document.getElementById('cert_filename_' + itemId);
+        const filenameSpan = document.getElementById('cert_name_' + itemId);
+        
+        input.addEventListener('change', function() {
+            if (this.files && this.files[0]) {
+                filenameSpan.textContent = this.files[0].name;
+                filenameDiv.style.display = 'block';
+            } else {
+                filenameDiv.style.display = 'none';
+            }
+        });
+    });
 
     function setEnabled(el, enabled) {
         el.querySelectorAll('input, select, textarea').forEach(inp => {
