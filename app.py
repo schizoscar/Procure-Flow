@@ -1275,6 +1275,15 @@ def capture_quotes(task_id, supplier_id):
 
         quotes_map, payment_terms_default = load_existing_quotes()
 
+        # Get existing master quotation file ID
+        master_quotation_file = None
+        ts_row = conn.execute(
+            'SELECT quotation_file_id FROM task_suppliers WHERE task_id = ? AND supplier_id = ?',
+            (task_id, supplier_id)
+        ).fetchone()
+        if ts_row and ts_row['quotation_file_id']:
+            master_quotation_file = ts_row['quotation_file_id']
+
         if request.method == 'POST':
             app.logger.info('capture_quotes POST received for task %s supplier %s', task_id, supplier_id)
 
@@ -1286,6 +1295,17 @@ def capture_quotes(task_id, supplier_id):
                 )
 
                 payment_terms_global = request.form.get('payment_terms') or None
+
+                # Handle Master Quotation File
+                quotation_file = request.files.get('quotation_file')
+                if quotation_file and quotation_file.filename:
+                    # Save file (pr_item_id is None for general task files)
+                    q_file_id = save_uploaded_file(conn, quotation_file, task_id, supplier_id, None)
+                    if q_file_id:
+                        conn.execute(
+                            'UPDATE task_suppliers SET quotation_file_id = ? WHERE task_id = ? AND supplier_id = ?',
+                            (q_file_id, task_id, supplier_id)
+                        )
 
                 # 2) insert new
                 for item in pr_items:
@@ -1385,7 +1405,8 @@ def capture_quotes(task_id, supplier_id):
             supplier=supplier,
             pr_items=pr_items,
             quotes_map=quotes_map,
-            payment_terms_default=payment_terms_default
+            payment_terms_default=payment_terms_default,
+            master_quotation_file=master_quotation_file
         )
 
     finally:
@@ -1588,9 +1609,6 @@ def export_comparison(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    BASE_COLS = 3 + DIM_COUNT + 2  # 3 fixed + DIM_COUNT dims + Qty + Weight
-    SUPPLIER_START_COL = BASE_COLS + 1
-
     conn = get_db_connection()
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
     if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
@@ -1601,12 +1619,30 @@ def export_comparison(task_id):
     pr_items = conn.execute('SELECT * FROM pr_items WHERE task_id = ?', (task_id,)).fetchall()
     pr_items = [dict(r) for r in pr_items]
     quotes = conn.execute('''
-        SELECT q.*, s.name as supplier_name, ts.replied_at as replied_at
+        SELECT q.*, s.name as supplier_name, ts.replied_at as replied_at, ts.quotation_file_id
         FROM supplier_quotes q
         JOIN suppliers s ON q.supplier_id = s.id
         LEFT JOIN task_suppliers ts ON ts.supplier_id = q.supplier_id AND ts.task_id = q.task_id
         WHERE q.task_id = ?
     ''', (task_id,)).fetchall()
+    
+    # Define dimension spec function early
+    def get_dim_spec(cat: str):
+        cat = (cat or "").strip()
+        if cat in ["Steel Plates", "Stainless Steel"]:
+            return ["Width", "Length", "Thk"], 3
+        if cat == "Angle Bar":
+            return ["A", "B", "Length", "Thk"], 4
+        if cat in ["Rebar", "Bolts, Fasteners"]:
+            return ["Dia", "Length"], 2
+        # Other categories
+        return ["Qty", "UOM"], 2
+
+    cat = (pr_items[0].get("item_category") or "").strip() if pr_items else ""
+    dim_headers, DIM_COUNT = get_dim_spec(cat)
+    
+    BASE_COLS = 3 + DIM_COUNT + 2  # 3 fixed + DIM_COUNT dims + Qty + Weight
+    SUPPLIER_START_COL = BASE_COLS + 1
     conn.close()
 
     def to_float(x):
@@ -1735,6 +1771,7 @@ def export_comparison(task_id):
 
     suppliers = {}  # supplier_id -> supplier_name
     supplier_terms = {}  # supplier_id -> set(payment_terms)
+    supplier_quotation_files = {}  # supplier_id -> quotation_file_id
 
     for q in quotes:
         sid = q['supplier_id']
@@ -1743,34 +1780,28 @@ def export_comparison(task_id):
         pt = (q['payment_terms'] or "").strip()
         if pt:
             supplier_terms.setdefault(sid, set()).add(pt)
+        
+        # Store quotation file ID if available
+        if q['quotation_file_id']:
+            supplier_quotation_files[sid] = q['quotation_file_id']
 
     suppliers_list = sorted(suppliers.items(), key=lambda x: x[1])  # (sid, name)
 
     def supplier_header_label(supplier_id, supplier_name):
         terms = supplier_terms.get(supplier_id, set())
-        if not terms:
-            return supplier_name
-        if len(terms) == 1:
-            return f"{supplier_name} ({next(iter(terms))})"
-        return f"{supplier_name} (Multiple)"
+        terms_str = ""
+        if terms:
+            if len(terms) == 1:
+                terms_str = f" ({next(iter(terms))})"
+            else:
+                terms_str = " (Multiple)"
+        
+        label = supplier_name + terms_str
+        return label
 
     wb = Workbook()
     ws = wb.active
     ws.title = "Comparison"
-
-    def get_dim_spec(cat: str):
-        cat = (cat or "").strip()
-        if cat in ["Steel Plates", "Stainless Steel"]:
-            return ["Width", "Length", "Thk"], 3
-        if cat == "Angle Bar":
-            return ["A", "B", "Length", "Thk"], 4
-        if cat in ["Rebar", "Bolts, Fasteners"]:
-            return ["Dia", "Length"], 2
-        # Other categories (choose what you want)
-        return ["Qty", "UOM"], 2
-
-    cat = (pr_items[0].get("item_category") or "").strip() if pr_items else ""
-    dim_headers, DIM_COUNT = get_dim_spec(cat)
 
     row1 = [
         "Item Name (O.N.O.)",
@@ -2189,6 +2220,18 @@ def export_comparison(task_id):
             max_lines = max(max_lines, lines)
 
         ws.row_dimensions[r].height = max(15, max_lines * 15)
+
+    # Add Master Quotation hyperlinks in supplier headers (row 1)
+    col_idx = SUPPLIER_START_COL
+    for supplier_id, supplier_name in suppliers_list:
+        if supplier_id in supplier_quotation_files:
+            file_id = supplier_quotation_files[supplier_id]
+            file_url = public_url_for("serve_file", file_id=file_id)
+            # Add hyperlink to supplier header cell (row 1, first column of supplier block)
+            header_cell = ws.cell(row=1, column=col_idx)
+            header_cell.hyperlink = file_url
+            header_cell.font = Font(bold=True, color="0000FF", underline="single")
+        col_idx += SUPPLIER_BLOCK_COLS
 
     # Add COA hyperlinks
     for (row, col), url in cert_links.items():
@@ -2816,36 +2859,6 @@ def parse_reply_fields(body_text):
         "warranty": warranty,
         "payment_terms": payment_terms,
     }
-
-# INBOUND_SECRET = os.environ.get("INBOUND_SECRET", "")  # set this in your env
-
-# @app.route("/webhooks/sendgrid/inbound/<secret>", methods=["POST"])
-# def sendgrid_inbound(secret):
-#     # simple security so random people can’t POST fake replies
-#     if not INBOUND_SECRET or secret != INBOUND_SECRET:
-#         abort(403)
-
-#     # SendGrid fields (multipart/form-data)
-#     from_addr = request.form.get("from", "")
-#     subject = request.form.get("subject", "")
-#     raw_headers = request.form.get("headers", "")
-
-#     # prefer text; fallback html
-#     body_text = request.form.get("text") or ""
-#     if not body_text:
-#         body_text = request.form.get("html") or ""
-
-#     # OPTIONAL: attachments are in request.files; you can ignore for now
-#     # e.g. request.files.get("attachment1"), etc.
-
-#     result = process_inbound_supplier_reply(
-#         subject=subject,
-#         from_addr=from_addr,
-#         body_text=body_text,
-#         raw_headers=raw_headers
-#     )
-
-#     return ("OK", 200)
 
 def get_email_body(msg):
     """Extract text/plain part (or fallback) from an email.message.Message."""
