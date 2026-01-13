@@ -4,7 +4,7 @@
 {% block content %}
 <div class="card">
     <div class="card-header">
-        <h2>Assign Items to Suppliers</h2>
+        <h2>Assign Suppliers</h2>
         <p>Step 2: Select which suppliers receive which items for {{ task.task_name }}</p>
     </div>
     <div class="card-body">
@@ -103,41 +103,6 @@
                                     </div>
                                 </div>
                             </div>
-                            
-                            <div class="item-assignment">
-                                <h6>Assign specific items:</h6>
-                                <div class="assignment-options">
-                                    <div class="assignment-option">
-                                        <input type="radio" 
-                                               name="assignment_type_{{ supplier.id }}" 
-                                               value="all"
-                                               id="all_{{ supplier.id }}"
-                                               checked>
-                                        <label for="all_{{ supplier.id }}">All compatible items</label>
-                                    </div>
-                                    <div class="assignment-option">
-                                        <input type="radio" 
-                                               name="assignment_type_{{ supplier.id }}" 
-                                               value="specific"
-                                               id="specific_{{ supplier.id }}">
-                                        <label for="specific_{{ supplier.id }}">Select specific items:</label>
-                                    </div>
-                                </div>
-                                
-                                <div class="specific-items" style="display: none;">
-                                    {% for item in pr_items %}
-                                    <div class="item-checkbox">
-                                        <input type="checkbox" 
-                                               name="supplier_{{ supplier.id }}_items" 
-                                               value="{{ item.id }}"
-                                               id="item_{{ supplier.id }}_{{ item.id }}">
-                                        <label for="item_{{ supplier.id }}_{{ item.id }}">
-                                            Item {{ loop.index }}: {{ item.item_name }} ({{ item.item_category }})
-                                        </label>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                            </div>
                         </div>
                         {% endfor %}
                     </div>
@@ -174,34 +139,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        // Handle assignment type changes
-        document.querySelectorAll('input[name^="assignment_type_"]').forEach(radio => {
-            radio.addEventListener('change', function () {
-                const supplierId = this.name.replace('assignment_type_', '');
-                const specificItems = this.closest('.supplier-assignment-card').querySelector('.specific-items');
-
-                if (this.value === 'specific') {
-                    specificItems.style.display = 'block';
-                } else {
-                    specificItems.style.display = 'none';
-                    // Uncheck all specific items when switching to "all"
-                    specificItems.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                        cb.checked = false;
-                    });
-                }
-            });
-        });
-
-        // Initialize based on current state
-        document.querySelectorAll('input[name^="assignment_type_"]').forEach(radio => {
-            if (radio.checked) {
-                radio.dispatchEvent(new Event('change'));
-            }
-        });
-    });
-</script>
 
 <style>
 .suppliers-assignment {
@@ -221,12 +158,6 @@
 .supplier-assignment-card:hover {
     border-color: var(--dusty-purple);
     box-shadow: 0 2px 8px rgba(139, 123, 158, 0.1);
-}
-
-.supplier-main {
-    margin-bottom: 1rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid #f1f3f4;
 }
 
 .supplier-selection {
@@ -265,51 +196,6 @@
 .detail-item i {
     color: var(--dusty-purple);
     width: 16px;
-}
-
-.item-assignment {
-    background: #f8f9fa;
-    padding: 1rem;
-    border-radius: 8px;
-}
-
-.assignment-options {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-}
-
-.assignment-option {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.assignment-option input[type="radio"] {
-    accent-color: var(--dusty-purple);
-}
-
-.specific-items {
-    border-left: 3px solid var(--dusty-purple);
-    padding-left: 1rem;
-}
-
-.item-checkbox {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-}
-
-.item-checkbox input[type="checkbox"] {
-    accent-color: var(--dusty-purple);
-}
-
-.items-overview {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1rem;
 }
 
 .item-card {

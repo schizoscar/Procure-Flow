@@ -1588,8 +1588,8 @@ def export_comparison(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    BASE_COLS = 9  # 3 fixed cols + 4 dimension cols + quantity + weight
-    SUPPLIER_START_COL = BASE_COLS + 1  # 10
+    BASE_COLS = 3 + DIM_COUNT + 2  # 3 fixed + DIM_COUNT dims + Qty + Weight
+    SUPPLIER_START_COL = BASE_COLS + 1
 
     conn = get_db_connection()
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
@@ -1659,38 +1659,48 @@ def export_comparison(task_id):
         except Exception:
             return None
 
-    def dims_for_row(category, base_dim_display, q):
+    def dims_for_row(category, item, q=None):
         """
-        Return dims tuple (d1,d2,d3,d4) for this quote row.
-        If q is ONO and has overrides, use them; otherwise fall back to base dims.
+        Return a list of dims sized correctly for this category.
+        Uses ONO overrides when q["ono"] == 1, otherwise uses item fields.
         """
-        d1, d2, d3, d4 = base_dim_display
+        category = (category or "").strip()
+        is_ono = bool(q and q.get("ono") == 1)
 
-        if not q or q.get("ono") != 1:
-            return (_norm(d1), _norm(d2), _norm(d3), _norm(d4))
+        def pick(ono_key, item_key):
+            if is_ono:
+                v = q.get(ono_key)
+                if v not in (None, "", "None", "null"):
+                    return str(v).strip()
+            v = item.get(item_key)
+            return "" if v is None else str(v).strip()
 
         if category in ["Steel Plates", "Stainless Steel"]:
-            w = _norm(q.get("ono_width")) or _norm(d1)
-            L = _norm(q.get("ono_length")) or _norm(d3)
-            thk = _norm(q.get("ono_thickness")) or _norm(d4)
-            return (w, "", L, thk)
+            return [
+                pick("ono_width", "width"),
+                pick("ono_length", "length"),
+                pick("ono_thickness", "thickness"),
+            ]
 
         if category == "Angle Bar":
-            a = _norm(q.get("ono_dim_a")) or _norm(d1)
-            b = _norm(q.get("ono_dim_b")) or _norm(d2)
-            L = _norm(q.get("ono_length")) or _norm(d3)
-            thk = _norm(q.get("ono_thickness")) or _norm(d4)
-            return (a, b, L, thk)
+            return [
+                pick("ono_dim_a", "dim_a"),
+                pick("ono_dim_b", "dim_b"),
+                pick("ono_length", "length"),
+                pick("ono_thickness", "thickness"),
+            ]
 
         if category in ["Rebar", "Bolts, Fasteners"]:
-            d = _norm(q.get("ono_diameter")) or _norm(d1)
-            L = _norm(q.get("ono_length")) or _norm(d3)
-            return (d, "", L, "")
+            return [
+                pick("ono_diameter", "diameter"),
+                pick("ono_length", "length"),
+            ]
 
-        # other categories
-        uq = _norm(q.get("ono_uom_qty")) or _norm(d1)
-        uom = _norm(q.get("ono_uom")) or _norm(d2)
-        return (uq, uom, "", "")
+        # Other categories
+        return [
+            pick("ono_uom_qty", "uom_qty"),
+            pick("ono_uom", "uom"),
+        ]
 
     def weight_for_dims(category, dims, base_weight):
         """
@@ -1748,40 +1758,35 @@ def export_comparison(task_id):
     ws = wb.active
     ws.title = "Comparison"
 
+    def get_dim_spec(cat: str):
+        cat = (cat or "").strip()
+        if cat in ["Steel Plates", "Stainless Steel"]:
+            return ["Width", "Length", "Thk"], 3
+        if cat == "Angle Bar":
+            return ["A", "B", "Length", "Thk"], 4
+        if cat in ["Rebar", "Bolts, Fasteners"]:
+            return ["Dia", "Length"], 2
+        # Other categories (choose what you want)
+        return ["Qty", "UOM"], 2
+
+    cat = (pr_items[0].get("item_category") or "").strip() if pr_items else ""
+    dim_headers, DIM_COUNT = get_dim_spec(cat)
+
     row1 = [
         "Item Name (O.N.O.)",
         "Brand/Specification",
         "Category",
-        "Dimensions (mm)", "", "", "",   # 4 cols for dimensions
+    ] + (["Dimensions (mm)"] + [""] * (DIM_COUNT - 1)) + [
         "Quantity",
         "Weight (Kg)"
     ]
+
     for supplier_id, supplier_name in suppliers_list:
         row1.extend([supplier_header_label(supplier_id, supplier_name)] + [""] * (SUPPLIER_BLOCK_COLS - 1))
     ws.append(row1)
 
-    # Determine dynamic dimension headers based on PR category
-    dim_headers = ["W/A/D/UOM", "B", "L", "Thk"] # Default fallback
-    if pr_items:
-        cat = pr_items[0].get('item_category', '')
-        if cat in ["Steel Plates", "Stainless Steel"]:
-            dim_headers = ["Width", "", "Length", "Thk"]
-        elif cat == "Angle Bar":
-            dim_headers = ["A", "B", "Length", "Thk"]
-        elif cat in ["Rebar", "Bolts, Fasteners"]:
-            dim_headers = ["Dia", "", "Length", ""]
-        else:
-            # Check if it uses UOM logic (category not in specific list)
-            dim_headers = ["Qty", "UOM", "", ""]
+    row2 = ["", "", ""] + dim_headers + ["", ""]
 
-    row2 = [
-        "", "", "",
-        dim_headers[0],
-        dim_headers[1],
-        dim_headers[2],
-        dim_headers[3],
-        "", ""
-    ]
     for supplier_id, supplier_name in suppliers_list:
         row2.extend([
             "Rate (RM/Kg)",
@@ -1820,20 +1825,24 @@ def export_comparison(task_id):
         cell.font = bold
         cell.alignment = center
 
-    # Merge and center Dimensions (now cols 4-7)
-    ws.merge_cells(start_row=1, start_column=4, end_row=1, end_column=7)
-    cell = ws.cell(row=1, column=4)
-    cell.font = bold
-    cell.alignment = center
+    # Merge "Dimensions (mm)" across the dynamic dim columns
+    dim_start = 4
+    dim_end = 3 + DIM_COUNT
+    ws.merge_cells(start_row=1, start_column=dim_start, end_row=1, end_column=dim_end)
+    ws.cell(row=1, column=dim_start).font = bold
+    ws.cell(row=1, column=dim_start).alignment = center
 
-    # Center dim headers row2 (cols 4-7)
-    for col in range(4, 8):
+    # Center dim headers in row2
+    for col in range(dim_start, dim_end + 1):
         c = ws.cell(row=2, column=col)
         c.font = bold
         c.alignment = center
 
-    # Merge and center Quantity and Weight (now cols 8-9)
-    for col in range(8, 10):
+    # Merge Quantity and Weight columns (dynamic positions)
+    qty_col = dim_end + 1
+    wt_col  = dim_end + 2
+
+    for col in (qty_col, wt_col):
         ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
         c = ws.cell(row=1, column=col)
         c.font = bold
@@ -1932,7 +1941,10 @@ def export_comparison(task_id):
             thk = item.get('thickness') or ''
             base_dim_display = [w, "", l, thk]
         elif category == "Angle Bar":
-  
+            a = item.get('dim_a') or ''
+            b = item.get('dim_b') or ''
+            l = item.get('length') or ''
+            thk = item.get('thickness') or ''
             base_dim_display = [a, b, l, thk]
         elif category in ["Rebar", "Bolts, Fasteners"]:
             d = item.get('diameter') or ''
@@ -1968,6 +1980,7 @@ def export_comparison(task_id):
         
         # Distribute quotes into groups
         # Normalize standard dims so grouping is consistent
+        base_dim_display = dims_for_row(category, item, q=None)  # correct length
         standard_dims = tuple(_norm(x) for x in base_dim_display)
         standard_key = (False, standard_dims)
         grouped_quotes = {standard_key: {}}
@@ -1980,8 +1993,8 @@ def export_comparison(task_id):
 
             if q.get("ono") == 1:
                 # ✅ this applies ONO dims but falls back to base dims when ONO fields are blank
-                eff_dims = dims_for_row(category, base_dim_display, q)   # returns 4-tuple of strings
-                key = (True, tuple(eff_dims))
+                eff_dims = dims_for_row(category, item, q=q)
+                key = (True, tuple(_norm(x) for x in eff_dims))
                 grouped_quotes.setdefault(key, {})[supplier_id] = q
             else:
                 grouped_quotes[standard_key][supplier_id] = q
@@ -2011,7 +2024,7 @@ def export_comparison(task_id):
                 row_label,
                 item["brand"] or "",
                 category,
-                dims[0], dims[1], dims[2], dims[3],
+                *dims,                         # <-- dynamic number of dim cells
                 item["quantity"] or "",
                 weight
             ]
@@ -2557,8 +2570,6 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
         app.logger.exception("Email sending failed")
         return False
 
-
-
 @app.route('/task/<int:task_id>/suppliers', methods=['GET', 'POST'])
 def supplier_selection(task_id):
     if 'user_id' not in session:
@@ -2575,37 +2586,15 @@ def supplier_selection(task_id):
     if request.method == 'POST':
         # Process supplier-item assignments
         selected_suppliers = request.form.getlist('suppliers')
-        item_assignments = {}
-        
-        # Process which items go to which suppliers
-        for key, value in request.form.items():
-            if key.startswith('supplier_') and key.endswith('_items'):
-                supplier_id = key.replace('supplier_', '').replace('_items', '')
-                assigned_items = request.form.getlist(key)
-                if assigned_items:
-                    item_assignments[supplier_id] = assigned_items
         
         # Clear existing selections
         conn.execute('DELETE FROM task_suppliers WHERE task_id = ?', (task_id,))
         
-        # Add supplier selections with assigned items
-        # Add supplier selections with assigned items
+        # Add supplier selections - always with all items (NULL in database)
         for supplier_id in selected_suppliers:
-            assignment_type = request.form.get(f'assignment_type_{supplier_id}')
-            
-            if assignment_type == 'specific':
-                # Get specific items for this supplier
-                # If no items checked, getlist returns [], which dumps to "[]"
-                # This correctly represents "Specific items: None" instead of "All items"
-                assigned_items = request.form.getlist(f'supplier_{supplier_id}_items')
-                items_json = json.dumps(assigned_items)
-            else:
-                # 'all' compatible items -> NULL in database
-                items_json = None
-                
             conn.execute(
                 'INSERT INTO task_suppliers (task_id, supplier_id, is_selected, assigned_items) VALUES (?, ?, ?, ?)',
-                (task_id, supplier_id, True, items_json)
+                (task_id, supplier_id, True, None)
             )
         
         # Update task status
@@ -2641,24 +2630,13 @@ def supplier_selection(task_id):
     else:
         suppliers = []
     
-    # Get already selected suppliers and their assigned items
+    # Get already selected suppliers
     selected_data = conn.execute(
-        'SELECT supplier_id, assigned_items FROM task_suppliers WHERE task_id = ? AND is_selected = 1',
+        'SELECT supplier_id FROM task_suppliers WHERE task_id = ? AND is_selected = 1',
         (task_id,)
     ).fetchall()
     
-    selected_supplier_ids = []
-    item_assignments = {}
-    
-    for data in selected_data:
-        supplier_id = str(data['supplier_id'])
-        selected_supplier_ids.append(supplier_id)
-        if data['assigned_items']:
-            try:
-                assigned_items = json.loads(data['assigned_items'])
-                item_assignments[supplier_id] = assigned_items
-            except:
-                item_assignments[supplier_id] = []
+    selected_supplier_ids = [str(data['supplier_id']) for data in selected_data]
     
     conn.close()
     
@@ -2667,8 +2645,7 @@ def supplier_selection(task_id):
                          suppliers=suppliers, 
                          pr_items=pr_items,
                          selected_supplier_ids=selected_supplier_ids,
-                         categories=categories,
-                         item_assignments=item_assignments)
+                         categories=categories)
 
 # Add route to delete supplier
 @app.route('/delete-supplier/<int:supplier_id>')
