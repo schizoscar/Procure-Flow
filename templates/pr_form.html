@@ -56,9 +56,12 @@
                         <!-- Category removed from here -->
                         <div class="form-group">
                             <label class="form-label required">Item Name</label>
-                            <input type="text" class="form-control" name="items[{{ loop.index0 }}][item_name]"
-                                value="{{ item.item_name }}" list="items-list-{{ loop.index0 }}" required>
-                            <datalist id="items-list-{{ loop.index0 }}"></datalist>
+                            <select class="form-control form-select item-name-select"
+                                    name="items[{{ loop.index0 }}][item_name]"
+                                    data-selected="{{ item.item_name }}"
+                                    required>
+                                <option value="">Select Item</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Brand / Specification</label>
@@ -201,9 +204,11 @@
                         <!-- Category removed -->
                         <div class="form-group">
                             <label class="form-label required">Item Name</label>
-                            <input type="text" class="form-control" name="items[0][item_name]" list="items-list-0"
-                                required>
-                            <datalist id="items-list-0"></datalist>
+                            <select class="form-control form-select item-name-select"
+                                    name="items[0][item_name]"
+                                    required>
+                                <option value="">Select Item</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label class="form-label">Brand / Specification</label>
@@ -394,19 +399,32 @@
     }
 
     function updateItemSuggestions(row, category) {
-        const dataList = row.querySelector('datalist');
-        if (!dataList) return;
+        const select = row.querySelector('.item-name-select');
+        if (!select) return;
 
-        // Get category items map
         const categoryItemsData = JSON.parse(document.getElementById('categoryItemsData').textContent);
 
-        dataList.innerHTML = '';
+        // keep existing selection if editing
+        const saved = select.getAttribute('data-selected') || select.value || "";
+
+        // reset dropdown
+        select.innerHTML = '<option value="">Select Item</option>';
+
         if (category && categoryItemsData[category]) {
             categoryItemsData[category].forEach(item => {
-                const option = document.createElement('option');
-                option.value = item;
-                dataList.appendChild(option);
+                const opt = document.createElement('option');
+                opt.value = item;
+                opt.textContent = item;
+
+                if (saved && saved === item) opt.selected = true;
+
+                select.appendChild(opt);
             });
+        }
+
+        // clear data-selected once applied (optional)
+        if (select.getAttribute('data-selected')) {
+            select.removeAttribute('data-selected');
         }
     }
 
@@ -439,17 +457,18 @@
                 }
 
                 // Update datalist
-                const dataList = row.querySelector('datalist');
-                if (dataList) {
-                    dataList.innerHTML = '';
-                    if (category && categoryItemsData[category]) {
-                        categoryItemsData[category].forEach(item => {
-                            const option = document.createElement('option');
-                            option.value = item;
-                            dataList.appendChild(option);
-                        });
-                    }
-                }
+                // Update item dropdown instantly
+                updateItemSuggestions(row, category);
+                // if (dataList) {
+                //     dataList.innerHTML = '';
+                //     if (category && categoryItemsData[category]) {
+                //         categoryItemsData[category].forEach(item => {
+                //             const option = document.createElement('option');
+                //             option.value = item;
+                //             dataList.appendChild(option);
+                //         });
+                //     }
+                // }
             });
         }
 
@@ -493,8 +512,11 @@
                         <div class="grid-2">
                             <div class="form-group">
                                 <label class="form-label required">Item Name</label>
-                                <input type="text" class="form-control" name="items[${itemCount - 1}][item_name]" list="items-list-${itemCount - 1}" required>
-                                <datalist id="items-list-${itemCount - 1}"></datalist>
+                                <select class="form-control form-select item-name-select"
+                                        name="items[${itemCount - 1}][item_name]"
+                                        required>
+                                    <option value="">Select Item</option>
+                                </select>
                             </div>
                             <div class="form-group">
                                 <label class="form-label">Brand / Specification</label>
@@ -633,17 +655,17 @@
                         const newName = name.replace(/items\[\d+\]/, `items[${index}]`);
                         input.setAttribute('name', newName);
 
-                        const list = input.getAttribute('list');
-                        if (list) {
-                            input.setAttribute('list', `items-list-${index}`);
-                        }
+                        // const list = input.getAttribute('list');
+                        // if (list) {
+                        //     input.setAttribute('list', `items-list-${index}`);
+                        // }
                     }
                 });
 
-                const datalist = item.querySelector('datalist');
-                if (datalist) {
-                    datalist.setAttribute('id', `items-list-${index}`);
-                }
+                // const datalist = item.querySelector('datalist');
+                // if (datalist) {
+                //     datalist.setAttribute('id', `items-list-${index}`);
+                // }
             });
             itemCount = currentCount;
         }
