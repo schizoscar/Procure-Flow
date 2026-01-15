@@ -69,14 +69,16 @@ def reset_database():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             task_id INTEGER,
             item_name TEXT NOT NULL,
-            item_category TEXT NOT NULL,
-            brand TEXT,
-            quantity INTEGER NOT NULL,
-            payment_terms TEXT,
-            -- Steel Plates dimensions
+            specification TEXT,
             width INTEGER,
             length INTEGER,
             thickness INTEGER,
+            brand TEXT,
+            balance_stock INTEGER,
+            quantity INTEGER NOT NULL,
+            item_category TEXT NOT NULL,
+            payment_terms TEXT,
+            -- Steel Plates dimensions
             -- Angle Bar dimensions
             dim_a INTEGER,
             dim_b INTEGER,
@@ -97,6 +99,9 @@ def reset_database():
             initial_sent_at TIMESTAMP,
             followup_sent_at TIMESTAMP,
             replied_at TIMESTAMP,
+            reply_token TEXT,
+            quotation_file_id INTEGER,
+            quote_form_token TEXT,
             FOREIGN KEY (task_id) REFERENCES tasks (id),
             FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
         )''',
@@ -124,6 +129,7 @@ def reset_database():
             unit_price REAL,
             stock_availability TEXT,
             cert TEXT,
+            cert_file_id INTEGER,
             lead_time TEXT,
             warranty TEXT,
             payment_terms TEXT,
@@ -165,6 +171,19 @@ def reset_database():
             sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (task_id) REFERENCES tasks (id),
             FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+        )''',
+        '''CREATE TABLE IF NOT EXISTS file_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER,
+            supplier_id INTEGER,
+            pr_item_id INTEGER,
+            filename TEXT NOT NULL,
+            mime_type TEXT,
+            data BLOB NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES tasks (id),
+            FOREIGN KEY (supplier_id) REFERENCES suppliers (id),
+            FOREIGN KEY (pr_item_id) REFERENCES pr_items (id)
         )''',
         '''CREATE TABLE IF NOT EXISTS category_items (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
