@@ -214,7 +214,7 @@ def generate_email_content(pr_items, task_name):
                 <th style="text-align: center; width: 5%;">No.</th>
                 <th style="text-align: left;">Description</th>
                 <th style="text-align: left;">Dimensions</th>
-                <th style="text-align: left;">Brand/Specification</th>
+                <th style="text-align: left;">Brand / Specification</th>
                 <th style="text-align: center; width: 10%;">Qty</th>
                 <th style="text-align: left;">Remark</th>
             </tr>
