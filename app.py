@@ -30,6 +30,7 @@ import certifi
 from urllib.parse import urljoin
 import logging
 from werkzeug.exceptions import HTTPException
+import math
 
 
 load_dotenv()
@@ -320,19 +321,22 @@ def dashboard():
         return redirect(url_for('login'))
     
     conn = get_db_connection()
-    
-    # Get recent tasks (for admin, all tasks; for user, only their tasks)
+
     if session.get('role') == 'admin':
         recent_tasks = conn.execute('''
-            SELECT t.*,
+            SELECT 
+                t.*,
+                u.username AS created_by,
                 (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
             FROM tasks t
+            LEFT JOIN users u ON u.id = t.user_id
             ORDER BY t.created_at DESC
             LIMIT 10
         ''').fetchall()
     else:
         recent_tasks = conn.execute('''
-            SELECT t.*,
+            SELECT 
+                t.*,
                 (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
             FROM tasks t
             WHERE t.user_id = ?
@@ -340,14 +344,16 @@ def dashboard():
             LIMIT 10
         ''', (session['user_id'],)).fetchall()
 
-    
-    # Get stats for admin dashboard
     stats = None
     if session.get('role') == 'admin':
         stats = {
             'total_tasks': conn.execute('SELECT COUNT(*) FROM tasks').fetchone()[0],
-            'active_tasks': conn.execute("SELECT COUNT(*) FROM tasks WHERE status NOT IN ('completed', 'cancelled')").fetchone()[0],
-            'total_suppliers': conn.execute('SELECT COUNT(*) FROM suppliers WHERE is_active = 1').fetchone()[0]
+            'active_tasks': conn.execute(
+                "SELECT COUNT(*) FROM tasks WHERE status NOT IN ('completed', 'cancelled')"
+            ).fetchone()[0],
+            'total_suppliers': conn.execute(
+                'SELECT COUNT(*) FROM suppliers WHERE is_active = 1'
+            ).fetchone()[0]
         }
     
     conn.close()
@@ -1630,11 +1636,11 @@ def export_comparison(task_id):
     def get_dim_spec(cat: str):
         cat = (cat or "").strip()
         if cat in ["Steel Plates", "Stainless Steel"]:
-            return ["Width", "Length", "Thk"], 3
+            return ["W (mm)", "L (mm)", "Thk (mm)"], 3
         if cat == "Angle Bar":
-            return ["A", "B", "Length", "Thk"], 4
+            return ["A (mm)", "B (mm)", "L (mm)", "Thk (mm)"], 4
         if cat in ["Rebar", "Bolts, Fasteners"]:
-            return ["Dia", "Length"], 2
+            return ["D (mm)", "L (mm)"], 2
         # Other categories
         return ["Qty", "UOM"], 2
 
@@ -1750,7 +1756,6 @@ def export_comparison(task_id):
         elif category in ["Rebar", "Bolts, Fasteners"]:
             d = _num(dims[0]); L = _num(dims[2])
             if d and L:
-                import math
                 return round((math.pi / 4) * (d ** 2) * L * 7.85 * 0.000001, 2)
 
         elif category == "Angle Bar":
@@ -1807,8 +1812,8 @@ def export_comparison(task_id):
         "Item Name (O.N.O.)",
         "Brand/Specification",
         "Category",
-    ] + (["Dimensions (mm)"] + [""] * (DIM_COUNT - 1)) + [
-        "Quantity",
+    ] + (["Dimensions"] + [""] * (DIM_COUNT - 1)) + [
+        "Qty",
         "Weight (Kg)"
     ]
 
@@ -1937,7 +1942,6 @@ def export_comparison(task_id):
         elif category in ['Rebar', 'Bolts, Fasteners']:
             if diameter and l:
                 try:
-                    import math
                     d_val = float(diameter)
                     l_val = float(l)
                     weight = round((math.pi / 4) * (d_val ** 2) * l_val * 7.85 * 0.000001, 2)
@@ -2199,10 +2203,9 @@ def export_comparison(task_id):
 
     max_col = ws.max_column
     max_row = ws.max_row
-    col_max_length = [0] * (max_col + 1)
 
+    # ---------- A) Apply borders + enable wrapping on ALL cells ----------
     for r in range(1, max_row + 1):
-        max_lines = 1
         for c in range(1, max_col + 1):
             cell = ws.cell(row=r, column=c)
             cell.border = table_border
@@ -2212,41 +2215,79 @@ def export_comparison(task_id):
                 wrap_text=True
             )
 
-            value = cell.value if cell.value is not None else ""
-            text = str(value)
-            col_max_length[c] = max(col_max_length[c], len(text))
+    # ---------- B) Compute & apply capped "autofit" column widths ----------
+    col_max_len = [0] * (max_col + 1)
+    for r in range(1, max_row + 1):
+        for c in range(1, max_col + 1):
+            val = ws.cell(row=r, column=c).value
+            text = "" if val is None else str(val)
+            col_max_len[c] = max(col_max_len[c], len(text))
 
-            lines = text.count("\n") + 1
+    DEFAULT_CAP = 25
+    DIM_CAP = 12
+    SUPPLIER_CAP = 18
+    REMARKS_CAP = 30
+
+    dim_start = 4
+    dim_end = 3 + DIM_COUNT
+    qty_col = dim_end + 1
+    wt_col  = dim_end + 2
+
+    def col_cap(c: int) -> int:
+        if dim_start <= c <= dim_end:
+            return DIM_CAP
+        if c in (qty_col, wt_col):
+            return 12
+        if c == 1:  # item name
+            return 35
+        if c == 2:  # brand/spec
+            return 30
+        if c == 3:  # category
+            return 20
+        if c >= SUPPLIER_START_COL:
+            offset = (c - SUPPLIER_START_COL) % SUPPLIER_BLOCK_COLS
+            if offset == OFF_REMARKS:
+                return REMARKS_CAP
+            return SUPPLIER_CAP
+        return DEFAULT_CAP
+
+    for c in range(1, max_col + 1):
+        cap = col_cap(c)
+        est = int(col_max_len[c] * 0.8) + 2
+        width = max(8, min(cap, est))
+        ws.column_dimensions[get_column_letter(c)].width = width
+
+    # ---------- C) Now auto-fit ROW HEIGHT based on WRAPPED lines ----------
+    def estimate_wrapped_lines(text: str, col_width: float) -> int:
+        """
+        Rough estimate: Excel column width ~ "characters".
+        This isn't perfect, but works well enough for wrap+height.
+        """
+        if not text:
+            return 1
+        chars_per_line = max(1, int(col_width))  # rough
+        total_lines = 0
+        for part in text.split("\n"):
+            total_lines += max(1, math.ceil(len(part) / chars_per_line))
+        return total_lines
+
+    for r in range(1, max_row + 1):
+        max_lines = 1
+        for c in range(1, max_col + 1):
+            cell = ws.cell(row=r, column=c)
+            text = "" if cell.value is None else str(cell.value)
+
+            col_letter = get_column_letter(c)
+            col_w = ws.column_dimensions[col_letter].width or 10
+
+            lines = estimate_wrapped_lines(text, col_w)
             max_lines = max(max_lines, lines)
 
         ws.row_dimensions[r].height = max(15, max_lines * 15)
 
-    # Add Master Quotation hyperlinks in supplier headers (row 1)
-    col_idx = SUPPLIER_START_COL
-    for supplier_id, supplier_name in suppliers_list:
-        if supplier_id in supplier_quotation_files:
-            file_id = supplier_quotation_files[supplier_id]
-            file_url = public_url_for("serve_file", file_id=file_id)
-            # Add hyperlink to supplier header cell (row 1, first column of supplier block)
-            header_cell = ws.cell(row=1, column=col_idx)
-            header_cell.hyperlink = file_url
-            header_cell.font = Font(bold=True, color="0000FF", underline="single")
-        col_idx += SUPPLIER_BLOCK_COLS
-
-    # Add COA hyperlinks
-    for (row, col), url in cert_links.items():
-        cell = ws.cell(row=row, column=col)
-        cell.hyperlink = url
-        cell.font = Font(underline="single")
-
-    # Column widths
-    for c in range(1, max_col + 1):
-        col_letter = get_column_letter(c)
-        width = int(col_max_length[c] * 1.2) + 2
-        ws.column_dimensions[col_letter].width = max(8, min(60, width))
-
-    ws.row_dimensions[1].height = 28
-    ws.row_dimensions[2].height = 20
+    # # Keep your header heights (optional)
+    # ws.row_dimensions[1].height = 28
+    # ws.row_dimensions[2].height = 20
 
     output = io.BytesIO()
     wb.save(output)
