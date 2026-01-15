@@ -35,7 +35,7 @@
                                 </a>
                             {% else %}
                                 <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-secondary btn-sm">
-                                    <i class="fas fa-edit"></i> Continue
+                                    <i class="fas fa-edit"></i> Edit
                                 </a>
                             {% endif %}
                             <a href="{{ url_for('task_responses', task_id=task.id) }}" class="btn btn-secondary btn-sm">
@@ -92,7 +92,7 @@
                                 </a>
                             {% else %}
                                 <a href="{{ url_for('edit_task', task_id=task.id) }}" class="btn btn-secondary btn-sm">
-                                    <i class="fas fa-edit"></i> View
+                                    <i class="fas fa-edit"></i> Edit
                                 </a>
                             {% endif %}
                             <a href="{{ url_for('task_responses', task_id=task.id) }}" class="btn btn-secondary btn-sm">
