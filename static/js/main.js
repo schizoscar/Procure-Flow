@@ -62,54 +62,54 @@ document.addEventListener('DOMContentLoaded', function () {
     };
 
     // Dynamic item addition for PR form
-    const addItemBtn = document.getElementById('addItem');
-    const itemsContainer = document.getElementById('itemsContainer');
+    // const addItemBtn = document.getElementById('addItem');
+    // const itemsContainer = document.getElementById('itemsContainer');
 
-    if (addItemBtn && itemsContainer) {
-        addItemBtn.addEventListener('click', function () {
-            const itemIndex = itemsContainer.children.length;
-            const itemHTML = `
-                <div class="card mb-2 item-row">
-                    <div class="d-flex justify-between align-center">
-                        <h4>Item ${itemIndex + 1}</h4>
-                        <button type="button" class="btn btn-danger remove-item" onclick="this.parentElement.parentElement.remove()">
-                            Remove
-                        </button>
-                    </div>
-                    <div class="grid-2">
-                        <div class="form-group">
-                            <label class="form-label required">Item Name</label>
-                            <input type="text" class="form-control" name="items[${itemIndex}][item_name]" required>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label required">Quantity</label>
-                            <input type="number" class="form-control" name="items[${itemIndex}][quantity]" min="1" required>
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Specification</label>
-                            <input type="text" class="form-control" name="items[${itemIndex}][specification]">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Brand</label>
-                            <input type="text" class="form-control" name="items[${itemIndex}][brand]">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label">Balance Stock</label>
-                            <input type="number" class="form-control" name="items[${itemIndex}][balance_stock]" min="0">
-                        </div>
-                        <div class="form-group">
-                            <label class="form-label required">Item Category</label>
-                            <select class="form-control form-select" name="items[${itemIndex}][item_category]" required>
-                                <option value="">Select Category</option>
-                                <!-- Categories will be populated by server -->
-                            </select>
-                        </div>
-                    </div>
-                </div>
-            `;
-            itemsContainer.insertAdjacentHTML('beforeend', itemHTML);
-        });
-    }
+    // if (addItemBtn && itemsContainer) {
+    //     addItemBtn.addEventListener('click', function () {
+    //         const itemIndex = itemsContainer.children.length;
+    //         const itemHTML = `
+    //             <div class="card mb-2 item-row">
+    //                 <div class="d-flex justify-between align-center">
+    //                     <h4>Item ${itemIndex + 1}</h4>
+    //                     <button type="button" class="btn btn-danger remove-item" onclick="this.parentElement.parentElement.remove()">
+    //                         Remove
+    //                     </button>
+    //                 </div>
+    //                 <div class="grid-2">
+    //                     <div class="form-group">
+    //                         <label class="form-label required">Item Name</label>
+    //                         <input type="text" class="form-control" name="items[${itemIndex}][item_name]" required>
+    //                     </div>
+    //                     <div class="form-group">
+    //                         <label class="form-label required">Quantity</label>
+    //                         <input type="number" class="form-control" name="items[${itemIndex}][quantity]" min="1" required>
+    //                     </div>
+    //                     <div class="form-group">
+    //                         <label class="form-label">Specification</label>
+    //                         <input type="text" class="form-control" name="items[${itemIndex}][specification]">
+    //                     </div>
+    //                     <div class="form-group">
+    //                         <label class="form-label">Brand</label>
+    //                         <input type="text" class="form-control" name="items[${itemIndex}][brand]">
+    //                     </div>
+    //                     <div class="form-group">
+    //                         <label class="form-label">Balance Stock</label>
+    //                         <input type="number" class="form-control" name="items[${itemIndex}][balance_stock]" min="0">
+    //                     </div>
+    //                     <div class="form-group">
+    //                         <label class="form-label required">Item Category</label>
+    //                         <select class="form-control form-select" name="items[${itemIndex}][item_category]" required>
+    //                             <option value="">Select Category</option>
+    //                             <!-- Categories will be populated by server -->
+    //                         </select>
+    //                     </div>
+    //                 </div>
+    //             </div>
+    //         `;
+    //         itemsContainer.insertAdjacentHTML('beforeend', itemHTML);
+    //     });
+    // }
 
     // Supplier selection checkboxes
     const selectAllBtn = document.getElementById('selectAll');

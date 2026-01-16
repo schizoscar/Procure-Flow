@@ -456,3 +456,15 @@ body {
 .gap-2 {
     gap: 1rem;
 }
+
+.form-label.required::after {
+  content: " *";
+  color: #d93025; /* red */
+  font-weight: 700;
+}
+
+th.th-required::after {
+  content: " *";
+  color: #d93025;
+  font-weight: 700;
+}
