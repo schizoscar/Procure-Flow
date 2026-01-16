@@ -745,79 +745,6 @@ def edit_task(task_id):
     else:
         return redirect(url_for('task_list'))
 
-"""
-@app.route('/task/<int:task_id>/email', methods=['GET', 'POST'])
-def email_generation(task_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    conn = get_db_connection()
-    
-    # Verify task ownership
-    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-    if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
-        flash('Task not found or access denied', 'error')
-        conn.close()
-        return redirect(url_for('task_list'))
-    
-    # Get selected suppliers with their assigned items
-    selected_suppliers = conn.execute('''
-        SELECT s.*, ts.assigned_items 
-        FROM suppliers s
-        JOIN task_suppliers ts ON s.id = ts.supplier_id
-        WHERE ts.task_id = ? AND ts.is_selected = 1
-    ''', (task_id,)).fetchall()
-    
-    pr_items = conn.execute(
-        'SELECT * FROM pr_items WHERE task_id = ?', (task_id,)
-    ).fetchall()
-    
-    if request.method == 'POST':
-        # Store email content in session for the next step
-        email_content = request.form.get('email_content', '')
-        session['email_content'] = email_content
-        
-        conn.close()
-        return redirect(url_for('email_preview', task_id=task_id))
-    
-    # Group suppliers by their assigned items to create unique email templates
-    email_templates = {}
-    for supplier in selected_suppliers:
-        assigned_item_ids = None
-        if supplier['assigned_items']:
-            try:
-                assigned_item_ids = json.loads(supplier['assigned_items'])
-            except:
-                assigned_item_ids = None
-        
-        # Create a key based on the assigned items
-        if assigned_item_ids:
-            key = tuple(sorted(assigned_item_ids))
-        else:
-            key = 'all'
-        
-        if key not in email_templates:
-            email_templates[key] = {
-                'suppliers': [],
-                'items': assigned_item_ids if assigned_item_ids else [item['id'] for item in pr_items]
-            }
-        
-        email_templates[key]['suppliers'].append(supplier)
-    
-    # Generate default email content for the first template
-    default_template_key = next(iter(email_templates.keys()))
-    default_items = [item for item in pr_items if not email_templates[default_template_key]['items'] or item['id'] in email_templates[default_template_key]['items']]
-    default_email_content = generate_email_content(default_items, task['task_name'])
-    
-    conn.close()
-    
-    return render_template('email_generation.html',
-                         task=task,
-                         email_templates=email_templates,
-                         pr_items=pr_items,
-                         default_email_content=default_email_content)
-"""
-
 @app.route('/task/<int:task_id>/email-preview', methods=['GET', 'POST'])
 def email_preview(task_id):
     if 'user_id' not in session:
@@ -1232,7 +1159,6 @@ def get_or_create_quote_form_link(conn, task_id, supplier_id):
         )
         conn.commit()
 
-    # IMPORTANT: use public_url instead of url_for(..., _external=True)
     return public_url_for("supplier_quote_form", token=token)
 
 @app.route('/task/<int:task_id>/quotes/<int:supplier_id>', methods=['GET', 'POST'])
@@ -1513,7 +1439,6 @@ def supplier_quote_form(token):
                     if f'cert_{uid}' in request.files:
                         cert_file = request.files[f'cert_{uid}']
                         if cert_file and cert_file.filename:
-                            # optional: validate allowed extension here (pdf only)
                             # if not allowed_file(cert_file.filename): raise ValueError("Only PDF allowed")
                             cert_file_id = save_uploaded_file(conn, cert_file, task_id, supplier_id, item['id'])
 
@@ -1701,19 +1626,42 @@ def export_comparison(task_id):
         except Exception:
             return None
 
-    def dims_for_row(category, item, q=None):
+    def _is_filled(v) -> bool:
+        if v is None:
+            return False
+        s = str(v).strip()
+        return s != "" and s.lower() not in ("none", "null")
+
+    def has_any_ono_value(category: str, q: dict) -> bool:
         """
-        Return a list of dims sized correctly for this category.
-        Uses ONO overrides when q["ono"] == 1, otherwise uses item fields.
+        ONO is considered active if ANY relevant ONO field has a value.
+        (No checkbox needed.)
         """
         category = (category or "").strip()
-        is_ono = bool(q and q.get("ono") == 1)
+
+        if category in ["Steel Plates", "Stainless Steel"]:
+            keys = ["ono_width", "ono_length", "ono_thickness"]
+        elif category == "Angle Bar":
+            keys = ["ono_dim_a", "ono_dim_b", "ono_length", "ono_thickness"]
+        elif category in ["Rebar", "Bolts, Fasteners"]:
+            keys = ["ono_diameter", "ono_length"]
+        else:
+            keys = ["ono_uom_qty", "ono_uom"]
+
+        return any(_is_filled(q.get(k)) for k in keys)
+
+    def dims_for_row(category: str, item: dict, q: dict = None, use_ono: bool = False):
+        """
+        Returns dims (length depends on category).
+        If use_ono is True, it uses ONO fields where filled, otherwise falls back to item dims.
+        """
+        category = (category or "").strip()
 
         def pick(ono_key, item_key):
-            if is_ono:
-                v = q.get(ono_key)
-                if v not in (None, "", "None", "null"):
-                    return str(v).strip()
+            # Prefer ONO only when enabled AND field is filled
+            if use_ono and q and _is_filled(q.get(ono_key)):
+                return str(q.get(ono_key)).strip()
+
             v = item.get(item_key)
             return "" if v is None else str(v).strip()
 
@@ -1738,31 +1686,61 @@ def export_comparison(task_id):
                 pick("ono_length", "length"),
             ]
 
-        # Other categories
         return [
             pick("ono_uom_qty", "uom_qty"),
             pick("ono_uom", "uom"),
         ]
 
-    def weight_for_dims(category, dims, base_weight):
+    def weight_for_dims(category: str, dims: list, base_weight):
         """
-        Compute weight for the row dims. If cannot compute, return base_weight.
+        Compute weight for the CURRENT row dims (incl ONO dims).
+        If cannot compute, return base_weight.
         """
+        category = (category or "").strip()
+
+        # Helpers
+        def _num(x):
+            try:
+                if x is None:
+                    return None
+                s = str(x).strip()
+                if s == "" or s.lower() in ("none", "null"):
+                    return None
+                return float(s)
+            except Exception:
+                return None
+
+        # Steel Plates / Stainless Steel: (W * L * Thk * 7.85) / 1,000,000
         if category in ["Steel Plates", "Stainless Steel"]:
-            w = _num(dims[0]); L = _num(dims[2]); thk = _num(dims[3])
+            # dims = [W, L, Thk]
+            w = _num(dims[0])
+            L = _num(dims[1])
+            thk = _num(dims[2])
             if w and L and thk:
                 return round((w * L * thk * 7.85) / 1_000_000, 2)
+            return base_weight
 
-        elif category in ["Rebar", "Bolts, Fasteners"]:
-            d = _num(dims[0]); L = _num(dims[2])
+        # Rebar / Bolts: (π/4) * D² * L * 7.85 * 10⁻⁶
+        if category in ["Rebar", "Bolts, Fasteners"]:
+            # dims = [D, L]
+            d = _num(dims[0])
+            L = _num(dims[1])
             if d and L:
                 return round((math.pi / 4) * (d ** 2) * L * 7.85 * 0.000001, 2)
+            return base_weight
 
-        elif category == "Angle Bar":
-            a = _num(dims[0]); b = _num(dims[1]); L = _num(dims[2]); thk = _num(dims[3])
+        # Angle Bar: (L * Thk * (A + B - Thk) * 7.85) / 1,000,000
+        if category == "Angle Bar":
+            # dims = [A, B, L, Thk]
+            a = _num(dims[0])
+            b = _num(dims[1])
+            L = _num(dims[2])
+            thk = _num(dims[3])
             if a and b and L and thk:
                 return round((L * thk * (a + b - thk) * 7.85) / 1_000_000, 2)
+            return base_weight
 
+        # Other categories
         return base_weight
 
     SUPPLIER_BLOCK_COLS = 7
@@ -1889,8 +1867,31 @@ def export_comparison(task_id):
     for supplier_id, supplier_name in suppliers_list:
         ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=col_idx + (SUPPLIER_BLOCK_COLS - 1))
         c = ws.cell(row=1, column=col_idx)
-        c.font = bold
+
+        # Keep the header style (fill already applied earlier in your header loop)
         c.alignment = center
+        c.font = Font(
+            name=header_font.name,
+            size=header_font.size,
+            bold=True,
+            color=header_font.color  # keeps your blue
+        )
+
+        # ✅ Add master quotation hyperlink (if exists) without removing formats
+        qfile_id = supplier_quotation_files.get(supplier_id)
+        if qfile_id:
+            mq_url = public_url_for("serve_file", file_id=qfile_id)
+            c.hyperlink = mq_url
+
+            # Make it look like hyperlink but preserve header formatting
+            c.font = Font(
+                name=c.font.name,
+                size=c.font.size,
+                bold=True,
+                color=c.font.color,
+                underline="single"
+            )
+
         col_idx += SUPPLIER_BLOCK_COLS
 
     # Format row 2 as bold and centered
@@ -2026,10 +2027,13 @@ def export_comparison(task_id):
             if not q:
                 continue
 
-            if q.get("ono") == 1:
-                # ✅ this applies ONO dims but falls back to base dims when ONO fields are blank
-                eff_dims = dims_for_row(category, item, q=q)
-                key = (True, tuple(_norm(x) for x in eff_dims))
+            use_ono = has_any_ono_value(category, q)
+
+            eff_dims = dims_for_row(category, item, q=q, use_ono=use_ono)
+            eff_dims_norm = tuple(_norm(x) for x in eff_dims)
+
+            if use_ono:
+                key = (True, eff_dims_norm)
                 grouped_quotes.setdefault(key, {})[supplier_id] = q
             else:
                 grouped_quotes[standard_key][supplier_id] = q
@@ -2091,18 +2095,18 @@ def export_comparison(task_id):
                     
                     # Handle File Asset ID (New) or Legacy Path
                     if q.get('cert_file_id'):
-                        cert_display = "PDF"
+                        cert_display = "View File"
                         # Generate full URL pointing to /file/<id>
                         cert_url = public_url_for("serve_file", file_id=q["cert_file_id"])
                     elif q.get('cert'):
                         # Legacy fallback
                         val = str(q['cert'])
                         if val.isdigit():
-                            cert_display = "PDF"
-                            cert_url = public_url_for("serve_file", file_id=q["cert_file_id"])
+                            cert_display = "View File"
+                            cert_url = public_url_for("serve_file", file_id=int(val))
                         else:
                             # Old path style
-                            cert_display = "PDF"
+                            cert_display = "View File"
                             # Note: Local paths won't open in Excel, but preserving legacy behavior
                             cert_url = val 
 
@@ -2119,12 +2123,7 @@ def export_comparison(task_id):
                     total_amount_val = ""
                     if unit_price_val is not None and qty_val is not None:
                         total_amount_val = round(unit_price_val * qty_val, 2)
-                        if not is_ono: # Only sum standard quotes to total? Or sum lowest? 
-                            # Logic: If multiple rows exist for same item, usually you pick one.
-                            # For the "Total Amount" line at bottom, simplistic summation might be misleading if we have split rows.
-                            # Strategy: We accumulate totals based on "Standard" quotes only for the summary?
-                            # Or we sum everything? Let's sum everything for now, user can interpret.
-                            supplier_total_amounts[supplier_id] += float(total_amount_val)
+                        supplier_total_amounts[supplier_id] += float(total_amount_val)
 
                     row.extend([
                         rate_val,
@@ -2203,6 +2202,21 @@ def export_comparison(task_id):
 
     max_col = ws.max_column
     max_row = ws.max_row
+
+    # --- Apply COA hyperlinks after all rows are written (keeps formats intact) ---
+    for (r, c), url in cert_links.items():
+        cell = ws.cell(row=r, column=c)
+        cell.hyperlink = url
+
+        # Make it look like hyperlink WITHOUT using cell.style = "Hyperlink"
+        cell.font = Font(
+            name=cell.font.name,
+            size=cell.font.size,
+            bold=cell.font.bold,
+            italic=cell.font.italic,
+            underline="single",
+            color="0000FF"
+        )
 
     # ---------- A) Apply borders + enable wrapping on ALL cells ----------
     for r in range(1, max_row + 1):
