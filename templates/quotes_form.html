@@ -4,208 +4,356 @@
 <div class="card">
     <div class="card-header">
         <h2>Capture Quote - {{ supplier.name }}</h2>
-        <p>Task: {{ task.task_name }}</p>
+
+        <table style="border-collapse:collapse; margin-top:0.5rem;">
+            <tr>
+                <td style="padding-right:10px; white-space:nowrap;">Task</td>
+                <td style="padding-right:10px;">:</td>
+                <td>{{ task.task_name }}</td>
+            </tr>
+            <tr>
+                <td style="padding-right:10px; white-space:nowrap;">Supplier</td>
+                <td style="padding-right:10px;">:</td>
+                <td>{{ supplier.name }}</td>
+            </tr>
+        </table>
     </div>
+
     <div class="card-body">
         <form method="POST" enctype="multipart/form-data">
+
+            <!-- Payment Terms -->
             <div class="form-group">
-                <label class="form-label">Payment Terms (Days)</label>
-                <input type="text" class="form-control" name="payment_terms" value="{{ payment_terms_default or '' }}" placeholder="e.g., 30 days credit">
+                <label class="form-label required">Payment Terms</label>
+                <select class="form-control form-select" name="payment_terms" required>
+                    {% set pt = payment_terms_default or '' %}
+                    <option value="" {% if pt == '' %}selected{% endif %}>Empty</option>
+                    <option value="Cash" {% if pt == 'Cash' %}selected{% endif %}>Cash</option>
+                    <option value="30 Days" {% if pt == '30 Days' %}selected{% endif %}>30 Days</option>
+                    <option value="60 Days" {% if pt == '60 Days' %}selected{% endif %}>60 Days</option>
+                    <option value="90 Days" {% if pt == '90 Days' %}selected{% endif %}>90 Days</option>
+                </select>
             </div>
-            <div class="card mb-3" style="border:1px solid #e0e0e0; background-color: #f9f9f9;">
-                <div class="card-header">
-                    <h4>Master Quotation</h4>
-                </div>
+
+            <!-- Master quotation upload -->
+            <div class="card mb-3" style="border: 1px solid #1a73e8; background-color: #f8faff;">
                 <div class="card-body">
-                    <div class="form-group">
-                        <label class="form-label">Upload Master Quotation (PDF)</label>
-                        <input type="file" class="form-control" name="quotation_file" accept=".pdf" id="quotation_file">
-                        <small class="text-muted">Optional: Upload a comprehensive quotation document covering all items (PDF)</small>
-                        {% if master_quotation_file %}
-                            <div style="margin-top:0.5rem;">
-                                <small class="text-success" style="font-weight: 600;"><i class="fas fa-file-pdf"></i> File already uploaded</small>
-                                <a href="{{ url_for('serve_file', file_id=master_quotation_file) }}" target="_blank" class="btn btn-sm btn-outline-primary" style="margin-left: 0.5rem;">
-                                    <i class="fas fa-download"></i> View/Download
+                    <label class="form-label" style="font-weight: 600; color: #1a73e8;">
+                        Upload Master Quotation (Optional)
+                    </label>
+                    <p class="text-muted" style="font-size: 0.9em; margin-bottom: 0.5rem;">
+                        If you have a formal quotation document, please upload it here. You may still fill in the unit prices below for faster processing.
+                    </p>
+
+                    <input id="quotation_file" type="file" class="form-control" name="quotation_file">
+
+                    {% if master_quotation_file %}
+                        <div style="margin-top:0.5rem;">
+                            <small class="text-success" style="font-weight: 600;">
+                                <i class="fas fa-file-pdf"></i>
+                                {{ master_quotation_filename|default('Uploaded File', true) }}
+                                <a href="{{ url_for('serve_file', file_id=master_quotation_file) }}"
+                                    target="_blank"
+                                    class="btn btn-sm btn-outline-primary"
+                                    style="margin-left: 0.5rem;">
+                                        View
                                 </a>
-                            </div>
-                        {% endif %}
-                        <div id="quotation_filename" style="margin-top:0.5rem;display:none;">
-                            <small class="text-success"><i class="fas fa-check"></i> <span id="quotation_name"></span></small>
+                            </small>
                         </div>
+                    {% endif %}
+
+                    <div id="quotation_filename" style="margin-top:0.5rem;display:none;">
+                        <small class="text-success"><i class="fas fa-check"></i> <span id="quotation_name"></span></small>
                     </div>
                 </div>
             </div>
-            {% for item in pr_items %}
-            {% set existing = quotes_map.get(item.id) %}
-            <div class="card mb-2" style="border:1px solid #e0e0e0;">
-                <div class="card-header">
-                    <h4>Item {{ loop.index }}: {{ item.item_name }}</h4>
-                    <p class="text-muted">
-                        {{ item.specification or '' }}
 
+            <!-- Items table -->
+            <div style="overflow-x:auto;">
+                <table class="table" style="width:100%; border-collapse: collapse;">
+                    <thead>
+                        <tr>
+                            <th class="th-required" style="min-width:240px;">
+                                Item
+                                {% if pr_items and pr_items[0].item_category %}
+                                    ({{ pr_items[0].item_category }})
+                                {% else %}
+                                    (Category)
+                                {% endif %}
+                            </th>
+                            <th class="th-required" style="min-width:170px;">Unit Price (RM)</th>
+                            <th class="th-required" style="min-width:170px;">Delivery Lead Time (Days)</th>
+                            <th class="th-required" style="min-width:190px;">Stock Availability</th>
+                            <th style="min-width:170px;">Warranty (If Applicable)</th>
+                            <th class="th-required" style="min-width:240px;">Mill Certificate / Certificate of Analysis (COA)</th>
+                            <th style="min-width:300px;">Nearest Offer (If Applicable)</th>
+                            <th style="min-width:240px;">Remarks</th>
+                        </tr>
+                    </thead>
+
+                    <tbody>
+                        {% for item in pr_items %}
+                        {% set existing = quotes_map.get(item.id) %}
                         {% set cat = item.item_category %}
 
-                        {% if cat in ['Steel Plates','Stainless Steel'] %}
-                            <br>
-                            Dims (W × L × Thk): {{ item.width if item.width is not none else '-' }}
-                            x {{ item.length if item.length is not none else '-' }}
-                            x {{ item.thickness if item.thickness is not none else '-' }} mm
+                        <tr class="item-row" data-item-id="{{ item.id }}">
+                            <!-- Item info cell -->
+                            <td>
+                                {% set spec_label = (item.brand) %}
+                                <div style="font-weight:600;">
+                                    {{ loop.index }}. {{ spec_label }}
+                                    {{ item.specification or '' }}
+                                    <br>
 
-                        {% elif cat == 'Angle Bar' %}
-                            <br>
-                            Dims (A × B × L × Thk): {{ item.dim_a if item.dim_a is not none else '-' }}
-                            x {{ item.dim_b if item.dim_b is not none else '-' }}
-                            x {{ item.length if item.length is not none else '-' }}
-                            x {{ item.thickness if item.thickness is not none else '-' }} mm
+                                    {% if cat in ['Steel Plates','Stainless Steel'] %}
+                                        Dims (W × L × Thk): {{ item.width if item.width is not none else '-' }}
+                                        × {{ item.length if item.length is not none else '-' }}
+                                        × {{ item.thickness if item.thickness is not none else '-' }} mm
+                                    {% elif cat == 'Angle Bar' %}
+                                        Dims (A × B × L × Thk): {{ item.dim_a if item.dim_a is not none else '-' }}
+                                        × {{ item.dim_b if item.dim_b is not none else '-' }}
+                                        × {{ item.length if item.length is not none else '-' }}
+                                        × {{ item.thickness if item.thickness is not none else '-' }} mm
+                                    {% elif cat in ['Bolts, Fasteners','Rebar','Nuts'] %}
+                                        Dims (D × L): {{ item.diameter if item.diameter is not none else '-' }}
+                                        × {{ item.length if item.length is not none else '-' }} mm
+                                    {% else %}
+                                        Packing: {{ item.uom_qty if item.uom_qty is not none else '-' }}
+                                        {{ item.uom if item.uom is not none else '' }}
+                                    {% endif %}
+                                </div>
+                            </td>
 
-                        {% elif cat in ['Bolts, Fasteners','Rebar','Nuts'] %}
-                            <br>
-                            Dims (D × L): {{ item.diameter if item.diameter is not none else '-' }}
-                            x {{ item.length if item.length is not none else '-' }} mm
-
-                        {% else %}
-                            <br>
-                            Packing: {{ item.uom_qty if item.uom_qty is not none else '-' }}
-                            {{ item.uom if item.uom is not none else '' }}
-                        {% endif %}
-                    </p>
-                </div>
-                <div class="card-body grid-2">
-                    <div class="form-group">
-                        <label class="form-label">Unit Price (RM)</label>
-                        <input type="number" step="0.01" min="0" class="form-control" name="unit_price_{{ item.id }}" value="{{ existing.unit_price if existing else '' }}">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Delivery Lead Time (Days)</label>
-                        <input type="text" class="form-control" name="lead_time_{{ item.id }}" value="{{ existing.lead_time if existing else '' }}" placeholder="e.g. 14 days">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Stock Availability</label>
-                        <input type="text" class="form-control" name="stock_availability_{{ item.id }}" value="{{ existing.stock_availability if existing else '' }}" placeholder="e.g., 10 in stock or Available">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Warranty (If Applicable)</label>
-                        <input type="text" class="form-control" name="warranty_{{ item.id }}" placeholder="e.g., 1 year">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Mill Certificate / Certificate of Analysis (COA)</label>
-                        <input type="file" class="form-control" name="cert_{{ item.id }}" accept=".pdf" id="cert_{{ item.id }}">
-                        <small class="text-muted">PDF files only</small>
-                        {% if existing and existing.cert_file_id %}
-                            <div style="margin-top:0.5rem;">
-                                <small class="text-success" style="font-weight: 600;"><i class="fas fa-file-pdf"></i> File already uploaded</small>
-                                <a href="{{ url_for('serve_file', file_id=existing.cert_file_id) }}" target="_blank" class="btn btn-sm btn-outline-primary" style="margin-left: 0.5rem;">
-                                    <i class="fas fa-download"></i> View/Download
-                                </a>
-                            </div>
-                        {% endif %}
-                        <div id="cert_filename_{{ item.id }}" style="margin-top:0.5rem;display:none;">
-                            <small class="text-success"><i class="fas fa-check"></i> <span id="cert_name_{{ item.id }}"></span></small>
-                        </div>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">O.N.O.</label>
-                        <div style="display:flex;align-items:center;gap:0.5rem;">
-                            <input type="checkbox"
-                                class="ono-checkbox"
-                                name="ono_{{ item.id }}"
-                                data-item-id="{{ item.id }}"
-                                data-dim-type="{% if item.item_category in ['Steel Plates','Stainless Steel'] %}steel-plates{% elif item.item_category == 'Angle Bar' %}angle-bar{% elif item.item_category in ['Bolts, Fasteners','Rebar'] %}bolts-rebar{% else %}other{% endif %}"
-                                {% if existing and existing.ono %}checked{% endif %}>
-                            <span>On Nearest Offer</span>
-                        </div>
-                    </div>
-
-                    <div class="form-group ono-dims-wrap" id="ono_dims_{{ item.id }}" style="display:none;">
-                        <label class="form-label">O.N.O. Dimensions</label>
-
-                        <!-- Steel Plates / Stainless Steel: W, L, Thk -->
-                        <div class="ono-dims-section ono-steel-plates" style="display:none;">
-                            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem; align-items:center;">
-                                <input type="number" step="1" min="0" class="form-control"
-                                    name="ono_width_{{ item.id }}" id="ono_width_{{ item.id }}"
-                                    value="{{ existing.ono_width if existing else '' }}"
-                                    placeholder="Width (mm)">
-                                <input type="number" step="1" min="0" class="form-control"
-                                    name="ono_length_{{ item.id }}" id="ono_length_{{ item.id }}"
-                                    value="{{ existing.ono_length if existing else '' }}"
-                                    placeholder="Length (mm)">
-                                <input type="number" step="1" min="0" class="form-control"
-                                    name="ono_thickness_{{ item.id }}" id="ono_thickness_{{ item.id }}"
-                                    value="{{ existing.ono_thickness if existing else '' }}"
-                                    placeholder="Thickness (mm)">
-                            </div>
-                        </div>
-
-                        <!-- Angle Bar: A, B, L, Thk -->
-                        <div class="ono-dims-section ono-angle-bar" style="display:none;">
-                            <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem; align-items:center;">
-                                <input type="number" step="1" min="0" class="form-control"
-                                    name="ono_dim_a_{{ item.id }}" id="ono_dim_a_{{ item.id }}"
-                                    value="{{ existing.ono_dim_a if existing and existing.ono_dim_a is defined else '' }}"
-                                    placeholder="A (mm)">
-                                <input type="number" step="1" min="0" class="form-control"
-                                    name="ono_dim_b_{{ item.id }}" id="ono_dim_b_{{ item.id }}"
-                                    value="{{ existing.ono_dim_b if existing and existing.ono_dim_b is defined else '' }}"
-                                    placeholder="B (mm)">
-                                <input type="number" step="1" min="0" class="form-control"
-                                    name="ono_length_{{ item.id }}" id="ono_length_{{ item.id }}"
-                                    value="{{ existing.ono_length if existing else '' }}"
-                                    placeholder="Length (mm)">
-                                <input type="number" step="1" min="0" class="form-control"
-                                    name="ono_thickness_{{ item.id }}" id="ono_thickness_{{ item.id }}"
-                                    value="{{ existing.ono_thickness if existing else '' }}"
-                                    placeholder="Thickness (mm)">
-                            </div>
-                        </div>
-
-                        <!-- Bolts / Rebar: D, L -->
-                        <div class="ono-dims-section ono-bolts-rebar" style="display:none;">
-                            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem; align-items:center;">
-                                <input type="number" step="1" min="0" class="form-control"
-                                    name="ono_diameter_{{ item.id }}" id="ono_diameter_{{ item.id }}"
-                                    value="{{ existing.ono_diameter if existing and existing.ono_diameter is defined else '' }}"
-                                    placeholder="Diameter (mm)">
-                                <input type="number" step="1" min="0" class="form-control"
-                                    name="ono_length_{{ item.id }}" id="ono_length_{{ item.id }}"
-                                    value="{{ existing.ono_length if existing else '' }}"
-                                    placeholder="Length (mm)">
-                            </div>
-                        </div>
-
-                        <!-- Other: UOM Amount + UOM -->
-                        <div class="ono-dims-section ono-other" style="display:none;">
-                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem; align-items:center;">
-                                <input type="number" step="1" min="1" class="form-control"
-                                    name="ono_uom_qty_{{ item.id }}" id="ono_uom_qty_{{ item.id }}"
-                                    value="{{ existing.ono_uom_qty if existing and existing.ono_uom_qty is defined else '' }}"
-                                    placeholder="UOM Amount">
-                                <select class="form-control" name="ono_uom_{{ item.id }}" id="ono_uom_{{ item.id }}">
-                                    {% set ou = existing.ono_uom if existing and existing.ono_uom is defined else '' %}
-                                    <option value="" {% if ou=='' %}selected{% endif %}>Select UOM</option>
-                                    <option value="pcs" {% if ou=='pcs' %}selected{% endif %}>pcs</option>
-                                    <option value="kg" {% if ou=='kg' %}selected{% endif %}>kg</option>
-                                    <option value="L" {% if ou=='L' %}selected{% endif %}>L</option>
-                                    <option value="unit" {% if ou=='unit' %}selected{% endif %}>unit</option>
-                                    <option value="set" {% if ou=='set' %}selected{% endif %}>set</option>
-                                    <option value="m" {% if ou=='m' %}selected{% endif %}>m</option>
-                                    <option value="roll" {% if ou=='roll' %}selected{% endif %}>roll</option>
+                            <!-- Unit price dropdown -->
+                            <td>
+                                <select class="form-control form-select unit-price-select"
+                                        name="unit_price_{{ item.id }}"
+                                        data-max="100"
+                                        required>
+                                    <option value="">Select</option>
+                                    {% if existing and existing.unit_price %}
+                                        <option value="{{ existing.unit_price }}" selected>{{ existing.unit_price }}</option>
+                                    {% endif %}
                                 </select>
-                            </div>
-                        </div>
+                            </td>
 
-                        <small class="text-muted">
-                            If provided, a new item entry will be created for these alternate dimensions and used in comparison.
-                        </small>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Remarks</label>
-                        <input type="text" class="form-control" name="notes_{{ item.id }}" value="{{ existing.notes if existing else '' }}">
-                    </div>
-                </div>
+                            <!-- Lead time dropdown -->
+                            <td>
+                                <select class="form-control form-select lead-time-select"
+                                        name="lead_time_{{ item.id }}"
+                                        data-max="100"
+                                        required>
+                                    <option value="">Select</option>
+                                    {% if existing and existing.lead_time %}
+                                        <option value="{{ existing.lead_time }}" selected>{{ existing.lead_time }}</option>
+                                    {% endif %}
+                                </select>
+                            </td>
+
+                            <!-- Stock availability dropdown -->
+                            <td>
+                                {% set sa = existing.stock_availability if existing and existing.stock_availability else '' %}
+                                <select class="form-control form-select"
+                                        name="stock_availability_{{ item.id }}"
+                                        required>
+                                    <option value="">Select</option>
+                                    <option value="In Stock" {% if sa == 'In Stock' %}selected{% endif %}>In Stock</option>
+                                    <option value="Out of Stock" {% if sa == 'Out of Stock' %}selected{% endif %}>Out of Stock</option>
+                                </select>
+                            </td>
+
+                            <!-- Warranty dropdown -->
+                            <td>
+                                {% set w = existing.warranty if existing and existing.warranty else '' %}
+                                <select class="form-control form-select" name="warranty_{{ item.id }}">
+                                    <option value="" {% if w == '' %}selected{% endif %}>Select</option>
+                                    <option value="No Warranty" {% if w == 'No Warranty' %}selected{% endif %}>No Warranty</option>
+                                    <option value="1 month" {% if w == '1 month' %}selected{% endif %}>1 month</option>
+                                    <option value="3 months" {% if w == '3 months' %}selected{% endif %}>3 months</option>
+                                    <option value="6 months" {% if w == '6 months' %}selected{% endif %}>6 months</option>
+                                    <option value="1 year" {% if w == '1 year' %}selected{% endif %}>1 year</option>
+                                    <option value="2 years" {% if w == '2 years' %}selected{% endif %}>2 years</option>
+                                    <option value="3 years" {% if w == '3 years' %}selected{% endif %}>3 years</option>
+                                    <option value="5 years" {% if w == '5 years' %}selected{% endif %}>5 years</option>
+                                </select>
+                            </td>
+
+                            <!-- COA -->
+                            <td>
+                                <input type="file"
+                                       class="form-control"
+                                       name="cert_{{ item.id }}"
+                                       id="cert_{{ item.id }}"
+                                       {% if not (existing and existing.cert_file_id) %}required{% endif %}>
+
+                                {% if existing and existing.cert_file_id %}
+                                    <div style="margin-top:0.5rem;">
+                                        <small class="text-success" style="font-weight: 600;">
+                                            <i class="fas fa-file-pdf"></i>
+                                            {{ existing.cert_filename|default('Uploaded File', true) }}
+                                            <a href="{{ url_for('serve_file', file_id=existing.cert_file_id) }}"
+                                                target="_blank"
+                                                class="btn btn-sm btn-outline-primary"
+                                                style="margin-left: 0.5rem;">
+                                                    View
+                                            </a>
+                                        </small>
+                                    </div>
+                                {% endif %}
+
+                                <div id="cert_filename_{{ item.id }}" style="margin-top:0.4rem;display:none;">
+                                    <small class="text-success">
+                                        <i class="fas fa-check"></i> <span id="cert_name_{{ item.id }}"></span>
+                                    </small>
+                                </div>
+                            </td>
+
+                            <!-- Nearest Offer (ONO dimensions dropdowns like supplier_public_quote) -->
+                            <td>
+                                {% if cat in ['Steel Plates','Stainless Steel'] %}
+                                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
+                                            <select class="form-control form-select dimensions-select"
+                                                    name="ono_width_{{ item.id }}"
+                                                    data-max="10000">
+                                                <option value="">Select</option>
+                                                {% if existing and existing.ono_width %}<option value="{{ existing.ono_width }}" selected>{{ existing.ono_width }}</option>{% endif %}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                            <select class="form-control form-select dimensions-select"
+                                                    name="ono_length_{{ item.id }}"
+                                                    data-max="10000">
+                                                <option value="">Select</option>
+                                                {% if existing and existing.ono_length %}<option value="{{ existing.ono_length }}" selected>{{ existing.ono_length }}</option>{% endif %}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
+                                            <select class="form-control form-select dimensions-select"
+                                                    name="ono_thickness_{{ item.id }}"
+                                                    data-max="500">
+                                                <option value="">Select</option>
+                                                {% if existing and existing.ono_thickness %}<option value="{{ existing.ono_thickness }}" selected>{{ existing.ono_thickness }}</option>{% endif %}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                {% elif cat == 'Angle Bar' %}
+                                    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
+                                            <select class="form-control form-select dimensions-select"
+                                                    name="ono_dim_a_{{ item.id }}"
+                                                    data-max="1000">
+                                                <option value="">Select</option>
+                                                {% if existing and existing.ono_dim_a is defined and existing.ono_dim_a %}
+                                                    <option value="{{ existing.ono_dim_a }}" selected>{{ existing.ono_dim_a }}</option>
+                                                {% endif %}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
+                                            <select class="form-control form-select dimensions-select"
+                                                    name="ono_dim_b_{{ item.id }}"
+                                                    data-max="1000">
+                                                <option value="">Select</option>
+                                                {% if existing and existing.ono_dim_b is defined and existing.ono_dim_b %}
+                                                    <option value="{{ existing.ono_dim_b }}" selected>{{ existing.ono_dim_b }}</option>
+                                                {% endif %}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                            <select class="form-control form-select dimensions-select"
+                                                    name="ono_length_{{ item.id }}"
+                                                    data-max="12000">
+                                                <option value="">Select</option>
+                                                {% if existing and existing.ono_length %}<option value="{{ existing.ono_length }}" selected>{{ existing.ono_length }}</option>{% endif %}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
+                                            <select class="form-control form-select dimensions-select"
+                                                    name="ono_thickness_{{ item.id }}"
+                                                    data-max="100">
+                                                <option value="">Select</option>
+                                                {% if existing and existing.ono_thickness %}<option value="{{ existing.ono_thickness }}" selected>{{ existing.ono_thickness }}</option>{% endif %}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                {% elif cat in ['Bolts, Fasteners','Rebar','Nuts'] %}
+                                    <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
+                                            <select class="form-control form-select dimensions-select"
+                                                    name="ono_diameter_{{ item.id }}"
+                                                    data-max="9999">
+                                                <option value="">Select</option>
+                                                {% if existing and existing.ono_diameter is defined and existing.ono_diameter %}
+                                                    <option value="{{ existing.ono_diameter }}" selected>{{ existing.ono_diameter }}</option>
+                                                {% endif %}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                            <select class="form-control form-select dimensions-select"
+                                                    name="ono_length_{{ item.id }}"
+                                                    data-max="9999">
+                                                <option value="">Select</option>
+                                                {% if existing and existing.ono_length %}<option value="{{ existing.ono_length }}" selected>{{ existing.ono_length }}</option>{% endif %}
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                {% else %}
+                                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
+                                            <select class="form-control form-select dimensions-select"
+                                                    name="ono_uom_qty_{{ item.id }}"
+                                                    data-max="10000">
+                                                <option value="">Select</option>
+                                                {% if existing and existing.ono_uom_qty is defined and existing.ono_uom_qty %}
+                                                    <option value="{{ existing.ono_uom_qty }}" selected>{{ existing.ono_uom_qty }}</option>
+                                                {% endif %}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="form-label" style="font-size:0.85rem;">UOM</label>
+                                            {% set ou = existing.ono_uom if existing and existing.ono_uom is defined else '' %}
+                                            <select class="form-control" name="ono_uom_{{ item.id }}">
+                                                <option value="" {% if ou=='' %}selected{% endif %}>Select UOM</option>
+                                                <option value="pcs" {% if ou=='pcs' %}selected{% endif %}>pcs</option>
+                                                <option value="kg" {% if ou=='kg' %}selected{% endif %}>kg</option>
+                                                <option value="L" {% if ou=='L' %}selected{% endif %}>L</option>
+                                                <option value="unit" {% if ou=='unit' %}selected{% endif %}>unit</option>
+                                                <option value="set" {% if ou=='set' %}selected{% endif %}>set</option>
+                                                <option value="m" {% if ou=='m' %}selected{% endif %}>m</option>
+                                                <option value="roll" {% if ou=='roll' %}selected{% endif %}>roll</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                {% endif %}
+                            </td>
+
+                            <!-- Remarks -->
+                            <td>
+                                <input type="text"
+                                       class="form-control"
+                                       name="notes_{{ item.id }}"
+                                       value="{{ (existing.notes if existing else '')|default('', true) }}">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
             </div>
-            {% endfor %}
-            <div class="d-flex gap-1 mt-2">
+
+            <div class="d-flex gap-1 mt-2" style="margin-top: 18px;">
                 <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Save Quotes</button>
                 <a href="{{ url_for('task_responses', task_id=task.id) }}" class="btn btn-secondary">Cancel</a>
             </div>
@@ -214,31 +362,35 @@
 </div>
 
 <script>
-document.addEventListener('DOMContentLoaded', function() {
+document.addEventListener('DOMContentLoaded', function () {
 
-    // Handle master quotation file name display
+    // Master quotation filename display
     const quotationFileInput = document.getElementById('quotation_file');
     if (quotationFileInput) {
-        quotationFileInput.addEventListener('change', function() {
-            const filename = document.getElementById('quotation_filename');
+        quotationFileInput.addEventListener('change', function () {
+            const filenameDiv = document.getElementById('quotation_filename');
             const filenameSpan = document.getElementById('quotation_name');
+            if (!filenameDiv || !filenameSpan) return;
+
             if (this.files && this.files[0]) {
                 filenameSpan.textContent = this.files[0].name;
-                filename.style.display = 'block';
+                filenameDiv.style.display = 'block';
             } else {
-                filename.style.display = 'none';
+                filenameDiv.style.display = 'none';
             }
         });
     }
 
-    // Handle individual cert file name displays
-    document.querySelectorAll('[name^="cert_"]').forEach(function(input) {
-        const itemId = input.name.replace('cert_', '');
-        const filenameDiv = document.getElementById('cert_filename_' + itemId);
-        const filenameSpan = document.getElementById('cert_name_' + itemId);
-        
-        input.addEventListener('change', function() {
-            if (this.files && this.files[0]) {
+    // COA filename display
+    document.querySelectorAll('input[type="file"][name^="cert_"]').forEach(function (input) {
+        input.addEventListener('change', function () {
+            const itemId = this.name.replace('cert_', '');
+            const filenameDiv = document.getElementById('cert_filename_' + itemId);
+            const filenameSpan = document.getElementById('cert_name_' + itemId);
+
+            if (!filenameDiv || !filenameSpan) return;
+
+            if (this.files && this.files.length > 0) {
                 filenameSpan.textContent = this.files[0].name;
                 filenameDiv.style.display = 'block';
             } else {
@@ -247,52 +399,52 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     });
 
-    function setEnabled(el, enabled) {
-        el.querySelectorAll('input, select, textarea').forEach(inp => {
-            inp.disabled = !enabled;
-        });
-    }
+    function fillSelectRange(selectEl, start, end) {
+        if (!selectEl) return;
 
-    function showONOForItem(itemId, dimType) {
-        const wrap = document.getElementById('ono_dims_' + itemId);
-        if (!wrap) return;
+        const first = selectEl.querySelector('option[value=""]');
+        const selectedValue = (selectEl.value || '').trim();   // read current selected (from your Jinja preselected option)
 
-        const sections = wrap.querySelectorAll('.ono-dims-section');
+        // rebuild
+        selectEl.innerHTML = '';
+        if (first) selectEl.appendChild(first);
 
-        // Hide + disable all sections first
-        sections.forEach(sec => {
-            sec.style.display = 'none';
-            setEnabled(sec, false);
-        });
-
-        // Show + enable only the correct one
-        const target = wrap.querySelector('.ono-' + dimType);
-        if (target) {
-            target.style.display = 'block';
-            setEnabled(target, true);
+        for (let i = start; i <= end; i++) {
+            const opt = document.createElement('option');
+            opt.value = String(i);
+            opt.textContent = String(i);
+            selectEl.appendChild(opt);
         }
-    }
 
-    // Hook up ONO checkboxes
-    document.querySelectorAll('.ono-checkbox').forEach(function(cb) {
-        const itemId = cb.getAttribute('data-item-id');
-        const dimType = cb.getAttribute('data-dim-type') || 'other';
-        const wrap = document.getElementById('ono_dims_' + itemId);
-        if (!wrap) return;
-
-        function sync() {
-            if (cb.checked) {
-                wrap.style.display = 'block';
-                showONOForItem(itemId, dimType);
-            } else {
-                wrap.style.display = 'none';
-                // Disable everything so hidden ONO inputs don't submit blanks
-                wrap.querySelectorAll('.ono-dims-section').forEach(sec => setEnabled(sec, false));
+        // restore previous selected value (even if it's not in range)
+        if (selectedValue) {
+            const exists = Array.from(selectEl.options).some(o => o.value === selectedValue);
+            if (!exists) {
+                const extra = document.createElement('option');
+                extra.value = selectedValue;
+                extra.textContent = selectedValue;
+                selectEl.appendChild(extra);
             }
+            selectEl.value = selectedValue;
         }
+    }
 
-        cb.addEventListener('change', sync);
-        sync();
+    // Populate all unit price selects
+    document.querySelectorAll('.unit-price-select').forEach(sel => {
+        const max = parseInt(sel.getAttribute('data-max') || '100', 10);
+        fillSelectRange(sel, 1, max);
+    });
+
+    // Populate all lead time selects
+    document.querySelectorAll('.lead-time-select').forEach(sel => {
+        const max = parseInt(sel.getAttribute('data-max') || '100', 10);
+        fillSelectRange(sel, 1, max);
+    });
+
+    // Populate all dimensions selects
+    document.querySelectorAll('.dimensions-select').forEach(sel => {
+        const max = parseInt(sel.getAttribute('data-max') || '10000', 10);
+        fillSelectRange(sel, 1, max);
     });
 
 });
