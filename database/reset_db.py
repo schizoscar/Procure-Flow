@@ -126,7 +126,7 @@ def reset_database():
             supplier_id INTEGER NOT NULL,
             pr_item_id INTEGER NOT NULL,
 
-            unit_price REAL,
+            unit_price INTEGER,
             stock_availability TEXT,
             cert TEXT,
             cert_file_id INTEGER,
