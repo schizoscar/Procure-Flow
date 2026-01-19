@@ -37,8 +37,13 @@
                             <option value="" {% if pt == '' %}selected{% endif %}>Empty</option>
                             <option value="Cash" {% if pt == 'Cash' %}selected{% endif %}>Cash</option>
                             <option value="30 Days" {% if pt == '30 Days' %}selected{% endif %}>30 Days</option>
+                            <option value="30 Days PD" {% if pt == '30 Days PD' %}selected{% endif %}>30 Days PD</option>
                             <option value="60 Days" {% if pt == '60 Days' %}selected{% endif %}>60 Days</option>
+                            <option value="60 Days PD" {% if pt == '60 Days PD' %}selected{% endif %}>60 Days PD</option>
                             <option value="90 Days" {% if pt == '90 Days' %}selected{% endif %}>90 Days</option>
+                            <option value="90 Days PD" {% if pt == '90 Days PD' %}selected{% endif %}>90 Days PD</option>
+                            <option value="120 Days" {% if pt == '120 Days' %}selected{% endif %}>120 Days</option>
+                            <option value="120 Days PD" {% if pt == '120 Days PD' %}selected{% endif %}>120 Days PD</option>
                         </select>
                     </div>
 
@@ -91,7 +96,7 @@
                                     <th class="th-required" style="min-width:170px;">Delivery Lead Time (Days)</th>
                                     <th class="th-required" style="min-width:190px;">Stock Availability</th>
                                     <th style="min-width:170px;">Warranty (If Applicable)</th>
-                                    <th class="th-required" style="min-width:240px;">Mill Certificate / Certificate of Analysis (COA)</th>
+                                    <th class="th-required" style="min-width:240px;">Mill Certificate / Certificate of Analysis (COA) (If Applicable)</th>
                                     <th style="min-width:140px;">Nearest Offer (If Applicable)</th>
                                     <th style="min-width:240px;">Remarks</th>
                                 </tr>
@@ -111,17 +116,17 @@
                                             <br>
 
                                             {% if cat in ['Steel Plates','Stainless Steel'] %}
-                                                Dims (W × L × Thk): {{ item.width if item.width is not none else '-' }}
-                                                × {{ item.length if item.length is not none else '-' }}
-                                                × {{ item.thickness if item.thickness is not none else '-' }} mm
+                                                Sizes: {{ item.width if item.width is not none else '-' }} mm (W)
+                                                × {{ item.length if item.length is not none else '-' }} mm (L)
+                                                × {{ item.thickness if item.thickness is not none else '-' }} mm (Thk)
                                             {% elif cat == 'Angle Bar' %}
-                                                Dims (A × B × L × Thk): {{ item.dim_a if item.dim_a is not none else '-' }}
-                                                × {{ item.dim_b if item.dim_b is not none else '-' }}
-                                                × {{ item.length if item.length is not none else '-' }}
-                                                × {{ item.thickness if item.thickness is not none else '-' }} mm
+                                                Sizes: {{ item.dim_a if item.dim_a is not none else '-' }} mm (A)
+                                                × {{ item.dim_b if item.dim_b is not none else '-' }} mm (B)
+                                                × {{ item.length if item.length is not none else '-' }} mm (L)
+                                                × {{ item.thickness if item.thickness is not none else '-' }} mm (Thk)
                                             {% elif cat in ['Bolts, Fasteners','Rebar','Nuts'] %}
-                                                Dims (D × L): {{ item.diameter if item.diameter is not none else '-' }}
-                                                × {{ item.length if item.length is not none else '-' }} mm
+                                                Sizes: {{ item.diameter if item.diameter is not none else '-' }} mm (D)
+                                                × {{ item.length if item.length is not none else '-' }} mm (L)
                                             {% else %}
                                                 Packing: {{ item.uom_qty if item.uom_qty is not none else '-' }}
                                                 {{ item.uom if item.uom is not none else '' }}
@@ -133,7 +138,7 @@
                                     <td>
                                         <select class="form-control form-select unit-price-select"
                                                 name="unit_price_{{ item.id }}"
-                                                data-max="100"
+                                                data-max="10000"
                                                 required>
                                             <option value="">Select</option>
                                         </select>
@@ -181,8 +186,7 @@
                                         <input type="file" 
                                             class="form-control"
                                             name="cert_{{ item.id }}"
-                                            id="cert_{{ item.id }}" 
-                                            required>
+                                            id="cert_{{ item.id }}">
 
                                         <div id="cert_filename_{{ item.id }}" style="margin-top:0.4rem;display:none;">
                                             <small class="text-success">
@@ -430,7 +434,7 @@
 
         // Populate all unit price selects
         document.querySelectorAll('.unit-price-select').forEach(sel => {
-            const max = parseInt(sel.getAttribute('data-max') || '100', 10);
+            const max = parseInt(sel.getAttribute('data-max') || '10000', 10);
             fillSelectRange(sel, 1, max);
         });
 
