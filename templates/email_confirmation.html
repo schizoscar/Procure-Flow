@@ -43,9 +43,43 @@
                     </div>
                     <div class="col-md-6">
                         <h5>Items</h5>
-                        <ul>
+                        <ul class="items-list">
                             {% for item in pr_items %}
-                            <li>{{ item.item_name }} (Qty: {{ item.quantity }})</li>
+                                {% set cat = item.item_category %}
+                                <li>
+                                    <div style="font-weight:600;">
+                                        {{ loop.index }}. {{ item.item_name }}
+                                        {% if item.brand %}- {{ item.brand }}{% endif %}
+                                        {{ item.specification or '' }}
+                                    </div>
+
+                                    <div style="font-size:0.9rem; opacity:0.9; margin-top:0.15rem;">
+                                        {% if cat in ['Steel Plates','Stainless Steel'] %}
+                                            Sizes:
+                                            {{ item.width if item.width is not none else '-' }} mm (W)
+                                            × {{ item.length if item.length is not none else '-' }} mm (L)
+                                            × {{ item.thickness if item.thickness is not none else '-' }} mm (Thk)
+
+                                        {% elif cat == 'Angle Bar' %}
+                                            Sizes:
+                                            {{ item.dim_a if item.dim_a is not none else '-' }} mm (A)
+                                            × {{ item.dim_b if item.dim_b is not none else '-' }} mm (B)
+                                            × {{ item.length if item.length is not none else '-' }} mm (L)
+                                            × {{ item.thickness if item.thickness is not none else '-' }} mm (Thk)
+
+                                        {% elif cat in ['Bolts, Fasteners','Rebar','Nuts'] %}
+                                            Sizes:
+                                            {{ item.diameter if item.diameter is not none else '-' }} mm (D)
+                                            × {{ item.length if item.length is not none else '-' }} mm (L)
+
+                                        {% else %}
+                                            Packing:
+                                            {{ item.uom_qty if item.uom_qty is not none else '-' }}
+                                            {{ item.uom if item.uom is not none else '' }}
+                                        {% endif %}
+                                        &nbsp;•&nbsp; Qty: {{ item.quantity if item.quantity is not none else '-' }}
+                                    </div>
+                                </li>
                             {% endfor %}
                         </ul>
                     </div>
