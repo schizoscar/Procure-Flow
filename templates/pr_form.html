@@ -262,17 +262,6 @@
                         </div>
                         </td>
 
-                        <!-- Payment Terms -->
-                        <td>
-                        {% set pt = item.payment_terms or '' %}
-                        <select class="form-control form-select" name="items[{{ loop.index0 }}][payment_terms]">
-                            <option value="" {% if pt=='' %}selected{% endif %}>Empty</option>
-                            <option value="Cash" {% if pt=='Cash' %}selected{% endif %}>Cash</option>
-                            <option value="30 Days" {% if pt=='30 Days' %}selected{% endif %}>30 Days</option>
-                            <option value="60 Days" {% if pt=='60 Days' %}selected{% endif %}>60 Days</option>
-                            <option value="90 Days" {% if pt=='90 Days' %}selected{% endif %}>90 Days</option>
-                        </select>
-                        </td>
                     </tr>
                     {% endfor %}
                 {% else %}
