@@ -57,7 +57,9 @@
                                 <th class="th-required" style="min-width:260px;">Item Name</th>
                                 <th class="th-required" style="min-width:220px;">Brand / Specification</th>
                                 <th class="th-required" style="min-width:170px;">Quantity</th>
-                                <th class="th-required" style="min-width:420px;">Dimensions</th>
+                                <th class="th-required" style="min-width:420px;">
+                                    <span id="dimsHeaderLabel">Dimensions</span>
+                                </th>
                             </tr>
                         </thead>
 
@@ -640,6 +642,8 @@
         const category = globalCategorySelect.value;
         const dimType = getDimType(category);
 
+        updateDimensionsHeaderLabel(dimType);
+
         document.querySelectorAll('.item-row').forEach(row => {
         // Hide + disable all dim sections
         row.querySelectorAll('.dims-section').forEach(section => {
@@ -698,6 +702,14 @@
             if (inp.value !== cleaned) inp.value = cleaned;
             });
         });
+    }
+
+    function updateDimensionsHeaderLabel(dimType) {
+        const label = document.getElementById('dimsHeaderLabel');
+        if (!label) return;
+
+        // If "other", call it Packing, else Dimensions
+        label.textContent = (dimType === 'other') ? 'Packing' : 'Dimensions';
     }
 
     function buildRowHtml(index) {
