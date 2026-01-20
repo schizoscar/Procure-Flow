@@ -18,418 +18,515 @@
         </div>
 
         <form method="POST">
-        <div class="grid-2">
-            <div class="form-group">
-            <label class="form-label required">Project Reference</label>
-            <input type="text"
-                    class="form-control"
-                    name="project_reference"
-                    required
-                    value="{{ task.task_name.split(' - ')[0] if task else '' }}"
-                    placeholder="Enter project reference (e.g., Office Supplies Q4 2024)">
-            </div>
-
-            <div class="form-group">
-            <label class="form-label required">Category (Applies to all items)</label>
-            <select class="form-control form-select" id="globalCategory" name="global_category" required>
-                <option value="">Select Category</option>
-                {% for category in categories %}
-                <option value="{{ category.name }}"
-                    {% if existing_items and existing_items[0].item_category==category.name %}selected{% endif %}>
-                    {{ category.name }}
-                </option>
-                {% endfor %}
-            </select>
-            </div>
-        </div>
-
-        <!-- Items table -->
-        <div class="items-container"
-            id="itemsContainer"
-            data-item-count="{{ existing_items|length if existing_items else 1 }}"
-            style="max-height: 60vh; overflow-y: auto; position: relative; margin-top: 0.75rem;">
-
-            <div style="overflow-x:auto;">
-            <table class="table" style="width:100%; border-collapse: collapse;">
-                <thead>
-                <tr>
-                    <th class="th" style="min-width:90px;">#</th>
-                    <th class="th-required" style="min-width:260px;">Item Name</th>
-                    <th style="min-width:220px;">Brand / Specification</th>
-                    <th class="th-required" style="min-width:170px;">Quantity</th>
-                    <th style="min-width:420px;">Dimensions</th>
-                </tr>
-                </thead>
-
-                <tbody id="itemsTbody">
-                {% if existing_items %}
-                    {% for item in existing_items %}
-                    <tr class="item-row" data-index="{{ loop.index0 }}">
-                        <!-- # / Remove -->
-                        <td style="white-space:nowrap;">
-                        <div style="display:flex; gap:0.5rem; align-items:center;">
-                            <span class="item-no" style="font-weight:700;">{{ loop.index }}</span>
-                            {% if existing_items|length > 1 %}
-                            <button type="button" class="btn btn-danger btn-sm remove-item" title="Remove item">
-                                <i class="fas fa-times"></i>
-                            </button>
-                            {% endif %}
-                        </div>
-                        </td>
-
-                        <!-- Item Name -->
-                        <td>
-                        <input class="form-control item-name-input"
-                            name="items[{{ loop.index0 }}][item_name]"
-                            list="items-list-{{ loop.index0 }}"
-                            value="{{ item.item_name or '' }}"
-                            placeholder="Select or type item"
-                            required>
-
-                        <datalist id="items-list-{{ loop.index0 }}" class="item-name-datalist"></datalist>
-                        </td>
-
-                        <!-- Brand -->
-                        <td>
-                        <input type="text"
-                                class="form-control"
-                                name="items[{{ loop.index0 }}][brand]"
-                                value="{{ item.brand or '' }}"
-                                placeholder="Preferred brand / spec">
-                        </td>
-
-                        <!-- Quantity (dropdown like quotes pages) -->
-                        <td>
-                        <select class="form-control form-select qty-select"
-                                name="items[{{ loop.index0 }}][quantity]"
-                                data-max="1000"
-                                required>
-                            <option value="">Select</option>
-                            {% if item.quantity %}
-                            <option value="{{ item.quantity }}" selected>{{ item.quantity }}</option>
-                            {% endif %}
-                        </select>
-                        </td>
-
-                        <!-- Dimensions (we show all sections, JS reveals one based on global category) -->
-                        <td>
-                        <!-- Steel Plates / Stainless Steel -->
-                        <div class="dims-section dims-steel-plates" style="display:none;">
-                            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
-                            <div>
-                                <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
-                                <select class="form-control form-select dimensions-select"
-                                        name="items[{{ loop.index0 }}][width]"
-                                        data-max="10000">
-                                <option value="">Select</option>
-                                {% if item.width %}
-                                    <option value="{{ item.width }}" selected>{{ item.width }}</option>
-                                {% endif %}
-                                </select>
-                            </div>
-                            <div>
-                                <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                                <select class="form-control form-select dimensions-select"
-                                        name="items[{{ loop.index0 }}][length]"
-                                        data-max="12000">
-                                <option value="">Select</option>
-                                {% if item.length %}
-                                    <option value="{{ item.length }}" selected>{{ item.length }}</option>
-                                {% endif %}
-                                </select>
-                            </div>
-                            <div>
-                                <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                                <select class="form-control form-select dimensions-select"
-                                        name="items[{{ loop.index0 }}][thickness]"
-                                        data-max="500">
-                                <option value="">Select</option>
-                                {% if item.thickness %}
-                                    <option value="{{ item.thickness }}" selected>{{ item.thickness }}</option>
-                                {% endif %}
-                                </select>
-                            </div>
-                            </div>
-                        </div>
-
-                        <!-- Angle Bar -->
-                        <div class="dims-section dims-angle-bar" style="display:none;">
-                            <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
-                            <div>
-                                <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
-                                <select class="form-control form-select dimensions-select"
-                                        name="items[{{ loop.index0 }}][dim_a]"
-                                        data-max="1000">
-                                <option value="">Select</option>
-                                {% if item.dim_a %}
-                                    <option value="{{ item.dim_a }}" selected>{{ item.dim_a }}</option>
-                                {% endif %}
-                                </select>
-                            </div>
-                            <div>
-                                <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
-                                <select class="form-control form-select dimensions-select"
-                                        name="items[{{ loop.index0 }}][dim_b]"
-                                        data-max="1000">
-                                <option value="">Select</option>
-                                {% if item.dim_b %}
-                                    <option value="{{ item.dim_b }}" selected>{{ item.dim_b }}</option>
-                                {% endif %}
-                                </select>
-                            </div>
-                            <div>
-                                <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                                <select class="form-control form-select dimensions-select"
-                                        name="items[{{ loop.index0 }}][length]"
-                                        data-max="12000">
-                                <option value="">Select</option>
-                                {% if item.length %}
-                                    <option value="{{ item.length }}" selected>{{ item.length }}</option>
-                                {% endif %}
-                                </select>
-                            </div>
-                            <div>
-                                <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                                <select class="form-control form-select dimensions-select"
-                                        name="items[{{ loop.index0 }}][thickness]"
-                                        data-max="500">
-                                <option value="">Select</option>
-                                {% if item.thickness %}
-                                    <option value="{{ item.thickness }}" selected>{{ item.thickness }}</option>
-                                {% endif %}
-                                </select>
-                            </div>
-                            </div>
-                        </div>
-
-                        <!-- Bolts/Rebar/Nuts (Diameter + Length) -->
-                        <div class="dims-section dims-bolts-rebar" style="display:none;">
-                            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
-                            <div>
-                                <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
-                                <select class="form-control form-select dimensions-select"
-                                        name="items[{{ loop.index0 }}][diameter]"
-                                        data-max="9999">
-                                <option value="">Select</option>
-                                {% if item.diameter %}
-                                    <option value="{{ item.diameter }}" selected>{{ item.diameter }}</option>
-                                {% endif %}
-                                </select>
-                            </div>
-                            <div>
-                                <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                                <select class="form-control form-select dimensions-select"
-                                        name="items[{{ loop.index0 }}][length]"
-                                        data-max="9999">
-                                <option value="">Select</option>
-                                {% if item.length %}
-                                    <option value="{{ item.length }}" selected>{{ item.length }}</option>
-                                {% endif %}
-                                </select>
-                            </div>
-                            </div>
-                        </div>
-
-                        <!-- Other categories (UOM qty + UOM) -->
-                        <div class="dims-section dims-other" style="display:none;">
-                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
-                            <div>
-                                <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
-                                <select class="form-control form-select dimensions-select"
-                                        name="items[{{ loop.index0 }}][uom_qty]"
-                                        data-max="10000">
-                                <option value="">Select</option>
-                                {% if item.uom_qty %}
-                                    <option value="{{ item.uom_qty }}" selected>{{ item.uom_qty }}</option>
-                                {% endif %}
-                                </select>
-                            </div>
-                            <div>
-                                <label class="form-label" style="font-size:0.85rem;">UOM</label>
-                                {% set uom_val = item.uom or '' %}
-                                <select class="form-control form-select" name="items[{{ loop.index0 }}][uom]">
-                                <option value="">Select UOM</option>
-                                <option value="pcs" {% if uom_val=='pcs' %}selected{% endif %}>pcs</option>
-                                <option value="kg" {% if uom_val=='kg' %}selected{% endif %}>kg</option>
-                                <option value="L"  {% if uom_val=='L' %}selected{% endif %}>L</option>
-                                <option value="unit" {% if uom_val=='unit' %}selected{% endif %}>unit</option>
-                                <option value="set" {% if uom_val=='set' %}selected{% endif %}>set</option>
-                                <option value="m" {% if uom_val=='m' %}selected{% endif %}>m</option>
-                                <option value="roll" {% if uom_val=='roll' %}selected{% endif %}>roll</option>
-                                </select>
-                            </div>
-                            </div>
-                        </div>
-                        </td>
-
-                    </tr>
-                    {% endfor %}
-                {% else %}
-                    <!-- Default first row -->
-                    <tr class="item-row" data-index="0">
-                    <td style="white-space:nowrap;">
-                        <div style="display:flex; gap:0.5rem; align-items:center;">
-                        <span class="item-no" style="font-weight:700;">1</span>
-                        </div>
-                    </td>
-
-                    <td>
-                        <input class="form-control item-name-input"
-                            name="items[0][item_name]"
-                            list="items-list-0"
-                            placeholder="Select or type item"
-                            required>
-
-                        <datalist id="items-list-0" class="item-name-datalist"></datalist>
-                    </td>
-
-                    <td>
-                        <input type="text"
+            <div class="grid-2">
+                <div class="form-group">
+                    <label class="form-label required">Project Reference</label>
+                    <input type="text"
                             class="form-control"
-                            name="items[0][brand]"
-                            placeholder="Preferred brand / spec">
-                    </td>
+                            name="project_reference"
+                            required
+                            value="{{ task.task_name.split(' - ')[0] if task else '' }}"
+                            placeholder="Enter project reference (e.g., Office Supplies Q4 2024)">
+                </div>
 
-                    <td>
-                        <select class="form-control form-select qty-select"
-                                name="items[0][quantity]"
-                                data-max="1000"
-                                required>
-                        <option value="">Select</option>
-                        </select>
-                    </td>
-
-                    <td>
-                        <div class="dims-section dims-steel-plates" style="display:none;">
-                        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
-                            <div>
-                            <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
-                            <select class="form-control form-select dimensions-select"
-                                    name="items[0][width]"
-                                    data-max="10000">
-                                <option value="">Select</option>
-                            </select>
-                            </div>
-                            <div>
-                            <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                            <select class="form-control form-select dimensions-select"
-                                    name="items[0][length]"
-                                    data-max="12000">
-                                <option value="">Select</option>
-                            </select>
-                            </div>
-                            <div>
-                            <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                            <select class="form-control form-select dimensions-select"
-                                    name="items[0][thickness]"
-                                    data-max="500">
-                                <option value="">Select</option>
-                            </select>
-                            </div>
-                        </div>
-                        </div>
-
-                        <div class="dims-section dims-angle-bar" style="display:none;">
-                        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
-                            <div>
-                            <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
-                            <select class="form-control form-select dimensions-select"
-                                    name="items[0][dim_a]"
-                                    data-max="1000">
-                                <option value="">Select</option>
-                            </select>
-                            </div>
-                            <div>
-                            <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
-                            <select class="form-control form-select dimensions-select"
-                                    name="items[0][dim_b]"
-                                    data-max="1000">
-                                <option value="">Select</option>
-                            </select>
-                            </div>
-                            <div>
-                            <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                            <select class="form-control form-select dimensions-select"
-                                    name="items[0][length]"
-                                    data-max="12000">
-                                <option value="">Select</option>
-                            </select>
-                            </div>
-                            <div>
-                            <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                            <select class="form-control form-select dimensions-select"
-                                    name="items[0][thickness]"
-                                    data-max="500">
-                                <option value="">Select</option>
-                            </select>
-                            </div>
-                        </div>
-                        </div>
-
-                        <div class="dims-section dims-bolts-rebar" style="display:none;">
-                        <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
-                            <div>
-                            <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
-                            <select class="form-control form-select dimensions-select"
-                                    name="items[0][diameter]"
-                                    data-max="9999">
-                                <option value="">Select</option>
-                            </select>
-                            </div>
-                            <div>
-                            <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                            <select class="form-control form-select dimensions-select"
-                                    name="items[0][length]"
-                                    data-max="9999">
-                                <option value="">Select</option>
-                            </select>
-                            </div>
-                        </div>
-                        </div>
-
-                        <div class="dims-section dims-other" style="display:none;">
-                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
-                            <div>
-                            <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
-                            <select class="form-control form-select dimensions-select"
-                                    name="items[0][uom_qty]"
-                                    data-max="10000">
-                                <option value="">Select</option>
-                            </select>
-                            </div>
-                            <div>
-                            <label class="form-label" style="font-size:0.85rem;">UOM</label>
-                            <select class="form-control form-select" name="items[0][uom]">
-                                <option value="">Select UOM</option>
-                                <option value="pcs">pcs</option>
-                                <option value="kg">kg</option>
-                                <option value="L">L</option>
-                                <option value="unit">unit</option>
-                                <option value="set">set</option>
-                                <option value="m">m</option>
-                                <option value="roll">roll</option>
-                            </select>
-                            </div>
-                        </div>
-                        </div>
-                    </td>
-                    </tr>
-                {% endif %}
-                </tbody>
-            </table>
+                <div class="form-group">
+                    <label class="form-label required">Category (Applies to all items)</label>
+                    <select class="form-control form-select" id="globalCategory" name="global_category" required>
+                        <option value="">Select Category</option>
+                        {% for category in categories %}
+                        <option value="{{ category.name }}"
+                            {% if existing_items and existing_items[0].item_category==category.name %}selected{% endif %}>
+                            {{ category.name }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
             </div>
-        </div>
 
-        <button type="button" id="addItem" class="btn btn-secondary" style="margin-top:0.75rem;">
-            <i class="fas fa-plus"></i> Add Another Item
-        </button>
+            <!-- Items table -->
+            <div class="items-container"
+                id="itemsContainer"
+                data-item-count="{{ existing_items|length if existing_items else 1 }}"
+                style="max-height: 60vh; overflow-y: auto; position: relative; margin-top: 0.75rem;">
 
-        <div class="d-flex gap-1 mt-2">
-            <button type="submit" class="btn btn-primary">
-            <i class="fas fa-save"></i> Save
+                <div style="overflow-x:auto;">
+                    <table class="table" style="width:100%; border-collapse: collapse;">
+                        <thead>
+                            <tr>
+                                <th class="th" style="min-width:90px;">#</th>
+                                <th class="th-required" style="min-width:260px;">Item Name</th>
+                                <th class="th-required" style="min-width:220px;">Brand / Specification</th>
+                                <th class="th-required" style="min-width:170px;">Quantity</th>
+                                <th class="th-required" style="min-width:420px;">Dimensions</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="itemsTbody">
+                        {% if existing_items %}
+                            {% for item in existing_items %}
+                            <tr class="item-row" data-index="{{ loop.index0 }}">
+                                <!-- # / Remove -->
+                                <td style="white-space:nowrap;">
+                                    <div style="display:flex; gap:0.5rem; align-items:center;">
+                                        <span class="item-no" style="font-weight:700;">{{ loop.index }}</span>
+                                        {% if existing_items|length > 1 %}
+                                        <button type="button" class="btn btn-danger btn-sm remove-item" title="Remove item">
+                                            <i class="fas fa-times"></i>
+                                        </button>
+                                        {% endif %}
+                                    </div>
+                                </td>
+
+                                <!-- Item Name -->
+                                <td>
+                                    <input class="form-control item-name-input"
+                                        name="items[{{ loop.index0 }}][item_name]"
+                                        list="items-list-{{ loop.index0 }}"
+                                        value="{{ item.item_name or '' }}"
+                                        placeholder="Select or type item"
+                                        required>
+
+                                    <datalist id="items-list-{{ loop.index0 }}" class="item-name-datalist"></datalist>
+                                </td>
+
+                                <!-- Brand -->
+                                <td>
+                                    <input type="text"
+                                            class="form-control"
+                                            name="items[{{ loop.index0 }}][brand]"
+                                            value="{{ item.brand or '' }}"
+                                            placeholder="Preferred brand / spec">
+                                </td>
+
+                                <!-- Quantity -->
+                                <td>
+                                    <input class="form-control qty-input"
+                                        type="text"
+                                        inputmode="numeric"
+                                        pattern="\d*"
+                                        autocomplete="off"
+                                        name="items[{{ loop.index0 }}][quantity]"
+                                        list="qty-list-{{ loop.index0 }}"
+                                        inputmode="numeric"
+                                        placeholder="Select or type"
+                                        value="{{ item.quantity or '' }}"
+                                        required>
+                                    <datalist id="qty-list-{{ loop.index0 }}" class="qty-datalist"></datalist>
+                                </td>
+
+                                <!-- Dimensions (we show all sections, JS reveals one based on global category) -->
+                                <td>
+                                    <!-- Steel Plates / Stainless Steel -->
+                                    <div class="dims-section dims-steel-plates" style="display:none;">
+                                        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[{{ loop.index0 }}][width]"
+                                                    list="dim-width-list-{{ loop.index0 }}"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="{{ item.width or '' }}">
+                                                <datalist id="dim-width-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[{{ loop.index0 }}][length]"
+                                                    list="dim-length-list-{{ loop.index0 }}"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="{{ item.length or '' }}">
+                                                <datalist id="dim-length-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="12000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[{{ loop.index0 }}][thickness]"
+                                                    list="dim-thickness-list-{{ loop.index0 }}"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="{{ item.thickness or '' }}">
+                                                <datalist id="dim-thickness-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="500"></datalist>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Angle Bar -->
+                                    <div class="dims-section dims-angle-bar" style="display:none;">
+                                        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[{{ loop.index0 }}][dim_a]"
+                                                    list="dim-dim_a-list-{{ loop.index0 }}"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="{{ item.dim_a or '' }}">
+                                                <datalist id="dim-dim_a-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[{{ loop.index0 }}][dim_b]"
+                                                    list="dim-dim_b-list-{{ loop.index0 }}"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="{{ item.dim_b or '' }}">
+                                                <datalist id="dim-dim_b-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[{{ loop.index0 }}][length]"
+                                                    list="dim-length-list-{{ loop.index0 }}"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="{{ item.length or '' }}">
+                                                <datalist id="dim-length-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[{{ loop.index0 }}][thickness]"
+                                                    list="dim-thickness-list-{{ loop.index0 }}"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="{{ item.thickness or '' }}">
+                                                <datalist id="dim-thickness-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Bolts/Rebar/Nuts (Diameter + Length) -->
+                                    <div class="dims-section dims-bolts-rebar" style="display:none;">
+                                        <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[{{ loop.index0 }}][diameter]"
+                                                    list="dim-diameter-list-{{ loop.index0 }}"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="{{ item.diameter or '' }}">
+                                                <datalist id="dim-diameter-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[{{ loop.index0 }}][length]"
+                                                    list="dim-length-list-{{ loop.index0 }}"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="{{ item.length or '' }}">
+                                                <datalist id="dim-length-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Other categories (UOM qty + UOM) -->
+                                    <div class="dims-section dims-other" style="display:none;">
+                                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[{{ loop.index0 }}][uom_qty]"
+                                                    list="dim-uomqty-list-{{ loop.index0 }}"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="{{ item.uom_qty or '' }}">
+                                                <datalist id="dim-uomqty-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">UOM</label>
+                                                {% set uom_val = item.uom or '' %}
+                                                <select class="form-control form-select" name="items[{{ loop.index0 }}][uom]">
+                                                <option value="">Select UOM</option>
+                                                <option value="pcs" {% if uom_val=='pcs' %}selected{% endif %}>pcs</option>
+                                                <option value="kg" {% if uom_val=='kg' %}selected{% endif %}>kg</option>
+                                                <option value="L"  {% if uom_val=='L' %}selected{% endif %}>L</option>
+                                                <option value="unit" {% if uom_val=='unit' %}selected{% endif %}>unit</option>
+                                                <option value="set" {% if uom_val=='set' %}selected{% endif %}>set</option>
+                                                <option value="m" {% if uom_val=='m' %}selected{% endif %}>m</option>
+                                                <option value="roll" {% if uom_val=='roll' %}selected{% endif %}>roll</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        {% else %}
+                            <!-- Default first row -->
+                            <tr class="item-row" data-index="0">
+                                <td style="white-space:nowrap;">
+                                    <div style="display:flex; gap:0.5rem; align-items:center;">
+                                    <span class="item-no" style="font-weight:700;">1</span>
+                                    </div>
+                                </td>
+
+                                <td>
+                                    <input class="form-control item-name-input"
+                                        name="items[0][item_name]"
+                                        list="items-list-0"
+                                        placeholder="Select or type item"
+                                        required>
+
+                                    <datalist id="items-list-0" class="item-name-datalist"></datalist>
+                                </td>
+
+                                <td>
+                                    <input type="text"
+                                        class="form-control"
+                                        name="items[0][brand]"
+                                        placeholder="Preferred brand / spec">
+                                </td>
+
+                                <td>
+                                    <input class="form-control qty-input"
+                                        type="text"
+                                        inputmode="numeric"
+                                        pattern="\d*"
+                                        autocomplete="off"
+                                        name="items[0][quantity]"
+                                        list="qty-list-0"
+                                        inputmode="numeric"
+                                        placeholder="Select or type"
+                                        required>
+                                    <datalist id="qty-list-0" class="qty-datalist"></datalist>
+                                </td>
+
+                                <td>
+                                    <div class="dims-section dims-steel-plates" style="display:none;">
+                                        <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[0][width]"
+                                                    list="dim-width-list-0"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="">
+                                                <datalist id="dim-width-list-0" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[0][length]"
+                                                    list="dim-length-list-0"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="">
+                                                <datalist id="dim-length-list-0" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[0][thickness]"
+                                                    list="dim-thickness-list-0"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="">
+                                                <datalist id="dim-thickness-list-0" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="dims-section dims-angle-bar" style="display:none;">
+                                        <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[0][dim_a]"
+                                                    list="dim-dim_a-list-0"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="">
+                                                <datalist id="dim-dim_a-list-0" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[0][dim_b]"
+                                                    list="dim-dim_b-list-0"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="">
+                                                <datalist id="dim-dim_b-list-0" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[0][length]"
+                                                    list="dim-length-list-0"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="">
+                                                <datalist id="dim-length-list-0" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[0][thickness]"
+                                                    list="dim-thickness-list-0"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="">
+                                                <datalist id="dim-thickness-list-0" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="dims-section dims-bolts-rebar" style="display:none;">
+                                        <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[0][diameter]"
+                                                    list="dim-diameter-list-0"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="">
+                                                <datalist id="dim-diameter-list-0" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[0][length]"
+                                                    list="dim-length-list-0"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="">
+                                                <datalist id="dim-length-list-0" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <div class="dims-section dims-other" style="display:none;">
+                                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
+                                                <input class="form-control dimensions-input"
+                                                    type="text"
+                                                    inputmode="numeric"
+                                                    pattern="\d*"
+                                                    autocomplete="off"
+                                                    name="items[0][width]"
+                                                    list="dim-width-list-0"
+                                                    inputmode="numeric"
+                                                    placeholder="Select or type"
+                                                    value="">
+                                                <datalist id="dim-width-list-0" class="dimensions-datalist" data-max="10000"></datalist>
+                                            </div>
+                                            <div>
+                                                <label class="form-label" style="font-size:0.85rem;">UOM</label>
+                                                <select class="form-control form-select" name="items[0][uom]">
+                                                    <option value="">Select UOM</option>
+                                                    <option value="pcs">pcs</option>
+                                                    <option value="kg">kg</option>
+                                                    <option value="L">L</option>
+                                                    <option value="unit">unit</option>
+                                                    <option value="set">set</option>
+                                                    <option value="m">m</option>
+                                                    <option value="roll">roll</option>
+                                                </select>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                            </tr>
+                        {% endif %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <button type="button" id="addItem" class="btn btn-secondary" style="margin-top:0.75rem;">
+                <i class="fas fa-plus"></i> Add Another Item
             </button>
-            <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancel</a>
-        </div>
+
+            <div class="d-flex gap-1 mt-2">
+                <button type="submit" class="btn btn-primary">
+                <i class="fas fa-save"></i> Save
+                </button>
+                <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancel</a>
+            </div>
         </form>
     </div>
 </div>
@@ -464,40 +561,48 @@
         });
     }
 
-    function fillSelectRange(selectEl, start, end) {
-        if (!selectEl) return;
+    function fillDatalistRange(datalistEl, start, end, step = 1) {
+        if (!datalistEl) return;
+        datalistEl.innerHTML = '';
 
-        const selectedValue = selectEl.value;
-
-        // Keep the empty option (value="")
-        const emptyOpt = document.createElement('option');
-        emptyOpt.value = '';
-        emptyOpt.textContent = 'Select';
-
-        selectEl.innerHTML = '';
-        selectEl.appendChild(emptyOpt);
-
-        for (let i = start; i <= end; i++) {
-        const opt = document.createElement('option');
-        opt.value = String(i);
-        opt.textContent = String(i);
-        selectEl.appendChild(opt);
+        for (let v = start; v <= end; v += step) {
+            const opt = document.createElement('option');
+            opt.value = String(v);
+            datalistEl.appendChild(opt);
         }
-
-        if (selectedValue) selectEl.value = selectedValue;
     }
 
-    function populateRowDropdowns(rowEl) {
-        // Quantity
-        rowEl.querySelectorAll('.qty-select').forEach(sel => {
-        const max = parseInt(sel.getAttribute('data-max') || '1000', 10);
-        fillSelectRange(sel, 1, max);
+    function populateRowDatalists(rowEl) {
+        // Quantity datalist
+        rowEl.querySelectorAll('.qty-input').forEach(input => {
+            const rowIndex = rowEl.getAttribute('data-index') || '0';
+            const listId = `qty-list-${rowIndex}`;
+            const datalist = rowEl.querySelector(`#${listId}`);
+            if (!datalist) return;
+
+            // 1..1000, step 1
+            fillDatalistRange(datalist, 1, 1000, 1);
         });
 
-        // Dimensions
-        rowEl.querySelectorAll('.dimensions-select').forEach(sel => {
-        const max = parseInt(sel.getAttribute('data-max') || '10000', 10);
-        fillSelectRange(sel, 1, max);
+        // Dimension datalists
+        rowEl.querySelectorAll('.dimensions-datalist').forEach(datalist => {
+            const max = parseInt(datalist.getAttribute('data-max') || '10000', 10);
+
+            // Better performance + more usable ranges:
+            // 1..100 (step 1), 110..1000 (step 10), 1100..max (step 100)
+            datalist.innerHTML = '';
+
+            const addRange = (start, end, step) => {
+            for (let v = start; v <= end && v <= max; v += step) {
+                const opt = document.createElement('option');
+                opt.value = String(v);
+                datalist.appendChild(opt);
+            }
+            };
+
+            addRange(1, 100, 1);
+            addRange(110, 1000, 10);
+            addRange(1100, max, 100);
         });
     }
 
@@ -555,7 +660,7 @@
         updateItemSuggestions(row, category);
 
         // Ensure dropdowns are populated (qty + dims)
-        populateRowDropdowns(row);
+        populateRowDatalists(row);
         });
     }
 
@@ -582,6 +687,16 @@
         rows.forEach(row => {
         const btn = row.querySelector('.remove-item');
         if (btn) btn.style.display = showRemove ? '' : 'none';
+        });
+    }
+
+    function enforceIntegerInputs(scope = document) {
+        // Strip anything that is not 0-9
+        scope.querySelectorAll('.qty-input, .dimensions-input').forEach(inp => {
+            inp.addEventListener('input', () => {
+            const cleaned = inp.value.replace(/[^\d]/g, '');
+            if (inp.value !== cleaned) inp.value = cleaned;
+            });
         });
     }
 
@@ -614,111 +729,172 @@
             </td>
 
             <td>
-            <select class="form-control form-select qty-select"
+            <input class="form-control qty-input"
+                    type="text"
+                    inputmode="numeric"
+                    pattern="\d*"
+                    autocomplete="off"
                     name="items[${index}][quantity]"
-                    data-max="1000"
+                    list="qty-list-${index}"
+                    inputmode="numeric"
+                    pattern="\\d+"
+                    title="Please enter a whole number"
+                    placeholder="Select or type"
                     required>
-                <option value="">Select</option>
-            </select>
+            <datalist id="qty-list-${index}" class="qty-datalist"></datalist>
             </td>
 
             <td>
+            <!-- Steel Plates / Stainless Steel -->
             <div class="dims-section dims-steel-plates" style="display:none;">
                 <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
                 <div>
                     <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
-                    <select class="form-control form-select dimensions-select"
-                            name="items[${index}][width]"
-                            data-max="10000">
-                    <option value="">Select</option>
-                    </select>
+                    <input class="form-control dimensions-input"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="\d*"
+                        autocomplete="off"
+                        name="items[${index}][width]"
+                        list="dim-width-list-${index}"
+                        inputmode="numeric"
+                        placeholder="Select or type">
+                    <datalist id="dim-width-list-${index}" class="dimensions-datalist" data-max="10000"></datalist>
                 </div>
                 <div>
                     <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                    <select class="form-control form-select dimensions-select"
-                            name="items[${index}][length]"
-                            data-max="12000">
-                    <option value="">Select</option>
-                    </select>
+                    <input class="form-control dimensions-input"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="\d*"
+                        autocomplete="off"
+                        name="items[${index}][length]"
+                        list="dim-length-list-${index}"
+                        inputmode="numeric"
+                        placeholder="Select or type">
+                    <datalist id="dim-length-list-${index}" class="dimensions-datalist" data-max="12000"></datalist>
                 </div>
                 <div>
                     <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                    <select class="form-control form-select dimensions-select"
-                            name="items[${index}][thickness]"
-                            data-max="500">
-                    <option value="">Select</option>
-                    </select>
+                    <input class="form-control dimensions-input"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="\d*"
+                        autocomplete="off"
+                        name="items[${index}][thickness]"
+                        list="dim-thickness-list-${index}"
+                        inputmode="numeric"
+                        placeholder="Select or type">
+                    <datalist id="dim-thickness-list-${index}" class="dimensions-datalist" data-max="500"></datalist>
                 </div>
                 </div>
             </div>
 
+            <!-- Angle Bar -->
             <div class="dims-section dims-angle-bar" style="display:none;">
                 <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
                 <div>
                     <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
-                    <select class="form-control form-select dimensions-select"
-                            name="items[${index}][dim_a]"
-                            data-max="1000">
-                    <option value="">Select</option>
-                    </select>
+                    <input class="form-control dimensions-input"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="\d*"
+                        autocomplete="off"
+                        name="items[${index}][dim_a]"
+                        list="dim-dim_a-list-${index}"
+                        inputmode="numeric"
+                        placeholder="Select or type">
+                    <datalist id="dim-dim_a-list-${index}" class="dimensions-datalist" data-max="1000"></datalist>
                 </div>
                 <div>
                     <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
-                    <select class="form-control form-select dimensions-select"
-                            name="items[${index}][dim_b]"
-                            data-max="1000">
-                    <option value="">Select</option>
-                    </select>
+                    <input class="form-control dimensions-input"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="\d*"
+                        autocomplete="off"
+                        name="items[${index}][dim_b]"
+                        list="dim-dim_b-list-${index}"
+                        inputmode="numeric"
+                        placeholder="Select or type">
+                    <datalist id="dim-dim_b-list-${index}" class="dimensions-datalist" data-max="1000"></datalist>
                 </div>
                 <div>
                     <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                    <select class="form-control form-select dimensions-select"
-                            name="items[${index}][length]"
-                            data-max="12000">
-                    <option value="">Select</option>
-                    </select>
+                    <input class="form-control dimensions-input"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="\d*"
+                        autocomplete="off"
+                        name="items[${index}][length]"
+                        list="dim-length-list-${index}"
+                        inputmode="numeric"
+                        placeholder="Select or type">
+                    <datalist id="dim-length-list-${index}" class="dimensions-datalist" data-max="12000"></datalist>
                 </div>
                 <div>
                     <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                    <select class="form-control form-select dimensions-select"
-                            name="items[${index}][thickness]"
-                            data-max="500">
-                    <option value="">Select</option>
-                    </select>
+                    <input class="form-control dimensions-input"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="\d*"
+                        autocomplete="off"
+                        name="items[${index}][thickness]"
+                        list="dim-thickness-list-${index}"
+                        inputmode="numeric"
+                        placeholder="Select or type">
+                    <datalist id="dim-thickness-list-${index}" class="dimensions-datalist" data-max="500"></datalist>
                 </div>
                 </div>
             </div>
 
+            <!-- Bolts/Rebar/Nuts -->
             <div class="dims-section dims-bolts-rebar" style="display:none;">
                 <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
                 <div>
                     <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
-                    <select class="form-control form-select dimensions-select"
-                            name="items[${index}][diameter]"
-                            data-max="9999">
-                    <option value="">Select</option>
-                    </select>
+                    <input class="form-control dimensions-input"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="\d*"
+                        autocomplete="off"
+                        name="items[${index}][diameter]"
+                        list="dim-diameter-list-${index}"
+                        inputmode="numeric"
+                        placeholder="Select or type">
+                    <datalist id="dim-diameter-list-${index}" class="dimensions-datalist" data-max="9999"></datalist>
                 </div>
                 <div>
                     <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                    <select class="form-control form-select dimensions-select"
-                            name="items[${index}][length]"
-                            data-max="9999">
-                    <option value="">Select</option>
-                    </select>
+                    <input class="form-control dimensions-input"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="\d*"
+                        autocomplete="off"
+                        name="items[${index}][length]"
+                        list="dim-length-list-${index}"
+                        inputmode="numeric"
+                        placeholder="Select or type">
+                    <datalist id="dim-length-list-${index}" class="dimensions-datalist" data-max="9999"></datalist>
                 </div>
                 </div>
             </div>
 
+            <!-- Other -->
             <div class="dims-section dims-other" style="display:none;">
                 <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
                 <div>
                     <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
-                    <select class="form-control form-select dimensions-select"
-                            name="items[${index}][uom_qty]"
-                            data-max="10000">
-                    <option value="">Select</option>
-                    </select>
+                    <input class="form-control dimensions-input"
+                        type="text"
+                        inputmode="numeric"
+                        pattern="\d*"
+                        autocomplete="off"
+                        name="items[${index}][uom_qty]"
+                        list="dim-uomqty-list-${index}"
+                        inputmode="numeric"
+                        placeholder="Select or type">
+                    <datalist id="dim-uomqty-list-${index}" class="dimensions-datalist" data-max="10000"></datalist>
                 </div>
                 <div>
                     <label class="form-label" style="font-size:0.85rem;">UOM</label>
@@ -752,6 +928,7 @@
         // Initial setup
         updateItemNumbersAndNames();
         updateAllRows();
+        enforceIntegerInputs(document);
 
         // On global category change
         globalCategorySelect.addEventListener('change', function () {
@@ -765,6 +942,7 @@
         tbody.insertAdjacentHTML('beforeend', buildRowHtml(newIndex));
         updateItemNumbersAndNames();
         updateAllRows();
+        enforceIntegerInputs(document);
         });
 
         // Remove row
