@@ -299,6 +299,12 @@ def generate_email_content(pr_items, task_name):
             <li>Warranty (If Applicable)</li>
             <li>Mill Certificate / Certificate of Analysis (COA)</li>
         </ul>
+
+        <p>Please fill in the quotation in the link below:</p>
+        <p>Supplier form:</p>
+        <p>↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓</p>
+        {{quote_form_link}}
+        <p>↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑</p>
         
         <p>We look forward to your prompt response.</p>
         
@@ -1220,7 +1226,14 @@ def capture_quotes(task_id, supplier_id):
             app.logger.info('capture_quotes POST received for task %s supplier %s', task_id, supplier_id)
 
             try:
-                # 1) clear old quotes for this supplier+task
+                # 1) Preserve old certificate file IDs before deleting
+                old_quotes = conn.execute(
+                    'SELECT pr_item_id, cert_file_id FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
+                    (task_id, supplier_id)
+                ).fetchall()
+                old_cert_files = {q['pr_item_id']: q['cert_file_id'] for q in old_quotes}
+                
+                # Clear old quotes for this supplier+task
                 conn.execute(
                     'DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
                     (task_id, supplier_id)
@@ -1259,6 +1272,7 @@ def capture_quotes(task_id, supplier_id):
                     ono_diameter = request.form.get(f'ono_diameter_{uid}') or None
                     ono_uom = request.form.get(f'ono_uom_{uid}') or None
                     ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
+                    ono_brand = request.form.get(f'ono_brand_{uid}') or None
 
                     cert_file_id = None
                     file_key = f'cert_{uid}'
@@ -1266,6 +1280,10 @@ def capture_quotes(task_id, supplier_id):
                         cert_file = request.files[file_key]
                         if cert_file and cert_file.filename:
                             cert_file_id = save_uploaded_file(conn, cert_file, task_id, supplier_id, item['id'])
+                    
+                    # If no new certificate uploaded, preserve the old one
+                    if not cert_file_id and item['id'] in old_cert_files:
+                        cert_file_id = old_cert_files[item['id']]
 
                     has_any_input = any([
                         unit_price, stock_availability, lead_time, warranty, notes,
@@ -1273,7 +1291,7 @@ def capture_quotes(task_id, supplier_id):
                         ono_width, ono_length, ono_thickness,
                         ono_dim_a, ono_dim_b,
                         ono_diameter,
-                        ono_uom, ono_uom_qty
+                        ono_uom, ono_uom_qty, ono_brand
                     ]) or (ono == 1)
 
                     if has_any_input:
@@ -1289,9 +1307,10 @@ def capture_quotes(task_id, supplier_id):
                                 ono_diameter,
                                 ono_uom,
                                 ono_uom_qty,
+                                ono_brand,
                                 notes
                             )
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 task_id, supplier_id, item['id'],
@@ -1303,6 +1322,7 @@ def capture_quotes(task_id, supplier_id):
                                 ono_diameter,
                                 ono_uom,
                                 ono_uom_qty,
+                                ono_brand,
                                 notes
                             )
                         )
@@ -1394,7 +1414,14 @@ def supplier_quote_form(token):
 
         if request.method == 'POST':
             try:
-                # 1) clear old
+                # 1) Preserve old certificate file IDs before deleting
+                old_quotes = conn.execute(
+                    'SELECT pr_item_id, cert_file_id FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
+                    (task_id, supplier_id)
+                ).fetchall()
+                old_cert_files = {q['pr_item_id']: q['cert_file_id'] for q in old_quotes}
+                
+                # Clear old
                 conn.execute(
                     'DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
                     (task_id, supplier_id)
@@ -1433,6 +1460,7 @@ def supplier_quote_form(token):
                     ono_diameter = request.form.get(f'ono_diameter_{uid}') or None
                     ono_uom = request.form.get(f'ono_uom_{uid}') or None
                     ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
+                    ono_brand = request.form.get(f'ono_brand_{uid}') or None
 
                     # Handle certificate file upload
                     cert_file_id = None
@@ -1441,6 +1469,10 @@ def supplier_quote_form(token):
                         if cert_file and cert_file.filename:
                             # if not allowed_file(cert_file.filename): raise ValueError("Only PDF allowed")
                             cert_file_id = save_uploaded_file(conn, cert_file, task_id, supplier_id, item['id'])
+                    
+                    # If no new certificate uploaded, preserve the old one
+                    if not cert_file_id and item['id'] in old_cert_files:
+                        cert_file_id = old_cert_files[item['id']]
 
                     # Save row if ANY meaningful input exists, OR ONO checked
                     has_any_input = any([
@@ -1448,7 +1480,7 @@ def supplier_quote_form(token):
                         cert_file_id,
                         ono_width, ono_length, ono_thickness,
                         ono_dim_a, ono_dim_b, ono_diameter,
-                        ono_uom, ono_uom_qty
+                        ono_uom, ono_uom_qty, ono_brand
                     ]) or (ono == 1)
 
                     if has_any_input:
@@ -1464,9 +1496,10 @@ def supplier_quote_form(token):
                                 ono_diameter,
                                 ono_uom,
                                 ono_uom_qty,
+                                ono_brand,
                                 notes
                             )
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                             """,
                             (
                                 task_id, supplier_id, item['id'],
@@ -1478,6 +1511,7 @@ def supplier_quote_form(token):
                                 ono_diameter,
                                 ono_uom,
                                 ono_uom_qty,
+                                ono_brand,
                                 notes
                             )
                         )
@@ -1633,20 +1667,16 @@ def export_comparison(task_id):
         return s != "" and s.lower() not in ("none", "null")
 
     def has_any_ono_value(category: str, q: dict) -> bool:
-        """
-        ONO is considered active if ANY relevant ONO field has a value.
-        (No checkbox needed.)
-        """
         category = (category or "").strip()
 
         if category in ["Steel Plates", "Stainless Steel"]:
-            keys = ["ono_width", "ono_length", "ono_thickness"]
+            keys = ["ono_width", "ono_length", "ono_thickness", "ono_brand"]
         elif category == "Angle Bar":
-            keys = ["ono_dim_a", "ono_dim_b", "ono_length", "ono_thickness"]
+            keys = ["ono_dim_a", "ono_dim_b", "ono_length", "ono_thickness", "ono_brand"]
         elif category in ["Rebar", "Bolts, Fasteners"]:
-            keys = ["ono_diameter", "ono_length"]
+            keys = ["ono_diameter", "ono_length", "ono_brand"]
         else:
-            keys = ["ono_uom_qty", "ono_uom"]
+            keys = ["ono_uom_qty", "ono_uom", "ono_brand"]
 
         return any(_is_filled(q.get(k)) for k in keys)
 
@@ -1899,7 +1929,7 @@ def export_comparison(task_id):
         cell.font = bold
         cell.alignment = center
 
-    best_fill = PatternFill(start_color="C6EFCE", end_color="C6EFCE", fill_type="solid")   # light green
+    best_fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
     total_fill = PatternFill(start_color="D9D9D9", end_color="D9D9D9", fill_type="solid") # light gray
 
     quotes_by_item = {}
@@ -2018,10 +2048,12 @@ def export_comparison(task_id):
         # Normalize standard dims so grouping is consistent
         base_dim_display = dims_for_row(category, item, q=None)  # correct length
         standard_dims = tuple(_norm(x) for x in base_dim_display)
-        standard_key = (False, standard_dims)
+
+        item_brand_norm = _norm(item.get("brand") or "")
+        standard_key = (False, standard_dims, item_brand_norm)
         grouped_quotes = {standard_key: {}}
 
-        # Distribute quotes into groups (STANDARD vs ONO with fallback)
+        # Distribute quotes into groups (STANDARD vs ONO with fallback + ONO brand)
         for supplier_id, supplier_name in suppliers_list:
             q = item_quotes_map.get(supplier_id)
             if not q:
@@ -2032,8 +2064,13 @@ def export_comparison(task_id):
             eff_dims = dims_for_row(category, item, q=q, use_ono=use_ono)
             eff_dims_norm = tuple(_norm(x) for x in eff_dims)
 
+            # ✅ ONO brand override: if provided, we split into its own ONO row
+            ono_brand_val = _norm(q.get("ono_brand")) if use_ono and _is_filled(q.get("ono_brand")) else ""
+
             if use_ono:
-                key = (True, eff_dims_norm)
+                # If supplier sets ono_brand, use it; otherwise fall back to the item brand
+                eff_brand = ono_brand_val or item_brand_norm
+                key = (True, eff_dims_norm, eff_brand)
                 grouped_quotes.setdefault(key, {})[supplier_id] = q
             else:
                 grouped_quotes[standard_key][supplier_id] = q
@@ -2043,13 +2080,13 @@ def export_comparison(task_id):
         # Render Rows
         # ---------------------------------------------------------
         def sort_keys(k):
-            is_ono, dims = k
-            return (is_ono, dims)
-            
+            is_ono, dims, brand_val = k
+            return (is_ono, dims, brand_val)
+
         sorted_keys = sorted(grouped_quotes.keys(), key=sort_keys)
         
         for key in sorted_keys:
-            is_ono, dims = key
+            is_ono, dims, brand_val = key
             quotes_for_row_map = grouped_quotes[key]
             
             # Skip empty O.N.O rows
@@ -2061,7 +2098,7 @@ def export_comparison(task_id):
 
             row = [
                 row_label,
-                item["brand"] or "",
+                brand_val or (item["brand"] or ""),
                 category,
                 *dims,                         # <-- dynamic number of dim cells
                 item["quantity"] or "",
@@ -2298,10 +2335,6 @@ def export_comparison(task_id):
             max_lines = max(max_lines, lines)
 
         ws.row_dimensions[r].height = max(15, max_lines * 15)
-
-    # # Keep your header heights (optional)
-    # ws.row_dimensions[1].height = 28
-    # ws.row_dimensions[2].height = 20
 
     output = io.BytesIO()
     wb.save(output)
@@ -2577,50 +2610,79 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
                 else:
                     body += quote_html
         else:
-            items_html = "<ul>"
-            for item in supplier_items:
-                item = dict(item)
-
+            items_html = """
+            <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; border: 1px solid #ddd; font-family: Arial, sans-serif;">
+                <thead style="background-color: #f2f2f2;">
+                    <tr>
+                        <th style="text-align: center; width: 5%;">No.</th>
+                        <th style="text-align: left;">Description</th>
+                        <th style="text-align: left;">Dimensions</th>
+                        <th style="text-align: left;">Brand / Specification</th>
+                        <th style="text-align: center; width: 10%;">Qty</th>
+                        <th style="text-align: left;">Remark</th>
+                    </tr>
+                </thead>
+                <tbody>
+            """
+            
+            for idx, item in enumerate(pr_items, 1):
+                item = dict(item) if item is not None else {}
                 category = (item.get('item_category') or '').strip()
-                dims = "N/A"
+
+                # Build Specification (Dimensions)
+                spec = ''
                 if category in ['Steel Plates', 'Stainless Steel']:
                     w = item.get('width') or ''
                     l = item.get('length') or ''
                     thk = item.get('thickness') or ''
                     if w or l or thk:
-                        dims = f"{w}mm x {l}mm x {thk}mm"
+                        spec = f"{w} x {l} x {thk} mm (W x L x Thk)"
                 elif category == 'Angle Bar':
                     a = item.get('dim_a') or ''
                     b = item.get('dim_b') or ''
                     l = item.get('length') or ''
                     thk = item.get('thickness') or ''
                     if a or b or l or thk:
-                        dims = f"A={a}mm, B={b}mm, L={l}mm, Thk={thk}mm"
+                        spec = f"{a} x {b} x {l} x {thk} mm (A x B x L x Thk)"
                 elif category in ['Rebar', 'Bolts, Fasteners']:
                     d = item.get('diameter') or ''
                     l = item.get('length') or ''
                     if d or l:
-                        dims = f"D={d}mm, L={l}mm"
+                        spec = f"{d} x {l} mm (D x L)"
                 else:
                     uom = item.get('uom') or ''
                     uom_qty = item.get('uom_qty') or ''
                     if uom_qty and uom:
-                        dims = f"{uom_qty} {uom}"
+                        spec = f"{uom_qty} {uom}"
                     elif uom_qty:
-                        dims = f"Qty: {uom_qty}"
+                        spec = f"Qty: {uom_qty}"
                     elif uom:
-                        dims = f"UOM: {uom}"
+                        spec = f"UOM: {uom}"
+                
+                # Fallback to direct spec field if dynamic dim is empty, or append?
+                # User image shows "Specification" column often having sizes. try to use 'specification' field if dims are empty?
+                # Actually in pr_items we have 'specification' column.
+                original_spec = item.get('specification') or ''
+                if spec and original_spec:
+                    final_spec = f"{spec}<br><small>{original_spec}</small>"
+                elif spec:
+                    final_spec = spec
+                else:
+                    final_spec = original_spec or 'N/A'
 
-            items_html += f"""
-            <li>
-                <strong>Item:</strong> {item['item_name']}<br>
-                <strong>Dimensions:</strong> {dims}<br>
-                <strong>Brand / Specification:</strong> {item.get('brand') or 'N/A'}<br>
-                <strong>Quantity:</strong> {item.get('quantity')}<br>
-            </li>
-            """
+                items_html += f"""
+                    <tr>
+                        <td style="text-align: center;">{idx}</td>
+                        <td>{item['item_name']}</td>
+                        <td>{final_spec}</td>
+                        <td>{item.get('brand') or ''}</td>
+                        <td style="text-align: center;">{item['quantity']}</td>
+                        <td></td> <!-- Empty Remark for now, as in image -->
+                    </tr>
+                """
 
-            items_html += "</ul>"
+
+            items_html += "</tbody></table>"
             
             body = f"""
             <html>
