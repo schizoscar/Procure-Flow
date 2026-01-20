@@ -58,7 +58,6 @@
                     <th style="min-width:220px;">Brand / Specification</th>
                     <th class="th-required" style="min-width:170px;">Quantity</th>
                     <th style="min-width:420px;">Dimensions</th>
-                    <th style="min-width:170px;">Payment Terms</th>
                 </tr>
                 </thead>
 
@@ -80,12 +79,14 @@
 
                         <!-- Item Name -->
                         <td>
-                        <select class="form-control form-select item-name-select"
-                                name="items[{{ loop.index0 }}][item_name]"
-                                data-selected="{{ item.item_name }}"
-                                required>
-                            <option value="">Select Item</option>
-                        </select>
+                        <input class="form-control item-name-input"
+                            name="items[{{ loop.index0 }}][item_name]"
+                            list="items-list-{{ loop.index0 }}"
+                            value="{{ item.item_name or '' }}"
+                            placeholder="Select or type item"
+                            required>
+
+                        <datalist id="items-list-{{ loop.index0 }}" class="item-name-datalist"></datalist>
                         </td>
 
                         <!-- Brand -->
@@ -284,11 +285,13 @@
                     </td>
 
                     <td>
-                        <select class="form-control form-select item-name-select"
-                                name="items[0][item_name]"
-                                required>
-                        <option value="">Select Item</option>
-                        </select>
+                        <input class="form-control item-name-input"
+                            name="items[0][item_name]"
+                            list="items-list-0"
+                            placeholder="Select or type item"
+                            required>
+
+                        <datalist id="items-list-0" class="item-name-datalist"></datalist>
                     </td>
 
                     <td>
@@ -421,16 +424,6 @@
                         </div>
                         </div>
                     </td>
-
-                    <td>
-                        <select class="form-control form-select" name="items[0][payment_terms]">
-                        <option value="">Empty</option>
-                        <option value="Cash">Cash</option>
-                        <option value="30 Days">30 Days</option>
-                        <option value="60 Days">60 Days</option>
-                        <option value="90 Days">90 Days</option>
-                        </select>
-                    </td>
                     </tr>
                 {% endif %}
                 </tbody>
@@ -520,29 +513,32 @@
     }
 
     function updateItemSuggestions(row, category) {
-        const select = row.querySelector('.item-name-select');
-        if (!select) return;
+        const input = row.querySelector('.item-name-input');
+        if (!input) return;
+
+        const rowIndex = row.getAttribute('data-index') || '0';
+        const listId = `items-list-${rowIndex}`;
+        const datalist = row.querySelector(`#${listId}`);
+        if (!datalist) return;
 
         const categoryItemsData = JSON.parse(document.getElementById('categoryItemsData').textContent);
 
-        // keep existing selection if editing
-        const saved = select.getAttribute('data-selected') || select.value || "";
+        // Keep whatever user typed / existing value
+        const currentValue = input.value || "";
 
-        select.innerHTML = '<option value="">Select Item</option>';
+        // Reset datalist
+        datalist.innerHTML = '';
 
         if (category && categoryItemsData[category]) {
-        categoryItemsData[category].forEach(item => {
+            categoryItemsData[category].forEach(item => {
             const opt = document.createElement('option');
             opt.value = item;
-            opt.textContent = item;
-            if (saved && saved === item) opt.selected = true;
-            select.appendChild(opt);
-        });
+            datalist.appendChild(opt);
+            });
         }
 
-        if (select.getAttribute('data-selected')) {
-        select.removeAttribute('data-selected');
-        }
+        // restore current value (not strictly needed but safe)
+        input.value = currentValue;
     }
 
     function updateAllRows() {
@@ -613,11 +609,12 @@
             </td>
 
             <td>
-            <select class="form-control form-select item-name-select"
+            <input class="form-control item-name-input"
                     name="items[${index}][item_name]"
+                    list="items-list-${index}"
+                    placeholder="Select or type item"
                     required>
-                <option value="">Select Item</option>
-            </select>
+            <datalist id="items-list-${index}" class="item-name-datalist"></datalist>
             </td>
 
             <td>
