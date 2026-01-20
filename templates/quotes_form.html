@@ -78,7 +78,7 @@
                 <table class="table" style="width:100%; border-collapse: collapse;">
                     <thead>
                         <tr>
-                            <th class="th-required" style="min-width:240px;">
+                            <th style="min-width:240px;">
                                 Item
                                 {% if pr_items and pr_items[0].item_category %}
                                     ({{ pr_items[0].item_category }})
@@ -90,7 +90,7 @@
                             <th class="th-required" style="min-width:170px;">Delivery Lead Time (Days)</th>
                             <th class="th-required" style="min-width:190px;">Stock Availability</th>
                             <th style="min-width:170px;">Warranty (If Applicable)</th>
-                            <th class="th-required" style="min-width:240px;">Mill Certificate / Certificate of Analysis (COA)</th>
+                            <th style="min-width:240px;">Mill Certificate / Certificate of Analysis (COA)</th>
                             <th style="min-width:300px;">Nearest Offer (If Applicable)</th>
                             <th style="min-width:240px;">Remarks</th>
                         </tr>
@@ -259,6 +259,10 @@
                                             </select>
                                         </div>
                                     </div>
+                                    <div style="margin-top:0.5rem;">
+                                        <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
+                                        <input type="text" class="form-control" name="ono_brand_{{ item.id }}" value="{{ (existing.ono_brand if existing else '')|default('', true) }}">
+                                    </div>
 
                                 {% elif cat == 'Angle Bar' %}
                                     <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
@@ -303,6 +307,10 @@
                                             </select>
                                         </div>
                                     </div>
+                                    <div style="margin-top:0.5rem;">
+                                        <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
+                                        <input type="text" class="form-control" name="ono_brand_{{ item.id }}" value="{{ (existing.ono_brand if existing else '')|default('', true) }}">
+                                    </div>
 
                                 {% elif cat in ['Bolts, Fasteners','Rebar','Nuts'] %}
                                     <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
@@ -326,6 +334,10 @@
                                                 {% if existing and existing.ono_length %}<option value="{{ existing.ono_length }}" selected>{{ existing.ono_length }}</option>{% endif %}
                                             </select>
                                         </div>
+                                    </div>
+                                    <div style="margin-top:0.5rem;">
+                                        <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
+                                        <input type="text" class="form-control" name="ono_brand_{{ item.id }}" value="{{ (existing.ono_brand if existing else '')|default('', true) }}">
                                     </div>
 
                                 {% else %}
@@ -355,6 +367,10 @@
                                                 <option value="roll" {% if ou=='roll' %}selected{% endif %}>roll</option>
                                             </select>
                                         </div>
+                                    </div>
+                                    <div style="margin-top:0.5rem;">
+                                        <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
+                                        <input type="text" class="form-control" name="ono_brand_{{ item.id }}" value="{{ (existing.ono_brand if existing else '')|default('', true) }}">
                                     </div>
                                 {% endif %}
                             </td>
