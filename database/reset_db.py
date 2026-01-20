@@ -126,7 +126,7 @@ def reset_database():
             supplier_id INTEGER NOT NULL,
             pr_item_id INTEGER NOT NULL,
 
-            unit_price INTEGER,
+            unit_price REAL,
             stock_availability TEXT,
             cert TEXT,
             cert_file_id INTEGER,
@@ -151,6 +151,9 @@ def reset_database():
             -- O.N.O. for other (UOM amount + UOM text)
             ono_uom_qty INTEGER,
             ono_uom TEXT,
+            
+            -- O.N.O. brand/specification
+            ono_brand TEXT,
 
             notes TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

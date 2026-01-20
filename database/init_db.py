@@ -133,7 +133,7 @@ def init_database():
             task_id INTEGER NOT NULL,
             supplier_id INTEGER NOT NULL,
             pr_item_id INTEGER NOT NULL,
-            unit_price INTEGER,
+            unit_price REAL,
             stock_availability TEXT,
             cert TEXT,
             lead_time TEXT,
@@ -215,6 +215,7 @@ def init_database():
     ensure_column('supplier_quotes', 'ono_diameter', 'INTEGER')
     ensure_column('supplier_quotes', 'ono_uom_qty', 'INTEGER')
     ensure_column('supplier_quotes', 'ono_uom', 'TEXT')
+    ensure_column('supplier_quotes', 'ono_brand', 'TEXT')
     ensure_column('supplier_quotes', 'lead_time', 'TEXT')
     ensure_column('supplier_quotes', 'warranty', 'TEXT')
     ensure_column('supplier_quotes', 'stock_availability', 'TEXT')
