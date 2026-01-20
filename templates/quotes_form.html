@@ -143,30 +143,47 @@
                                 </div>
                             </td>
 
-                            <!-- Unit price (type + dropdown suggestions) -->
+                            <!-- Unit price -->
                             <td>
                                 <input class="form-control unit-price-input"
-                                    name="unit_price_{{ item.id }}"
-                                    list="unit_price_list_{{ item.id }}"
+                                    type="text"
                                     inputmode="decimal"
+                                    autocomplete="off"
+                                    pattern="^\d+(\.\d{0,2})?$"
+                                    title="Numbers only (up to 2 decimal places). Example: 12.50"
+                                    name="unit_price_{{ item.id }}"
+                                    list="unit-price-list-{{ item.id }}"
                                     placeholder="Select or type (e.g. 12.50)"
-                                    value="{{ existing.unit_price if existing and existing.unit_price else '' }}"
+                                    value="{{ existing.unit_price if existing and existing.unit_price is not none else '' }}"
                                     required>
 
-                                <datalist id="unit_price_list_{{ item.id }}"></datalist>
+                                <datalist id="unit-price-list-{{ item.id }}" class="unit-price-datalist">
+                                    {% if existing and existing.unit_price is not none and existing.unit_price|string|trim != '' %}
+                                        <option value="{{ existing.unit_price }}"></option>
+                                    {% endif %}
+                                </datalist>
                             </td>
 
                             <!-- Lead time dropdown -->
                             <td>
-                                <select class="form-control form-select lead-time-select"
-                                        name="lead_time_{{ item.id }}"
-                                        data-max="100"
-                                        required>
-                                    <option value="">Select</option>
-                                    {% if existing and existing.lead_time %}
-                                        <option value="{{ existing.lead_time }}" selected>{{ existing.lead_time }}</option>
+                                <input class="form-control lead-time-input integer-input"
+                                    type="text"
+                                    inputmode="numeric"
+                                    autocomplete="off"
+                                    pattern="\d*"
+                                    name="lead_time_{{ item.id }}"
+                                    list="lead-time-list-{{ item.id }}"
+                                    placeholder="Select or type"
+                                    value="{{ existing.lead_time if existing and existing.lead_time is not none else '' }}"
+                                    required>
+
+                                <datalist id="lead-time-list-{{ item.id }}"
+                                        class="integer-datalist"
+                                        data-max="1000">
+                                    {% if existing and existing.lead_time is not none and existing.lead_time|string|trim != '' %}
+                                        <option value="{{ existing.lead_time }}"></option>
                                     {% endif %}
-                                </select>
+                                </datalist>
                             </td>
 
                             <!-- Stock availability dropdown -->
@@ -227,36 +244,69 @@
                                 </div>
                             </td>
 
-                            <!-- Nearest Offer (ONO dimensions dropdowns like supplier_public_quote) -->
+                            <!-- ONO (Nearest Offer) -->
                             <td>
                                 {% if cat in ['Steel Plates','Stainless Steel'] %}
                                     <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
                                         <div>
                                             <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
-                                            <select class="form-control form-select dimensions-select"
-                                                    name="ono_width_{{ item.id }}"
+                                            <input class="form-control ono-dim-input integer-input"
+                                                type="text"
+                                                inputmode="numeric"
+                                                autocomplete="off"
+                                                pattern="\d*"
+                                                name="ono_width_{{ item.id }}"
+                                                list="ono-width-list-{{ item.id }}"
+                                                placeholder="Select or type"
+                                                value="{{ existing.ono_width if existing and existing.ono_width is not none else '' }}">
+
+                                            <datalist id="ono-width-list-{{ item.id }}"
+                                                    class="integer-datalist"
                                                     data-max="10000">
-                                                <option value="">Select</option>
-                                                {% if existing and existing.ono_width %}<option value="{{ existing.ono_width }}" selected>{{ existing.ono_width }}</option>{% endif %}
-                                            </select>
+                                                {% if existing and existing.ono_width is not none and existing.ono_width|string|trim != '' %}
+                                                    <option value="{{ existing.ono_width }}"></option>
+                                                {% endif %}
+                                            </datalist>
                                         </div>
                                         <div>
                                             <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                                            <select class="form-control form-select dimensions-select"
-                                                    name="ono_length_{{ item.id }}"
+                                            <input class="form-control ono-dim-input integer-input"
+                                                type="text"
+                                                inputmode="numeric"
+                                                autocomplete="off"
+                                                pattern="\d*"
+                                                name="ono_length_{{ item.id }}"
+                                                list="ono-length-list-{{ item.id }}"
+                                                placeholder="Select or type"
+                                                value="{{ existing.ono_length if existing and existing.ono_length is not none else '' }}">
+
+                                            <datalist id="ono-length-list-{{ item.id }}"
+                                                    class="integer-datalist"
                                                     data-max="10000">
-                                                <option value="">Select</option>
-                                                {% if existing and existing.ono_length %}<option value="{{ existing.ono_length }}" selected>{{ existing.ono_length }}</option>{% endif %}
-                                            </select>
+                                                {% if existing and existing.ono_length is not none and existing.ono_length|string|trim != '' %}
+                                                    <option value="{{ existing.ono_length }}"></option>
+                                                {% endif %}
+                                            </datalist>
                                         </div>
                                         <div>
                                             <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                                            <select class="form-control form-select dimensions-select"
-                                                    name="ono_thickness_{{ item.id }}"
-                                                    data-max="500">
-                                                <option value="">Select</option>
-                                                {% if existing and existing.ono_thickness %}<option value="{{ existing.ono_thickness }}" selected>{{ existing.ono_thickness }}</option>{% endif %}
-                                            </select>
+                                            <input class="form-control ono-dim-input integer-input"
+                                                type="text"
+                                                inputmode="numeric"
+                                                autocomplete="off"
+                                                pattern="\d*"
+                                                name="ono_thickness_{{ item.id }}"
+                                                list="ono-thickness-list-{{ item.id }}"
+                                                placeholder="Select or type"
+                                                value="{{ existing.ono_thickness if existing and existing.ono_thickness is not none else '' }}">
+
+                                            <datalist id="ono-thickness-list-{{ item.id }}"
+                                                    class="integer-datalist"
+                                                    data-max="10000">
+                                                {% if existing and existing.ono_thickness is not none and existing.ono_thickness|string|trim != '' %}
+                                                    <option value="{{ existing.ono_thickness }}"></option>
+                                                {% endif %}
+                                            </datalist>
                                         </div>
                                     </div>
                                     <div style="margin-top:0.5rem;">
@@ -268,43 +318,83 @@
                                     <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
                                         <div>
                                             <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
-                                            <select class="form-control form-select dimensions-select"
-                                                    name="ono_dim_a_{{ item.id }}"
-                                                    data-max="1000">
-                                                <option value="">Select</option>
-                                                {% if existing and existing.ono_dim_a is defined and existing.ono_dim_a %}
-                                                    <option value="{{ existing.ono_dim_a }}" selected>{{ existing.ono_dim_a }}</option>
+                                            <input class="form-control ono-dim-input integer-input"
+                                                type="text"
+                                                inputmode="numeric"
+                                                autocomplete="off"
+                                                pattern="\d*"
+                                                name="ono_dim_a_{{ item.id }}"
+                                                list="ono-dim-a-list-{{ item.id }}"
+                                                placeholder="Select or type"
+                                                value="{{ existing.ono_dim_a if existing and existing.ono_dim_a is not none else '' }}">
+
+                                            <datalist id="ono-dim-a-list-{{ item.id }}"
+                                                    class="integer-datalist"
+                                                    data-max="10000">
+                                                {% if existing and existing.ono_dim_a is not none and existing.ono_dim_a|string|trim != '' %}
+                                                    <option value="{{ existing.ono_dim_a }}"></option>
                                                 {% endif %}
-                                            </select>
+                                            </datalist>
                                         </div>
                                         <div>
                                             <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
-                                            <select class="form-control form-select dimensions-select"
-                                                    name="ono_dim_b_{{ item.id }}"
-                                                    data-max="1000">
-                                                <option value="">Select</option>
-                                                {% if existing and existing.ono_dim_b is defined and existing.ono_dim_b %}
-                                                    <option value="{{ existing.ono_dim_b }}" selected>{{ existing.ono_dim_b }}</option>
+                                            <input class="form-control ono-dim-input integer-input"
+                                                type="text"
+                                                inputmode="numeric"
+                                                autocomplete="off"
+                                                pattern="\d*"
+                                                name="ono_dim_b_{{ item.id }}"
+                                                list="ono-dim-b-list-{{ item.id }}"
+                                                placeholder="Select or type"
+                                                value="{{ existing.ono_dim_b if existing and existing.ono_dim_b is not none else '' }}">
+
+                                            <datalist id="ono-dim-b-list-{{ item.id }}"
+                                                    class="integer-datalist"
+                                                    data-max="10000">
+                                                {% if existing and existing.ono_dim_b is not none and existing.ono_dim_b|string|trim != '' %}
+                                                    <option value="{{ existing.ono_dim_b }}"></option>
                                                 {% endif %}
-                                            </select>
+                                            </datalist>
                                         </div>
                                         <div>
                                             <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                                            <select class="form-control form-select dimensions-select"
-                                                    name="ono_length_{{ item.id }}"
-                                                    data-max="12000">
-                                                <option value="">Select</option>
-                                                {% if existing and existing.ono_length %}<option value="{{ existing.ono_length }}" selected>{{ existing.ono_length }}</option>{% endif %}
-                                            </select>
+                                            <input class="form-control ono-dim-input integer-input"
+                                                type="text"
+                                                inputmode="numeric"
+                                                autocomplete="off"
+                                                pattern="\d*"
+                                                name="ono_length_{{ item.id }}"
+                                                list="ono-length-list-{{ item.id }}"
+                                                placeholder="Select or type"
+                                                value="{{ existing.ono_length if existing and existing.ono_length is not none else '' }}">
+
+                                            <datalist id="ono-length-list-{{ item.id }}"
+                                                    class="integer-datalist"
+                                                    data-max="10000">
+                                                {% if existing and existing.ono_length is not none and existing.ono_length|string|trim != '' %}
+                                                    <option value="{{ existing.ono_length }}"></option>
+                                                {% endif %}
+                                            </datalist>
                                         </div>
                                         <div>
                                             <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                                            <select class="form-control form-select dimensions-select"
-                                                    name="ono_thickness_{{ item.id }}"
-                                                    data-max="100">
-                                                <option value="">Select</option>
-                                                {% if existing and existing.ono_thickness %}<option value="{{ existing.ono_thickness }}" selected>{{ existing.ono_thickness }}</option>{% endif %}
-                                            </select>
+                                            <input class="form-control ono-dim-input integer-input"
+                                                type="text"
+                                                inputmode="numeric"
+                                                autocomplete="off"
+                                                pattern="\d*"
+                                                name="ono_thickness_{{ item.id }}"
+                                                list="ono-thickness-list-{{ item.id }}"
+                                                placeholder="Select or type"
+                                                value="{{ existing.ono_thickness if existing and existing.ono_thickness is not none else '' }}">
+
+                                            <datalist id="ono-thickness-list-{{ item.id }}"
+                                                    class="integer-datalist"
+                                                    data-max="10000">
+                                                {% if existing and existing.ono_thickness is not none and existing.ono_thickness|string|trim != '' %}
+                                                    <option value="{{ existing.ono_thickness }}"></option>
+                                                {% endif %}
+                                            </datalist>
                                         </div>
                                     </div>
                                     <div style="margin-top:0.5rem;">
@@ -316,23 +406,43 @@
                                     <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
                                         <div>
                                             <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
-                                            <select class="form-control form-select dimensions-select"
-                                                    name="ono_diameter_{{ item.id }}"
-                                                    data-max="9999">
-                                                <option value="">Select</option>
-                                                {% if existing and existing.ono_diameter is defined and existing.ono_diameter %}
-                                                    <option value="{{ existing.ono_diameter }}" selected>{{ existing.ono_diameter }}</option>
+                                            <input class="form-control ono-dim-input integer-input"
+                                                type="text"
+                                                inputmode="numeric"
+                                                autocomplete="off"
+                                                pattern="\d*"
+                                                name="ono_diameter_{{ item.id }}"
+                                                list="ono-diameter-list-{{ item.id }}"
+                                                placeholder="Select or type"
+                                                value="{{ existing.ono_diameter if existing and existing.ono_diameter is not none else '' }}">
+
+                                            <datalist id="ono-diameter-list-{{ item.id }}"
+                                                    class="integer-datalist"
+                                                    data-max="10000">
+                                                {% if existing and existing.ono_diameter is not none and existing.ono_diameter|string|trim != '' %}
+                                                    <option value="{{ existing.ono_diameter }}"></option>
                                                 {% endif %}
-                                            </select>
+                                            </datalist>
                                         </div>
                                         <div>
                                             <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                                            <select class="form-control form-select dimensions-select"
-                                                    name="ono_length_{{ item.id }}"
-                                                    data-max="9999">
-                                                <option value="">Select</option>
-                                                {% if existing and existing.ono_length %}<option value="{{ existing.ono_length }}" selected>{{ existing.ono_length }}</option>{% endif %}
-                                            </select>
+                                            <input class="form-control ono-dim-input integer-input"
+                                                type="text"
+                                                inputmode="numeric"
+                                                autocomplete="off"
+                                                pattern="\d*"
+                                                name="ono_length_{{ item.id }}"
+                                                list="ono-length-list-{{ item.id }}"
+                                                placeholder="Select or type"
+                                                value="{{ existing.ono_length if existing and existing.ono_length is not none else '' }}">
+
+                                            <datalist id="ono-length-list-{{ item.id }}"
+                                                    class="integer-datalist"
+                                                    data-max="10000">
+                                                {% if existing and existing.ono_length is not none and existing.ono_length|string|trim != '' %}
+                                                    <option value="{{ existing.ono_length }}"></option>
+                                                {% endif %}
+                                            </datalist>
                                         </div>
                                     </div>
                                     <div style="margin-top:0.5rem;">
@@ -344,14 +454,22 @@
                                     <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
                                         <div>
                                             <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
-                                            <select class="form-control form-select dimensions-select"
-                                                    name="ono_uom_qty_{{ item.id }}"
+                                            <input class="form-control ono-dim-input integer-input"
+                                                type="text"
+                                                inputmode="numeric"
+                                                autocomplete="off"
+                                                pattern="\d*"
+                                                name="ono_uom_qty_{{ item.id }}"
+                                                list="ono-uomqty-list-{{ item.id }}"
+                                                placeholder="Select or type">
+
+                                            <datalist id="ono-uomqty-list-{{ item.id }}"
+                                                    class="integer-datalist"
                                                     data-max="10000">
-                                                <option value="">Select</option>
                                                 {% if existing and existing.ono_uom_qty is defined and existing.ono_uom_qty %}
                                                     <option value="{{ existing.ono_uom_qty }}" selected>{{ existing.ono_uom_qty }}</option>
                                                 {% endif %}
-                                            </select>
+                                            </datalist>
                                         </div>
                                         <div>
                                             <label class="form-label" style="font-size:0.85rem;">UOM</label>
@@ -434,6 +552,57 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
+    function enforceDecimalInputs(scope = document) {
+        scope.querySelectorAll('.unit-price-input').forEach(inp => {
+            inp.addEventListener('input', () => {
+            // Keep only digits and dots
+            let v = inp.value.replace(/[^\d.]/g, '');
+
+            // Keep only the first dot
+            const firstDot = v.indexOf('.');
+            if (firstDot !== -1) {
+                v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+            }
+
+            // Limit to 2 decimal places
+            if (firstDot !== -1) {
+                const [a, b] = v.split('.');
+                v = a + '.' + (b || '').slice(0, 2);
+            }
+
+            inp.value = v;
+            });
+        });
+    }
+
+    function enforceIntegerInputs(scope = document) {
+        scope.querySelectorAll('.integer-input').forEach(inp => {
+            inp.addEventListener('input', () => {
+            const cleaned = inp.value.replace(/[^\d]/g, '');
+            if (inp.value !== cleaned) inp.value = cleaned;
+            });
+        });
+    }
+
+    function populateIntegerDatalists(scope = document) {
+        scope.querySelectorAll('.integer-datalist').forEach(datalist => {
+            const max = parseInt(datalist.getAttribute('data-max') || '10000', 10);
+            datalist.innerHTML = '';
+
+            const addRange = (start, end, step) => {
+            for (let v = start; v <= end && v <= max; v += step) {
+                const opt = document.createElement('option');
+                opt.value = String(v);
+                datalist.appendChild(opt);
+            }
+            };
+
+            addRange(1, 100, 1);
+            addRange(110, 1000, 10);
+            addRange(1100, max, 100);
+        });
+    }
+
     function fillSelectRange(selectEl, start, end) {
         if (!selectEl) return;
 
@@ -481,11 +650,8 @@ document.addEventListener('DOMContentLoaded', function () {
         const datalist = document.getElementById(listId);
         if (!datalist) return;
 
-        // Option A: Full 1..10000 (works but heavy)
-        // fillDatalistRange(datalist, 1, 10000, 1);
-
-        // Option B (recommended): lighter suggestions
         datalist.innerHTML = '';
+
         const addRange = (start, end, step) => {
             for (let v = start; v <= end; v += step) {
                 const opt = document.createElement('option');
@@ -498,10 +664,22 @@ document.addEventListener('DOMContentLoaded', function () {
         addRange(1100, 10000, 100);
     });
 
-    // Populate all lead time selects
-    document.querySelectorAll('.lead-time-select').forEach(sel => {
-        const max = parseInt(sel.getAttribute('data-max') || '100', 10);
-        fillSelectRange(sel, 1, max);
+    // Populate all lead time datalists
+    document.querySelectorAll('datalist[id^="lead-time-list-"]').forEach(datalist => {
+        const max = parseInt(datalist.getAttribute('data-max') || '1000', 10);
+
+        datalist.innerHTML = '';
+        const addRange = (start, end, step) => {
+            for (let v = start; v <= end && v <= max; v += step) {
+                const opt = document.createElement('option');
+                opt.value = String(v);
+                datalist.appendChild(opt);
+            }
+        };
+
+        addRange(1, 100, 1);
+        addRange(110, 1000, 10);
+        addRange(1100, max, 100);
     });
 
     // Populate all dimensions selects
@@ -509,6 +687,10 @@ document.addEventListener('DOMContentLoaded', function () {
         const max = parseInt(sel.getAttribute('data-max') || '10000', 10);
         fillSelectRange(sel, 1, max);
     });
+
+    populateIntegerDatalists(document);
+    enforceIntegerInputs(document);
+    enforceDecimalInputs(document);
 
 });
 </script>

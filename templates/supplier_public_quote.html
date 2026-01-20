@@ -151,9 +151,13 @@
                                     <!-- Unit price dropdown -->
                                     <td>
                                         <input class="form-control unit-price-input"
+                                            type="text"
+                                            inputmode="decimal"
+                                            autocomplete="off"
+                                            pattern="^\d+(\.\d{0,2})?$"
+                                            title="Numbers only (up to 2 decimal places). Example: 12.50"
                                             name="unit_price_{{ item.id }}"
                                             list="unit-price-list-{{ item.id }}"
-                                            inputmode="decimal"
                                             placeholder="Select or type (e.g. 12.50)"
                                             required>
 
@@ -162,12 +166,19 @@
 
                                     <!-- Lead time dropdown -->
                                     <td>
-                                        <select class="form-control form-select lead-time-select" 
-                                                name="lead_time_{{ item.id }}" 
-                                                data-max="100"
-                                                required>
-                                            <option value="">Select</option>
-                                        </select>
+                                        <input class="form-control lead-time-input integer-input"
+                                            type="text"
+                                            inputmode="numeric"
+                                            autocomplete="off"
+                                            pattern="\d*"
+                                            name="lead_time_{{ item.id }}"
+                                            list="lead-time-list-{{ item.id }}"
+                                            placeholder="Select or type"
+                                            required>
+
+                                        <datalist id="lead-time-list-{{ item.id }}"
+                                                    class="integer-datalist"
+                                                    data-max="1000"></datalist>
                                     </td>
 
                                     <!-- Stock availability dropdown -->
@@ -211,33 +222,54 @@
                                         </div>
                                     </td>
 
-                                    <!-- ONO -->
+                                    <!-- ONO (Nearest Offer) -->
                                     <td>
                                         {% if item.item_category in ['Steel Plates','Stainless Steel'] %}
                                             <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
-                                                    <select class="form-control form-select dimensions-select"
-                                                            name="ono_width_{{ item.id }}"
-                                                            data-max="10000">
-                                                        <option value="">Select</option>
-                                                    </select>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_width_{{ item.id }}"
+                                                        list="ono-width-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-width-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
                                                 </div>
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                                                    <select class="form-control form-select dimensions-select"
-                                                            name="ono_length_{{ item.id }}"
-                                                            data-max="10000">
-                                                        <option value="">Select</option>
-                                                    </select>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_length_{{ item.id }}"
+                                                        list="ono-length-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-length-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
                                                 </div>
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                                                    <select class="form-control form-select dimensions-select"
-                                                            name="ono_thickness_{{ item.id }}"
-                                                            data-max="500">
-                                                        <option value="">Select</option>
-                                                    </select>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_thickness_{{ item.id }}"
+                                                        list="ono-thickness-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-thickness-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
                                                 </div>
                                             </div>
                                             <div style="margin-top:0.5rem;">
@@ -249,35 +281,63 @@
                                             <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
-                                                    <select class="form-control form-select dimensions-select"
-                                                            name="ono_dim_a_{{ item.id }}"
-                                                            data-max="1000">
-                                                        <option value="">Select</option>
-                                                    </select>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_dim_a_{{ item.id }}"
+                                                        list="ono-dim_a-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-dim_a-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
                                                 </div>
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
-                                                    <select class="form-control form-select dimensions-select"
-                                                            name="ono_dim_b_{{ item.id }}"
-                                                            data-max="1000">
-                                                        <option value="">Select</option>
-                                                    </select>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_dim_b_{{ item.id }}"
+                                                        list="ono-dim_b-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-dim_b-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
                                                 </div>
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                                                    <select class="form-control form-select dimensions-select"
-                                                            name="ono_length_{{ item.id }}"
-                                                            data-max="12000">
-                                                        <option value="">Select</option>
-                                                    </select>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_length_{{ item.id }}"
+                                                        list="ono-length-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-length-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
                                                 </div>
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                                                    <select class="form-control form-select dimensions-select"
-                                                            name="ono_thickness_{{ item.id }}"
-                                                            data-max="100">
-                                                        <option value="">Select</option>
-                                                    </select>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_thickness_{{ item.id }}"
+                                                        list="ono-thickness-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-thickness-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
                                                 </div>
                                             </div>
                                             <div style="margin-top:0.5rem;">
@@ -289,19 +349,33 @@
                                             <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
-                                                    <select class="form-control form-select dimensions-select"
-                                                            name="ono_diameter_{{ item.id }}"
-                                                            data-max="9999">
-                                                        <option value="">Select</option>
-                                                    </select>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_diameter_{{ item.id }}"
+                                                        list="ono-diameter-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-diameter-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
                                                 </div>
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                                                    <select class="form-control form-select dimensions-select"
-                                                            name="ono_length_{{ item.id }}"
-                                                            data-max="9999">
-                                                        <option value="">Select</option>
-                                                    </select>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_length_{{ item.id }}"
+                                                        list="ono-length-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-length-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
                                                 </div>
                                             </div>
                                             <div style="margin-top:0.5rem;">
@@ -313,11 +387,18 @@
                                             <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
-                                                    <select class="form-control form-select dimensions-select"
-                                                            name="ono_uom_qty_{{ item.id }}"
-                                                            data-max="10000">
-                                                        <option value="">Select</option>
-                                                    </select>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_uom_qty_{{ item.id }}"
+                                                        list="ono-uomqty-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-uomqty-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
                                                 </div>
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">UOM</label>
@@ -361,154 +442,178 @@
     </div>
 
     <script>
-    document.addEventListener('DOMContentLoaded', function () {
+        document.addEventListener('DOMContentLoaded', function () {
 
-        function setEnabled(container, enabled) {
-            container.querySelectorAll('input, select, textarea').forEach(el => {
-                el.disabled = !enabled;
-            });
-        }
-
-        function showONOSection(itemId, dimType) {
-            const fieldsDiv = document.getElementById('ono_fields_' + itemId);
-            if (!fieldsDiv) return;
-
-            // Hide + disable all sections
-            fieldsDiv.querySelectorAll('.ono-dims-section').forEach(sec => {
-                sec.style.display = 'none';
-                setEnabled(sec, false);
-            });
-
-            // Show + enable the selected section
-            const target = fieldsDiv.querySelector('.ono-' + dimType);
-            if (target) {
-                target.style.display = 'block';
-                setEnabled(target, true);
+            function setEnabled(container, enabled) {
+                container.querySelectorAll('input, select, textarea').forEach(el => {
+                    el.disabled = !enabled;
+                });
             }
-        }
 
-        // ONO checkbox behavior
-        document.querySelectorAll('.ono-checkbox').forEach(function (checkbox) {
-            const itemId = checkbox.getAttribute('data-item-id');
-            const dimType = checkbox.getAttribute('data-dim-type') || 'other';
+            function showONOSection(itemId, dimType) {
+                const fieldsDiv = document.getElementById('ono_fields_' + itemId);
+                if (!fieldsDiv) return;
 
-            const onoRow = document.getElementById('ono_row_' + itemId);
-            const fieldsDiv = document.getElementById('ono_fields_' + itemId);
+                // Hide + disable all sections
+                fieldsDiv.querySelectorAll('.ono-dims-section').forEach(sec => {
+                    sec.style.display = 'none';
+                    setEnabled(sec, false);
+                });
 
-            if (!onoRow || !fieldsDiv) return;
-
-            function sync() {
-                if (checkbox.checked) {
-                    onoRow.style.display = '';
-                    showONOSection(itemId, dimType);
-                } else {
-                    onoRow.style.display = 'none';
-                    // Disable everything so it won't submit hidden blanks
-                    fieldsDiv.querySelectorAll('.ono-dims-section').forEach(sec => setEnabled(sec, false));
+                // Show + enable the selected section
+                const target = fieldsDiv.querySelector('.ono-' + dimType);
+                if (target) {
+                    target.style.display = 'block';
+                    setEnabled(target, true);
                 }
             }
 
-            checkbox.addEventListener('change', sync);
-            sync();
-        });
+            // COA filename display
+            document.querySelectorAll('input[type="file"][name^="cert_"]').forEach(function (input) {
+                input.addEventListener('change', function () {
+                    const itemId = this.name.replace('cert_', '');
+                    const filenameDiv = document.getElementById('cert_filename_' + itemId);
+                    const filenameSpan = document.getElementById('cert_name_' + itemId);
 
-        // COA filename display
-        document.querySelectorAll('input[type="file"][name^="cert_"]').forEach(function (input) {
-            input.addEventListener('change', function () {
-                const itemId = this.name.replace('cert_', '');
-                const filenameDiv = document.getElementById('cert_filename_' + itemId);
-                const filenameSpan = document.getElementById('cert_name_' + itemId);
+                    if (!filenameDiv || !filenameSpan) return;
 
-                if (!filenameDiv || !filenameSpan) return;
-
-                if (this.files && this.files.length > 0) {
-                    filenameSpan.textContent = this.files[0].name;
-                    filenameDiv.style.display = 'block';
-                } else {
-                    filenameDiv.style.display = 'none';
-                }
+                    if (this.files && this.files.length > 0) {
+                        filenameSpan.textContent = this.files[0].name;
+                        filenameDiv.style.display = 'block';
+                    } else {
+                        filenameDiv.style.display = 'none';
+                    }
+                });
             });
-        });
 
-        // Master quotation filename display (your old code didn't work because input had no id)
-        const quotationFileInput = document.getElementById('quotation_file');
-        if (quotationFileInput) {
-            quotationFileInput.addEventListener('change', function () {
-                const filenameDiv = document.getElementById('quotation_filename');
-                const filenameSpan = document.getElementById('quotation_name');
+            // Master quotation filename display (your old code didn't work because input had no id)
+            const quotationFileInput = document.getElementById('quotation_file');
+            if (quotationFileInput) {
+                quotationFileInput.addEventListener('change', function () {
+                    const filenameDiv = document.getElementById('quotation_filename');
+                    const filenameSpan = document.getElementById('quotation_name');
 
-                if (!filenameDiv || !filenameSpan) return;
+                    if (!filenameDiv || !filenameSpan) return;
 
-                if (this.files && this.files[0]) {
-                    filenameSpan.textContent = this.files[0].name;
-                    filenameDiv.style.display = 'block';
-                } else {
-                    filenameDiv.style.display = 'none';
-                }
-            });
-        }
-
-        function fillSelectRange(selectEl, start, end) {
-            if (!selectEl) return;
-
-            // Keep the first option (Select)
-            const first = selectEl.querySelector('option[value=""]');
-            selectEl.innerHTML = '';
-            if (first) selectEl.appendChild(first);
-
-            for (let i = start; i <= end; i++) {
-            const opt = document.createElement('option');
-            opt.value = String(i);
-            opt.textContent = String(i);
-            selectEl.appendChild(opt);
+                    if (this.files && this.files[0]) {
+                        filenameSpan.textContent = this.files[0].name;
+                        filenameDiv.style.display = 'block';
+                    } else {
+                        filenameDiv.style.display = 'none';
+                    }
+                });
             }
-        }
 
-        // Populate all unit price selects
-        function fillDatalistRange(datalistEl, start, end, step = 1) {
-            if (!datalistEl) return;
-            datalistEl.innerHTML = '';
+            function enforceDecimalInputs(scope = document) {
+                scope.querySelectorAll('.unit-price-input').forEach(inp => {
+                    inp.addEventListener('input', () => {
+                    // Keep only digits and dots
+                    let v = inp.value.replace(/[^\d.]/g, '');
 
-            for (let v = start; v <= end; v += step) {
+                    // Keep only the first dot
+                    const firstDot = v.indexOf('.');
+                    if (firstDot !== -1) {
+                        v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+                    }
+
+                    // Limit to 2 decimal places
+                    if (firstDot !== -1) {
+                        const [a, b] = v.split('.');
+                        v = a + '.' + (b || '').slice(0, 2);
+                    }
+
+                    inp.value = v;
+                    });
+                });
+            }
+
+            function enforceIntegerInputs(scope = document) {
+                scope.querySelectorAll('.integer-input').forEach(inp => {
+                    inp.addEventListener('input', () => {
+                    const cleaned = inp.value.replace(/[^\d]/g, '');
+                    if (inp.value !== cleaned) inp.value = cleaned;
+                    });
+                });
+            }
+
+            function populateIntegerDatalists(scope = document) {
+                scope.querySelectorAll('.integer-datalist').forEach(datalist => {
+                    const max = parseInt(datalist.getAttribute('data-max') || '10000', 10);
+                    datalist.innerHTML = '';
+
+                    const addRange = (start, end, step) => {
+                    for (let v = start; v <= end && v <= max; v += step) {
+                        const opt = document.createElement('option');
+                        opt.value = String(v);
+                        datalist.appendChild(opt);
+                    }
+                    };
+
+                    addRange(1, 100, 1);
+                    addRange(110, 1000, 10);
+                    addRange(1100, max, 100);
+                });
+            }
+
+            function fillSelectRange(selectEl, start, end) {
+                if (!selectEl) return;
+
+                // Keep the first option (Select)
+                const first = selectEl.querySelector('option[value=""]');
+                selectEl.innerHTML = '';
+                if (first) selectEl.appendChild(first);
+
+                for (let i = start; i <= end; i++) {
                 const opt = document.createElement('option');
-                opt.value = String(v);
-                datalistEl.appendChild(opt);
+                opt.value = String(i);
+                opt.textContent = String(i);
+                selectEl.appendChild(opt);
+                }
             }
-        }
 
-        // Populate all unit price datalists (suggest 1..10000)
-        document.querySelectorAll('.unit-price-input').forEach(input => {
-            const datalist = document.getElementById(input.getAttribute('list'));
-            if (!datalist) return;
+            // Populate all unit price selects
+            function fillDatalistRange(datalistEl, start, end, step = 1) {
+                if (!datalistEl) return;
+                datalistEl.innerHTML = '';
 
-            datalist.innerHTML = '';
-
-            const addRange = (start, end, step) => {
                 for (let v = start; v <= end; v += step) {
                     const opt = document.createElement('option');
                     opt.value = String(v);
-                    datalist.appendChild(opt);
+                    datalistEl.appendChild(opt);
                 }
-            };
+            }
 
-            addRange(1, 100, 1);
-            addRange(110, 1000, 10);
-            addRange(1100, 10000, 100);
+            // Populate all unit price datalists (suggest 1..10000)
+            document.querySelectorAll('.unit-price-input').forEach(input => {
+                const datalist = document.getElementById(input.getAttribute('list'));
+                if (!datalist) return;
+
+                datalist.innerHTML = '';
+
+                const addRange = (start, end, step) => {
+                    for (let v = start; v <= end; v += step) {
+                        const opt = document.createElement('option');
+                        opt.value = String(v);
+                        datalist.appendChild(opt);
+                    }
+                };
+
+                addRange(1, 100, 1);
+                addRange(110, 1000, 10);
+                addRange(1100, 10000, 100);
+            });
+
+            // Populate all lead time selects
+            document.querySelectorAll('.lead-time-select').forEach(sel => {
+                const max = parseInt(sel.getAttribute('data-max') || '100', 10);
+                fillSelectRange(sel, 1, max);
+            });
+
+            populateIntegerDatalists(document);
+            enforceIntegerInputs(document);
+            enforceDecimalInputs(document);
+
         });
-
-        // Populate all lead time selects
-        document.querySelectorAll('.lead-time-select').forEach(sel => {
-            const max = parseInt(sel.getAttribute('data-max') || '100', 10);
-            fillSelectRange(sel, 1, max);
-        });
-
-        // Populate all dimensions selects
-        document.querySelectorAll('.dimensions-select').forEach(sel => {
-            const max = parseInt(sel.getAttribute('data-max') || '10000', 10);
-            fillSelectRange(sel, 1, max);
-        });
-
-    });
     </script>
 </body>
 

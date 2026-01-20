@@ -31,6 +31,7 @@ from urllib.parse import urljoin
 import logging
 from werkzeug.exceptions import HTTPException
 import math
+from decimal import Decimal, InvalidOperation
 
 
 load_dotenv()
@@ -595,6 +596,32 @@ def reset_password(token):
     finally:
         conn.close()
 
+def parse_int_field(value, *, required=False):
+    s = (value or "").strip()
+    if s == "":
+        if required:
+            raise ValueError("Required")
+        return None
+    if not s.isdigit():
+        raise ValueError("Must be a whole number")
+    return int(s)
+
+def parse_optional_int(value):
+    # Convenience: optional int, returns None if blank
+    return parse_int_field(value, required=False)
+
+DEC_RE = re.compile(r"^\d+(\.\d{1,2})?$")  # up to 2 dp
+
+def parse_decimal_field(val, field_name):
+    if val is None or val == "":
+        return None
+    if not DEC_RE.fullmatch(val):
+        raise ValueError(f"{field_name} must be a number with up to 2 decimals")
+    try:
+        return Decimal(val)
+    except InvalidOperation:
+        raise ValueError(f"{field_name} is not a valid number")
+
 @app.route('/new-task', methods=['GET', 'POST'])
 @app.route('/edit-task/<int:task_id>', methods=['GET', 'POST'])
 def new_task(task_id=None):
@@ -647,25 +674,43 @@ def new_task(task_id=None):
         # Process items from form
         item_index = 0
         while f'items[{item_index}][item_name]' in request.form:
-            items.append({
-                'item_category': global_category, # Use global category
-                'item_name': request.form[f'items[{item_index}][item_name]'],
-                'brand': request.form.get(f'items[{item_index}][brand]') or None,
-                'quantity': request.form.get(f'items[{item_index}][quantity]') or None,
-                'payment_terms': request.form.get(f'items[{item_index}][payment_terms]') or None,
-                # Steel Plates dimensions
-                'width': request.form.get(f'items[{item_index}][width]') or None,
-                'length': request.form.get(f'items[{item_index}][length]') or None,
-                'thickness': request.form.get(f'items[{item_index}][thickness]') or None,
-                # Angle Bar dimensions
-                'dim_a': request.form.get(f'items[{item_index}][dim_a]') or None,
-                'dim_b': request.form.get(f'items[{item_index}][dim_b]') or None,
-                # Bolts/Rebar dimensions
-                'diameter': request.form.get(f'items[{item_index}][diameter]') or None,
-                # Other UOM
-                'uom_qty': request.form.get(f'items[{item_index}][uom_qty]') or None,
-                'uom': request.form.get(f'items[{item_index}][uom]') or None,
+            try:
+                qty = parse_int_field(request.form.get(f'items[{item_index}][quantity]'), required=True)
 
+                width     = parse_optional_int(request.form.get(f'items[{item_index}][width]'))
+                length    = parse_optional_int(request.form.get(f'items[{item_index}][length]'))
+                thickness = parse_optional_int(request.form.get(f'items[{item_index}][thickness]'))
+
+                dim_a = parse_optional_int(request.form.get(f'items[{item_index}][dim_a]'))
+                dim_b = parse_optional_int(request.form.get(f'items[{item_index}][dim_b]'))
+
+                diameter = parse_optional_int(request.form.get(f'items[{item_index}][diameter]'))
+
+                uom_qty = parse_optional_int(request.form.get(f'items[{item_index}][uom_qty]'))
+
+            except ValueError as e:
+                flash(f"Item #{item_index+1}: invalid number input ({str(e)})", "error")
+                conn.close()
+                return redirect(request.url)
+
+            items.append({
+                'item_category': global_category,
+                'item_name': request.form.get(f'items[{item_index}][item_name]'),
+                'brand': request.form.get(f'items[{item_index}][brand]') or None,
+                'quantity': qty,   # <-- now an int
+                'payment_terms': request.form.get(f'items[{item_index}][payment_terms]') or None,
+
+                'width': width,
+                'length': length,
+                'thickness': thickness,
+
+                'dim_a': dim_a,
+                'dim_b': dim_b,
+
+                'diameter': diameter,
+
+                'uom_qty': uom_qty,
+                'uom': request.form.get(f'items[{item_index}][uom]') or None,
             })
             item_index += 1
         
@@ -1257,19 +1302,19 @@ def capture_quotes(task_id, supplier_id):
                     uid = str(item['id'])
                     app.logger.debug("Processing pr_item_id=%s uid=%s", item["id"], uid)
 
-                    unit_price = request.form.get(f'unit_price_{uid}') or None
+                    unit_price = parse_decimal_field(request.form.get(f'unit_price_{uid}') or None, f"Unit Price for Item {item['id']}")
                     stock_availability = request.form.get(f'stock_availability_{uid}') or None
-                    lead_time = request.form.get(f'lead_time_{uid}') or None
+                    lead_time = parse_optional_int(request.form.get(f'lead_time_{uid}') or None)
                     warranty = request.form.get(f'warranty_{uid}') or None
                     notes = request.form.get(f'notes_{uid}') or None
                     ono = 1 if request.form.get(f"ono_{uid}") else 0
 
-                    ono_width = request.form.get(f'ono_width_{uid}') or None
-                    ono_length = form_last_nonempty(f'ono_length_{uid}')
-                    ono_thickness = request.form.get(f'ono_thickness_{uid}') or None
-                    ono_dim_a = request.form.get(f'ono_dim_a_{uid}') or None
-                    ono_dim_b = request.form.get(f'ono_dim_b_{uid}') or None
-                    ono_diameter = request.form.get(f'ono_diameter_{uid}') or None
+                    ono_width = parse_optional_int(request.form.get(f'ono_width_{uid}') or None)
+                    ono_length = parse_optional_int(request.form.get(f'ono_length_{uid}') or None)
+                    ono_thickness = parse_optional_int(request.form.get(f'ono_thickness_{uid}') or None)
+                    ono_dim_a = parse_optional_int(request.form.get(f'ono_dim_a_{uid}') or None)
+                    ono_dim_b = parse_optional_int(request.form.get(f'ono_dim_b_{uid}') or None)
+                    ono_diameter = parse_optional_int(request.form.get(f'ono_diameter_{uid}') or None)
                     ono_uom = request.form.get(f'ono_uom_{uid}') or None
                     ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
                     ono_brand = request.form.get(f'ono_brand_{uid}') or None
@@ -1444,20 +1489,20 @@ def supplier_quote_form(token):
                 for item in pr_items:
                     uid = str(item['id'])
 
-                    unit_price = request.form.get(f'unit_price_{uid}') or None
+                    unit_price = parse_decimal_field(request.form.get(f'unit_price_{uid}') or None, f"Unit Price for Item {item['id']}")
                     stock_availability = request.form.get(f'stock_availability_{uid}') or None
-                    lead_time = request.form.get(f'lead_time_{uid}') or None
+                    lead_time = parse_optional_int(request.form.get(f'lead_time_{uid}') or None)
                     warranty = request.form.get(f'warranty_{uid}') or None
                     notes = request.form.get(f'notes_{uid}') or None
                     ono = 1 if request.form.get(f"ono_{uid}") else 0
 
                     # O.N.O. alternate dimensions
-                    ono_width = request.form.get(f'ono_width_{uid}') or None
-                    ono_length = form_last_nonempty(f'ono_length_{uid}')
-                    ono_thickness = request.form.get(f'ono_thickness_{uid}') or None
-                    ono_dim_a = request.form.get(f'ono_dim_a_{uid}') or None
-                    ono_dim_b = request.form.get(f'ono_dim_b_{uid}') or None
-                    ono_diameter = request.form.get(f'ono_diameter_{uid}') or None
+                    ono_width = parse_optional_int(request.form.get(f'ono_width_{uid}') or None)
+                    ono_length = parse_optional_int(request.form.get(f'ono_length_{uid}') or None)
+                    ono_thickness = parse_optional_int(request.form.get(f'ono_thickness_{uid}') or None)
+                    ono_dim_a = parse_optional_int(request.form.get(f'ono_dim_a_{uid}') or None)
+                    ono_dim_b = parse_optional_int(request.form.get(f'ono_dim_b_{uid}') or None)
+                    ono_diameter = parse_optional_int(request.form.get(f'ono_diameter_{uid}') or None)
                     ono_uom = request.form.get(f'ono_uom_{uid}') or None
                     ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
                     ono_brand = request.form.get(f'ono_brand_{uid}') or None
