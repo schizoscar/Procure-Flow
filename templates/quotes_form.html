@@ -104,42 +104,56 @@
                         <tr class="item-row" data-item-id="{{ item.id }}">
                             <!-- Item info cell -->
                             <td>
-                                {% set spec_label = (item.brand) %}
+                                {% set spec_label = item.brand or '' %}
                                 <div style="font-weight:600;">
-                                    {{ loop.index }}. {{ spec_label }}
-                                    {{ item.specification or '' }}
-                                    <br>
+                                    <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:baseline;">
+                                        <span>{{ loop.index }}.</span>
 
-                                    {% if cat in ['Steel Plates','Stainless Steel'] %}
-                                        Sizes: {{ item.width if item.width is not none else '-' }} mm (W)
-                                        × {{ item.length if item.length is not none else '-' }} mm (L)
-                                        × {{ item.thickness if item.thickness is not none else '-' }} mm (Thk)
-                                    {% elif cat == 'Angle Bar' %}
-                                        Sizes: {{ item.dim_a if item.dim_a is not none else '-' }} mm (A)
-                                        × {{ item.dim_b if item.dim_b is not none else '-' }} mm (B)
-                                        × {{ item.length if item.length is not none else '-' }} mm (L)
-                                        × {{ item.thickness if item.thickness is not none else '-' }} mm (Thk)
-                                    {% elif cat in ['Bolts, Fasteners','Rebar','Nuts'] %}
-                                        Sizes: {{ item.diameter if item.diameter is not none else '-' }} mm (D)
-                                        × {{ item.length if item.length is not none else '-' }} mm (L)
-                                    {% else %}
-                                        Packing: {{ item.uom_qty if item.uom_qty is not none else '-' }}
-                                        {{ item.uom if item.uom is not none else '' }}
-                                    {% endif %}
+                                        {% if spec_label %}
+                                            <span>{{ spec_label }}</span>
+                                        {% endif %}
+
+                                        {% if item.specification %}
+                                            <span>{{ item.specification }}</span>
+                                        {% endif %}
+
+                                        <span>
+                                            • Qty: {{ item.quantity if item.quantity is not none else '-' }}
+                                        </span>
+                                    </div>
+
+                                    <div style="margin-top:0.25rem;">
+                                        {% if cat in ['Steel Plates','Stainless Steel'] %}
+                                            Sizes: {{ item.width if item.width is not none else '-' }} mm (W)
+                                            × {{ item.length if item.length is not none else '-' }} mm (L)
+                                            × {{ item.thickness if item.thickness is not none else '-' }} mm (Thk)
+                                        {% elif cat == 'Angle Bar' %}
+                                            Sizes: {{ item.dim_a if item.dim_a is not none else '-' }} mm (A)
+                                            × {{ item.dim_b if item.dim_b is not none else '-' }} mm (B)
+                                            × {{ item.length if item.length is not none else '-' }} mm (L)
+                                            × {{ item.thickness if item.thickness is not none else '-' }} mm (Thk)
+                                        {% elif cat in ['Bolts, Fasteners','Rebar','Nuts'] %}
+                                            Sizes: {{ item.diameter if item.diameter is not none else '-' }} mm (D)
+                                            × {{ item.length if item.length is not none else '-' }} mm (L)
+                                        {% else %}
+                                            Packing: {{ item.uom_qty if item.uom_qty is not none else '-' }}
+                                            {{ item.uom if item.uom is not none else '' }}
+                                        {% endif %}
+                                    </div>
                                 </div>
                             </td>
 
-                            <!-- Unit price dropdown -->
+                            <!-- Unit price (type + dropdown suggestions) -->
                             <td>
-                                <select class="form-control form-select unit-price-select"
-                                        name="unit_price_{{ item.id }}"
-                                        data-max="10000"
-                                        required>
-                                    <option value="">Select</option>
-                                    {% if existing and existing.unit_price %}
-                                        <option value="{{ existing.unit_price }}" selected>{{ existing.unit_price }}</option>
-                                    {% endif %}
-                                </select>
+                                <input class="form-control unit-price-input"
+                                    name="unit_price_{{ item.id }}"
+                                    list="unit_price_list_{{ item.id }}"
+                                    inputmode="decimal"
+                                    placeholder="Select or type (e.g. 12.50)"
+                                    value="{{ existing.unit_price if existing and existing.unit_price else '' }}"
+                                    required>
+
+                                <datalist id="unit_price_list_{{ item.id }}"></datalist>
                             </td>
 
                             <!-- Lead time dropdown -->
@@ -434,10 +448,38 @@ document.addEventListener('DOMContentLoaded', function () {
         }
     }
 
-    // Populate all unit price selects
-    document.querySelectorAll('.unit-price-select').forEach(sel => {
-        const max = parseInt(sel.getAttribute('data-max') || '10000', 10);
-        fillSelectRange(sel, 1, max);
+    function fillDatalistRange(datalistEl, start, end, step = 1) {
+        if (!datalistEl) return;
+        datalistEl.innerHTML = '';
+
+        for (let v = start; v <= end; v += step) {
+            const opt = document.createElement('option');
+            opt.value = String(v);
+            datalistEl.appendChild(opt);
+        }
+    }
+
+    // Populate all unit price datalists (suggestions)
+    document.querySelectorAll('.unit-price-input').forEach(input => {
+        const listId = input.getAttribute('list');
+        const datalist = document.getElementById(listId);
+        if (!datalist) return;
+
+        // Option A: Full 1..10000 (works but heavy)
+        // fillDatalistRange(datalist, 1, 10000, 1);
+
+        // Option B (recommended): lighter suggestions
+        datalist.innerHTML = '';
+        const addRange = (start, end, step) => {
+            for (let v = start; v <= end; v += step) {
+                const opt = document.createElement('option');
+                opt.value = String(v);
+                datalist.appendChild(opt);
+            }
+        };
+        addRange(1, 100, 1);
+        addRange(110, 1000, 10);
+        addRange(1100, 10000, 100);
     });
 
     // Populate all lead time selects
