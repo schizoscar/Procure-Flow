@@ -70,15 +70,21 @@
                         <h5><i class="fas fa-eye"></i> Email Preview</h5>
                         <div class="email-preview">
                             <div class="email-header">
-                                <div><strong>To:</strong> [Supplier Name]</div>
+                                <div><strong>To:</strong> [Supplier Name] [Contact Person]</div>
                                 <div><strong>Subject:</strong> {{ email_subject or ("Procurement Inquiry - " + task.task_name) }}</div>
                                 <div><strong>From:</strong> Procurement Department</div>
                             </div>
                             <div class="email-body">
                                 {% if template.email_content %}
-                                    {{ template.email_content|replace('{supplier_name}', '<span class="placeholder">[Supplier Name]</span>')|replace('[Supplier Name]', '<span class="placeholder">[Supplier Name]</span>')|safe }}
+                                    {% set preview = template.email_content
+                                        | replace('{supplier_name}', '<span class="placeholder">[Supplier Name]</span>')
+                                        | replace('[Supplier Name]', '<span class="placeholder">[Supplier Name]</span>')
+                                        | replace('{contact_person}', '<span class="placeholder">[Contact Person]</span>')
+                                        | replace('[Contact Person]', '<span class="placeholder">[Contact Person]</span>')
+                                    %}
+                                    {{ preview|safe }}
                                 {% else %}
-                                    <p>Dear <span class="placeholder">[Supplier Name] {{ supplier.contact_name }}</span>,</p>
+                                    <p>Dear <span class="placeholder">[Supplier Name] [Contact Person]</span>,</p>
                                     
                                     <p>We are inquiring about the following items below:</p>
                                     
