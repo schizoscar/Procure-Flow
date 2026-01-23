@@ -85,8 +85,9 @@ def reset_database():
             -- Bolts/Rebar dimensions
             diameter INTEGER,
             -- Other category UOM
-            uom_qty INTEGER,
+            uom_qty TEXT,
             uom TEXT,
+            our_remarks TEXT,
             FOREIGN KEY (task_id) REFERENCES tasks (id)
         )''',
         
@@ -149,7 +150,7 @@ def reset_database():
             ono_diameter INTEGER,
 
             -- O.N.O. for other (UOM amount + UOM text)
-            ono_uom_qty INTEGER,
+            ono_uom_qty TEXT,
             ono_uom TEXT,
             
             -- O.N.O. brand/specification
