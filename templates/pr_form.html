@@ -2,13 +2,13 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card-white">
     <div class="card-header">
         <h2>{% if is_edit %}Edit{% else %}New{% endif %} Purchase Requisition</h2>
         <p>Step 1: {% if is_edit %}Update{% else %}Fill out{% endif %} the purchase requisition form</p>
     </div>
 
-    <div class="card-body">
+    <div class="card-body bg-light">
         <!-- Progress Steps -->
         <div class="progress-steps">
         <div class="progress-step active">1</div>
@@ -60,6 +60,7 @@
                                 <th class="th-required" style="min-width:420px;">
                                     <span id="dimsHeaderLabel">Dimensions</span>
                                 </th>
+                                <th class="th" style="min-width:260px;"> Remarks (For Suppliers)</th>
                             </tr>
                         </thead>
 
@@ -102,18 +103,30 @@
 
                                 <!-- Quantity -->
                                 <td>
-                                    <input class="form-control qty-input"
-                                        type="text"
-                                        inputmode="numeric"
-                                        pattern="\d*"
-                                        autocomplete="off"
-                                        name="items[{{ loop.index0 }}][quantity]"
-                                        list="qty-list-{{ loop.index0 }}"
-                                        inputmode="numeric"
-                                        placeholder="Select or type"
-                                        value="{{ item.quantity or '' }}"
-                                        required>
-                                    <datalist id="qty-list-{{ loop.index0 }}" class="qty-datalist"></datalist>
+                                    <div class="qty-uom-grid" style="display:grid; grid-template-columns: 1fr 140px; gap:0.5rem; align-items:start;">
+                                        <div>
+                                            <input class="form-control qty-input"
+                                                type="text"
+                                                inputmode="numeric"
+                                                pattern="\d*"
+                                                autocomplete="off"
+                                                name="items[{{ loop.index0 }}][quantity]"
+                                                list="qty-list-{{ loop.index0 }}"
+                                                placeholder="Qty"
+                                                value="{{ item.quantity or '' }}"
+                                                required>
+                                            <datalist id="qty-list-{{ loop.index0 }}" class="qty-datalist"></datalist>
+                                        </div>
+
+                                        <div class="uom-col">
+                                            <input class="form-control uom-input"
+                                                type="text"
+                                                name="items[{{ loop.index0 }}][uom]"
+                                                list="uom-list"
+                                                placeholder="UOM"
+                                                value="{{ item.uom or '' }}">
+                                        </div>
+                                    </div>
                                 </td>
 
                                 <!-- Dimensions (we show all sections, JS reveals one based on global category) -->
@@ -130,7 +143,6 @@
                                                     autocomplete="off"
                                                     name="items[{{ loop.index0 }}][width]"
                                                     list="dim-width-list-{{ loop.index0 }}"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="{{ item.width or '' }}">
                                                 <datalist id="dim-width-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
@@ -144,7 +156,6 @@
                                                     autocomplete="off"
                                                     name="items[{{ loop.index0 }}][length]"
                                                     list="dim-length-list-{{ loop.index0 }}"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="{{ item.length or '' }}">
                                                 <datalist id="dim-length-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="12000"></datalist>
@@ -158,7 +169,6 @@
                                                     autocomplete="off"
                                                     name="items[{{ loop.index0 }}][thickness]"
                                                     list="dim-thickness-list-{{ loop.index0 }}"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="{{ item.thickness or '' }}">
                                                 <datalist id="dim-thickness-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="500"></datalist>
@@ -178,7 +188,6 @@
                                                     autocomplete="off"
                                                     name="items[{{ loop.index0 }}][dim_a]"
                                                     list="dim-dim_a-list-{{ loop.index0 }}"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="{{ item.dim_a or '' }}">
                                                 <datalist id="dim-dim_a-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
@@ -192,7 +201,6 @@
                                                     autocomplete="off"
                                                     name="items[{{ loop.index0 }}][dim_b]"
                                                     list="dim-dim_b-list-{{ loop.index0 }}"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="{{ item.dim_b or '' }}">
                                                 <datalist id="dim-dim_b-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
@@ -206,7 +214,6 @@
                                                     autocomplete="off"
                                                     name="items[{{ loop.index0 }}][length]"
                                                     list="dim-length-list-{{ loop.index0 }}"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="{{ item.length or '' }}">
                                                 <datalist id="dim-length-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
@@ -220,7 +227,6 @@
                                                     autocomplete="off"
                                                     name="items[{{ loop.index0 }}][thickness]"
                                                     list="dim-thickness-list-{{ loop.index0 }}"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="{{ item.thickness or '' }}">
                                                 <datalist id="dim-thickness-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
@@ -240,7 +246,6 @@
                                                     autocomplete="off"
                                                     name="items[{{ loop.index0 }}][diameter]"
                                                     list="dim-diameter-list-{{ loop.index0 }}"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="{{ item.diameter or '' }}">
                                                 <datalist id="dim-diameter-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
@@ -254,7 +259,6 @@
                                                     autocomplete="off"
                                                     name="items[{{ loop.index0 }}][length]"
                                                     list="dim-length-list-{{ loop.index0 }}"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="{{ item.length or '' }}">
                                                 <datalist id="dim-length-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
@@ -262,39 +266,28 @@
                                         </div>
                                     </div>
 
-                                    <!-- Other categories (UOM qty + UOM) -->
+                                    <!-- Other categories (UOM qty) -->
                                     <div class="dims-section dims-other" style="display:none;">
-                                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                        <div style="display:grid; grid-template-columns: 1fr; gap:0.5rem;">
                                             <div>
-                                                <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
-                                                <input class="form-control dimensions-input"
+                                                <label class="form-label" style="font-size:0.85rem;"></label>
+                                                <input class="form-control packing-input"
                                                     type="text"
-                                                    inputmode="numeric"
-                                                    pattern="\d*"
                                                     autocomplete="off"
                                                     name="items[{{ loop.index0 }}][uom_qty]"
-                                                    list="dim-uomqty-list-{{ loop.index0 }}"
-                                                    inputmode="numeric"
-                                                    placeholder="Select or type"
+                                                    placeholder="Type"
                                                     value="{{ item.uom_qty or '' }}">
-                                                <datalist id="dim-uomqty-list-{{ loop.index0 }}" class="dimensions-datalist" data-max="10000"></datalist>
-                                            </div>
-                                            <div>
-                                                <label class="form-label" style="font-size:0.85rem;">UOM</label>
-                                                {% set uom_val = item.uom or '' %}
-                                                <select class="form-control form-select" name="items[{{ loop.index0 }}][uom]">
-                                                <option value="">Select UOM</option>
-                                                <option value="pcs" {% if uom_val=='pcs' %}selected{% endif %}>pcs</option>
-                                                <option value="kg" {% if uom_val=='kg' %}selected{% endif %}>kg</option>
-                                                <option value="L"  {% if uom_val=='L' %}selected{% endif %}>L</option>
-                                                <option value="unit" {% if uom_val=='unit' %}selected{% endif %}>unit</option>
-                                                <option value="set" {% if uom_val=='set' %}selected{% endif %}>set</option>
-                                                <option value="m" {% if uom_val=='m' %}selected{% endif %}>m</option>
-                                                <option value="roll" {% if uom_val=='roll' %}selected{% endif %}>roll</option>
-                                                </select>
                                             </div>
                                         </div>
                                     </div>
+                                </td>
+
+                                <td>
+                                    <input type="text"
+                                        class="form-control"
+                                        name="items[{{ loop.index0 }}][our_remarks]"
+                                        placeholder="Type"
+                                        value="{{ item.our_remarks or '' }}">
                                 </td>
                             </tr>
                             {% endfor %}
@@ -325,17 +318,28 @@
                                 </td>
 
                                 <td>
-                                    <input class="form-control qty-input"
-                                        type="text"
-                                        inputmode="numeric"
-                                        pattern="\d*"
-                                        autocomplete="off"
-                                        name="items[0][quantity]"
-                                        list="qty-list-0"
-                                        inputmode="numeric"
-                                        placeholder="Select or type"
-                                        required>
-                                    <datalist id="qty-list-0" class="qty-datalist"></datalist>
+                                    <div class="qty-uom-grid" style="display:grid; grid-template-columns: 1fr 140px; gap:0.5rem; align-items:start;">
+                                        <div>
+                                            <input class="form-control qty-input"
+                                                type="text"
+                                                inputmode="numeric"
+                                                pattern="\d*"
+                                                autocomplete="off"
+                                                name="items[0][quantity]"
+                                                list="qty-list-0"
+                                                placeholder="Qty"
+                                                required>
+                                            <datalist id="qty-list-0" class="qty-datalist"></datalist>
+                                        </div>
+
+                                        <div class="uom-col">
+                                            <input class="form-control uom-input"
+                                                type="text"
+                                                name="items[0][uom]"
+                                                list="uom-list"
+                                                placeholder="UOM">
+                                        </div>
+                                    </div>
                                 </td>
 
                                 <td>
@@ -350,7 +354,6 @@
                                                     autocomplete="off"
                                                     name="items[0][width]"
                                                     list="dim-width-list-0"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="">
                                                 <datalist id="dim-width-list-0" class="dimensions-datalist" data-max="10000"></datalist>
@@ -364,7 +367,6 @@
                                                     autocomplete="off"
                                                     name="items[0][length]"
                                                     list="dim-length-list-0"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="">
                                                 <datalist id="dim-length-list-0" class="dimensions-datalist" data-max="10000"></datalist>
@@ -378,7 +380,6 @@
                                                     autocomplete="off"
                                                     name="items[0][thickness]"
                                                     list="dim-thickness-list-0"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="">
                                                 <datalist id="dim-thickness-list-0" class="dimensions-datalist" data-max="10000"></datalist>
@@ -397,7 +398,6 @@
                                                     autocomplete="off"
                                                     name="items[0][dim_a]"
                                                     list="dim-dim_a-list-0"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="">
                                                 <datalist id="dim-dim_a-list-0" class="dimensions-datalist" data-max="10000"></datalist>
@@ -411,7 +411,6 @@
                                                     autocomplete="off"
                                                     name="items[0][dim_b]"
                                                     list="dim-dim_b-list-0"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="">
                                                 <datalist id="dim-dim_b-list-0" class="dimensions-datalist" data-max="10000"></datalist>
@@ -425,7 +424,6 @@
                                                     autocomplete="off"
                                                     name="items[0][length]"
                                                     list="dim-length-list-0"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="">
                                                 <datalist id="dim-length-list-0" class="dimensions-datalist" data-max="10000"></datalist>
@@ -439,7 +437,6 @@
                                                     autocomplete="off"
                                                     name="items[0][thickness]"
                                                     list="dim-thickness-list-0"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="">
                                                 <datalist id="dim-thickness-list-0" class="dimensions-datalist" data-max="10000"></datalist>
@@ -458,7 +455,6 @@
                                                     autocomplete="off"
                                                     name="items[0][diameter]"
                                                     list="dim-diameter-list-0"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="">
                                                 <datalist id="dim-diameter-list-0" class="dimensions-datalist" data-max="10000"></datalist>
@@ -472,7 +468,6 @@
                                                     autocomplete="off"
                                                     name="items[0][length]"
                                                     list="dim-length-list-0"
-                                                    inputmode="numeric"
                                                     placeholder="Select or type"
                                                     value="">
                                                 <datalist id="dim-length-list-0" class="dimensions-datalist" data-max="10000"></datalist>
@@ -481,41 +476,39 @@
                                     </div>
 
                                     <div class="dims-section dims-other" style="display:none;">
-                                        <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                        <div style="display:grid; grid-template-columns: 1fr; gap:0.5rem;">
                                             <div>
-                                                <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
-                                                <input class="form-control dimensions-input"
+                                                <label class="form-label" style="font-size:0.85rem;"></label>
+                                                <input class="form-control packing-input"
                                                     type="text"
-                                                    inputmode="numeric"
-                                                    pattern="\d*"
                                                     autocomplete="off"
-                                                    name="items[0][width]"
-                                                    list="dim-width-list-0"
-                                                    inputmode="numeric"
-                                                    placeholder="Select or type"
+                                                    name="items[0][uom_qty]"
+                                                    placeholder="Type"
                                                     value="">
-                                                <datalist id="dim-width-list-0" class="dimensions-datalist" data-max="10000"></datalist>
-                                            </div>
-                                            <div>
-                                                <label class="form-label" style="font-size:0.85rem;">UOM</label>
-                                                <select class="form-control form-select" name="items[0][uom]">
-                                                    <option value="">Select UOM</option>
-                                                    <option value="pcs">pcs</option>
-                                                    <option value="kg">kg</option>
-                                                    <option value="L">L</option>
-                                                    <option value="unit">unit</option>
-                                                    <option value="set">set</option>
-                                                    <option value="m">m</option>
-                                                    <option value="roll">roll</option>
-                                                </select>
                                             </div>
                                         </div>
                                     </div>
+                                </td>
+
+                                <td>
+                                    <input type="text"
+                                        class="form-control"
+                                        name="items[0][our_remarks]"
+                                        placeholder="Type">
                                 </td>
                             </tr>
                         {% endif %}
                         </tbody>
                     </table>
+                    <datalist id="uom-list">
+                        <option value="pcs"></option>
+                        <option value="kg"></option>
+                        <option value="L"></option>
+                        <option value="unit"></option>
+                        <option value="set"></option>
+                        <option value="m"></option>
+                        <option value="roll"></option>
+                    </datalist>
                 </div>
             </div>
 
@@ -608,6 +601,26 @@
         });
     }
 
+    function updateQuantityUom(row, dimType) {
+        const grid = row.querySelector('.qty-uom-grid');
+        const uomCol = row.querySelector('.uom-col');
+        if (!grid || !uomCol) return;
+
+        const showUom = (dimType === 'other');
+
+        // show/hide column
+        uomCol.style.display = showUom ? '' : 'none';
+
+        // enable/disable the input so it won't submit for non-other
+        uomCol.querySelectorAll('input, select, textarea').forEach(el => {
+            el.disabled = !showUom;
+            if (!showUom) el.value = ''; // optional: clear it when hidden
+        });
+
+        // make qty full width when UOM hidden
+        grid.style.gridTemplateColumns = showUom ? '1fr 140px' : '1fr';
+    }
+
     function updateItemSuggestions(row, category) {
         const input = row.querySelector('.item-name-input');
         if (!input) return;
@@ -645,26 +658,27 @@
         updateDimensionsHeaderLabel(dimType);
 
         document.querySelectorAll('.item-row').forEach(row => {
-        // Hide + disable all dim sections
-        row.querySelectorAll('.dims-section').forEach(section => {
-            section.style.display = 'none';
-            setSectionEnabled(section, false);
-        });
+            updateQuantityUom(row, dimType);
+            // Hide + disable all dim sections
+            row.querySelectorAll('.dims-section').forEach(section => {
+                section.style.display = 'none';
+                setSectionEnabled(section, false);
+            });
 
-        // Show + enable chosen section
-        if (category) {
-            const targetSection = row.querySelector('.dims-' + dimType);
-            if (targetSection) {
-            targetSection.style.display = 'block';
-            setSectionEnabled(targetSection, true);
+            // Show + enable chosen section
+            if (category) {
+                const targetSection = row.querySelector('.dims-' + dimType);
+                if (targetSection) {
+                targetSection.style.display = 'block';
+                setSectionEnabled(targetSection, true);
+                }
             }
-        }
 
-        // Update item dropdown
-        updateItemSuggestions(row, category);
+            // Update item dropdown
+            updateItemSuggestions(row, category);
 
-        // Ensure dropdowns are populated (qty + dims)
-        populateRowDatalists(row);
+            // Ensure dropdowns are populated (qty + dims)
+            populateRowDatalists(row);
         });
     }
 
@@ -716,213 +730,202 @@
         return `
         <tr class="item-row" data-index="${index}">
             <td style="white-space:nowrap;">
-            <div style="display:flex; gap:0.5rem; align-items:center;">
-                <span class="item-no" style="font-weight:700;">${index + 1}</span>
-                <button type="button" class="btn btn-danger btn-sm remove-item" title="Remove item">
-                <i class="fas fa-times"></i>
-                </button>
-            </div>
+                <div style="display:flex; gap:0.5rem; align-items:center;">
+                    <span class="item-no" style="font-weight:700;">${index + 1}</span>
+                    <button type="button" class="btn btn-danger btn-sm remove-item" title="Remove item">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
             </td>
 
             <td>
-            <input class="form-control item-name-input"
-                    name="items[${index}][item_name]"
-                    list="items-list-${index}"
-                    placeholder="Select or type item"
-                    required>
-            <datalist id="items-list-${index}" class="item-name-datalist"></datalist>
+                <input class="form-control item-name-input"
+                        name="items[${index}][item_name]"
+                        list="items-list-${index}"
+                        placeholder="Select or type item"
+                        required>
+                <datalist id="items-list-${index}" class="item-name-datalist"></datalist>
             </td>
 
             <td>
-            <input type="text"
-                    class="form-control"
-                    name="items[${index}][brand]"
-                    placeholder="Preferred brand / spec">
+                <input type="text"
+                        class="form-control"
+                        name="items[${index}][brand]"
+                        placeholder="Preferred brand / spec">
             </td>
 
             <td>
-            <input class="form-control qty-input"
-                    type="text"
-                    inputmode="numeric"
-                    pattern="\d*"
-                    autocomplete="off"
-                    name="items[${index}][quantity]"
-                    list="qty-list-${index}"
-                    inputmode="numeric"
-                    pattern="\\d+"
-                    title="Please enter a whole number"
-                    placeholder="Select or type"
-                    required>
-            <datalist id="qty-list-${index}" class="qty-datalist"></datalist>
+                <div class="qty-uom-grid" style="display:grid; grid-template-columns: 1fr 140px; gap:0.5rem; align-items:start;">
+                    <div>
+                        <input class="form-control qty-input"
+                            type="text"
+                            inputmode="numeric"
+                            pattern="\\d*"
+                            autocomplete="off"
+                            name="items[${index}][quantity]"
+                            list="qty-list-${index}"
+                            placeholder="Qty"
+                            required>
+                        <datalist id="qty-list-${index}" class="qty-datalist"></datalist>
+                    </div>
+
+                    <div class="uom-col">
+                        <input class="form-control uom-input"
+                            type="text"
+                            name="items[${index}][uom]"
+                            list="uom-list"
+                            placeholder="UOM">
+                    </div>
+                </div>
             </td>
 
             <td>
-            <!-- Steel Plates / Stainless Steel -->
-            <div class="dims-section dims-steel-plates" style="display:none;">
-                <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
-                <div>
-                    <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
-                    <input class="form-control dimensions-input"
-                        type="text"
-                        inputmode="numeric"
-                        pattern="\d*"
-                        autocomplete="off"
-                        name="items[${index}][width]"
-                        list="dim-width-list-${index}"
-                        inputmode="numeric"
-                        placeholder="Select or type">
-                    <datalist id="dim-width-list-${index}" class="dimensions-datalist" data-max="10000"></datalist>
+                <!-- Steel Plates / Stainless Steel -->
+                <div class="dims-section dims-steel-plates" style="display:none;">
+                    <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
+                        <div>
+                            <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
+                            <input class="form-control dimensions-input"
+                                type="text"
+                                inputmode="numeric"
+                                pattern="\d*"
+                                autocomplete="off"
+                                name="items[${index}][width]"
+                                list="dim-width-list-${index}"
+                                placeholder="Select or type">
+                            <datalist id="dim-width-list-${index}" class="dimensions-datalist" data-max="10000"></datalist>
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                            <input class="form-control dimensions-input"
+                                type="text"
+                                inputmode="numeric"
+                                pattern="\d*"
+                                autocomplete="off"
+                                name="items[${index}][length]"
+                                list="dim-length-list-${index}"
+                                placeholder="Select or type">
+                            <datalist id="dim-length-list-${index}" class="dimensions-datalist" data-max="12000"></datalist>
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
+                            <input class="form-control dimensions-input"
+                                type="text"
+                                inputmode="numeric"
+                                pattern="\d*"
+                                autocomplete="off"
+                                name="items[${index}][thickness]"
+                                list="dim-thickness-list-${index}"
+                                placeholder="Select or type">
+                            <datalist id="dim-thickness-list-${index}" class="dimensions-datalist" data-max="500"></datalist>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                    <input class="form-control dimensions-input"
-                        type="text"
-                        inputmode="numeric"
-                        pattern="\d*"
-                        autocomplete="off"
-                        name="items[${index}][length]"
-                        list="dim-length-list-${index}"
-                        inputmode="numeric"
-                        placeholder="Select or type">
-                    <datalist id="dim-length-list-${index}" class="dimensions-datalist" data-max="12000"></datalist>
-                </div>
-                <div>
-                    <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                    <input class="form-control dimensions-input"
-                        type="text"
-                        inputmode="numeric"
-                        pattern="\d*"
-                        autocomplete="off"
-                        name="items[${index}][thickness]"
-                        list="dim-thickness-list-${index}"
-                        inputmode="numeric"
-                        placeholder="Select or type">
-                    <datalist id="dim-thickness-list-${index}" class="dimensions-datalist" data-max="500"></datalist>
-                </div>
-                </div>
-            </div>
 
-            <!-- Angle Bar -->
-            <div class="dims-section dims-angle-bar" style="display:none;">
-                <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
-                <div>
-                    <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
-                    <input class="form-control dimensions-input"
-                        type="text"
-                        inputmode="numeric"
-                        pattern="\d*"
-                        autocomplete="off"
-                        name="items[${index}][dim_a]"
-                        list="dim-dim_a-list-${index}"
-                        inputmode="numeric"
-                        placeholder="Select or type">
-                    <datalist id="dim-dim_a-list-${index}" class="dimensions-datalist" data-max="1000"></datalist>
+                <!-- Angle Bar -->
+                <div class="dims-section dims-angle-bar" style="display:none;">
+                    <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
+                        <div>
+                            <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
+                            <input class="form-control dimensions-input"
+                                type="text"
+                                inputmode="numeric"
+                                pattern="\d*"
+                                autocomplete="off"
+                                name="items[${index}][dim_a]"
+                                list="dim-dim_a-list-${index}"
+                                placeholder="Select or type">
+                            <datalist id="dim-dim_a-list-${index}" class="dimensions-datalist" data-max="1000"></datalist>
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
+                            <input class="form-control dimensions-input"
+                                type="text"
+                                inputmode="numeric"
+                                pattern="\d*"
+                                autocomplete="off"
+                                name="items[${index}][dim_b]"
+                                list="dim-dim_b-list-${index}"
+                                placeholder="Select or type">
+                            <datalist id="dim-dim_b-list-${index}" class="dimensions-datalist" data-max="1000"></datalist>
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                            <input class="form-control dimensions-input"
+                                type="text"
+                                inputmode="numeric"
+                                pattern="\d*"
+                                autocomplete="off"
+                                name="items[${index}][length]"
+                                list="dim-length-list-${index}"
+                                placeholder="Select or type">
+                            <datalist id="dim-length-list-${index}" class="dimensions-datalist" data-max="12000"></datalist>
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
+                            <input class="form-control dimensions-input"
+                                type="text"
+                                inputmode="numeric"
+                                pattern="\d*"
+                                autocomplete="off"
+                                name="items[${index}][thickness]"
+                                list="dim-thickness-list-${index}"
+                                placeholder="Select or type">
+                            <datalist id="dim-thickness-list-${index}" class="dimensions-datalist" data-max="500"></datalist>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
-                    <input class="form-control dimensions-input"
-                        type="text"
-                        inputmode="numeric"
-                        pattern="\d*"
-                        autocomplete="off"
-                        name="items[${index}][dim_b]"
-                        list="dim-dim_b-list-${index}"
-                        inputmode="numeric"
-                        placeholder="Select or type">
-                    <datalist id="dim-dim_b-list-${index}" class="dimensions-datalist" data-max="1000"></datalist>
-                </div>
-                <div>
-                    <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                    <input class="form-control dimensions-input"
-                        type="text"
-                        inputmode="numeric"
-                        pattern="\d*"
-                        autocomplete="off"
-                        name="items[${index}][length]"
-                        list="dim-length-list-${index}"
-                        inputmode="numeric"
-                        placeholder="Select or type">
-                    <datalist id="dim-length-list-${index}" class="dimensions-datalist" data-max="12000"></datalist>
-                </div>
-                <div>
-                    <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
-                    <input class="form-control dimensions-input"
-                        type="text"
-                        inputmode="numeric"
-                        pattern="\d*"
-                        autocomplete="off"
-                        name="items[${index}][thickness]"
-                        list="dim-thickness-list-${index}"
-                        inputmode="numeric"
-                        placeholder="Select or type">
-                    <datalist id="dim-thickness-list-${index}" class="dimensions-datalist" data-max="500"></datalist>
-                </div>
-                </div>
-            </div>
 
-            <!-- Bolts/Rebar/Nuts -->
-            <div class="dims-section dims-bolts-rebar" style="display:none;">
-                <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
-                <div>
-                    <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
-                    <input class="form-control dimensions-input"
-                        type="text"
-                        inputmode="numeric"
-                        pattern="\d*"
-                        autocomplete="off"
-                        name="items[${index}][diameter]"
-                        list="dim-diameter-list-${index}"
-                        inputmode="numeric"
-                        placeholder="Select or type">
-                    <datalist id="dim-diameter-list-${index}" class="dimensions-datalist" data-max="9999"></datalist>
+                <!-- Bolts/Rebar/Nuts -->
+                <div class="dims-section dims-bolts-rebar" style="display:none;">
+                    <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
+                        <div>
+                            <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
+                            <input class="form-control dimensions-input"
+                                type="text"
+                                inputmode="numeric"
+                                pattern="\d*"
+                                autocomplete="off"
+                                name="items[${index}][diameter]"
+                                list="dim-diameter-list-${index}"
+                                placeholder="Select or type">
+                            <datalist id="dim-diameter-list-${index}" class="dimensions-datalist" data-max="9999"></datalist>
+                        </div>
+                        <div>
+                            <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                            <input class="form-control dimensions-input"
+                                type="text"
+                                inputmode="numeric"
+                                pattern="\d*"
+                                autocomplete="off"
+                                name="items[${index}][length]"
+                                list="dim-length-list-${index}"
+                                placeholder="Select or type">
+                            <datalist id="dim-length-list-${index}" class="dimensions-datalist" data-max="9999"></datalist>
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
-                    <input class="form-control dimensions-input"
-                        type="text"
-                        inputmode="numeric"
-                        pattern="\d*"
-                        autocomplete="off"
-                        name="items[${index}][length]"
-                        list="dim-length-list-${index}"
-                        inputmode="numeric"
-                        placeholder="Select or type">
-                    <datalist id="dim-length-list-${index}" class="dimensions-datalist" data-max="9999"></datalist>
-                </div>
-                </div>
-            </div>
 
-            <!-- Other -->
-            <div class="dims-section dims-other" style="display:none;">
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
-                <div>
-                    <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
-                    <input class="form-control dimensions-input"
-                        type="text"
-                        inputmode="numeric"
-                        pattern="\d*"
-                        autocomplete="off"
-                        name="items[${index}][uom_qty]"
-                        list="dim-uomqty-list-${index}"
-                        inputmode="numeric"
-                        placeholder="Select or type">
-                    <datalist id="dim-uomqty-list-${index}" class="dimensions-datalist" data-max="10000"></datalist>
+                <!-- Other -->
+                <div class="dims-section dims-other" style="display:none;">
+                    <div style="display:grid; grid-template-columns: 1fr; gap:0.5rem;">
+                        <div>
+                            <label class="form-label" style="font-size:0.85rem;"></label>
+                            <input class="form-control packing-input"
+                                type="text"
+                                autocomplete="off"
+                                name="items[${index}][uom_qty]"
+                                placeholder="Type">
+                        </div>
+                    </div>
                 </div>
-                <div>
-                    <label class="form-label" style="font-size:0.85rem;">UOM</label>
-                    <select class="form-control form-select" name="items[${index}][uom]">
-                    <option value="">Select UOM</option>
-                    <option value="pcs">pcs</option>
-                    <option value="kg">kg</option>
-                    <option value="L">L</option>
-                    <option value="unit">unit</option>
-                    <option value="set">set</option>
-                    <option value="m">m</option>
-                    <option value="roll">roll</option>
-                    </select>
-                </div>
-                </div>
-            </div>
+            </td>
+
+            <td>
+                <input type="text"
+                        class="form-control"
+                        name="items[${index}][our_remarks]"
+                        placeholder="Type">
             </td>
         </tr>
         `;
@@ -972,3 +975,4 @@
     });
 </script>
 {% endblock %}
+

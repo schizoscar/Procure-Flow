@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card-white">
     <div class="card-header">
-        <h2>Capture Quote - {{ supplier.name }}</h2>
+        <h2>Edit Quote - {{ supplier.name }}</h2>
 
         <table style="border-collapse:collapse; margin-top:0.5rem;">
             <tr>
@@ -19,7 +19,7 @@
         </table>
     </div>
 
-    <div class="card-body">
+    <div class="card-body bg-light">
         <form method="POST" enctype="multipart/form-data">
 
             <!-- Payment Terms -->
@@ -42,7 +42,7 @@
 
             <!-- Master quotation upload -->
             <div class="card mb-3" style="border: 1px solid #1a73e8; background-color: #f8faff;">
-                <div class="card-body">
+                <div class="card-body bg-light">
                     <label class="form-label" style="font-weight: 600; color: #1a73e8;">
                         Upload Master Quotation (Optional)
                     </label>
@@ -78,7 +78,7 @@
                 <table class="table" style="width:100%; border-collapse: collapse;">
                     <thead>
                         <tr>
-                            <th style="min-width:240px;">
+                            <th style="min-width:190px;">
                                 Item
                                 {% if pr_items and pr_items[0].item_category %}
                                     ({{ pr_items[0].item_category }})
@@ -117,8 +117,17 @@
                                             <span>{{ item.specification }}</span>
                                         {% endif %}
 
+                                        {% set DIM_CATS = ['Steel Plates','Stainless Steel','Angle Bar','Bolts, Fasteners','Rebar','Nuts'] %}
+                                    </div>
+
+                                    <div style="margin-top:0.25rem;">
+                                        
                                         <span>
-                                            • Qty: {{ item.quantity if item.quantity is not none else '-' }}
+                                            Qty:
+                                            {{ item.quantity if item.quantity is not none else '-' }}
+                                            {% if cat not in DIM_CATS and item.uom %}
+                                                {{ item.uom }}
+                                            {% endif %}
                                         </span>
                                     </div>
 
@@ -137,7 +146,14 @@
                                             × {{ item.length if item.length is not none else '-' }} mm (L)
                                         {% else %}
                                             Packing: {{ item.uom_qty if item.uom_qty is not none else '-' }}
-                                            {{ item.uom if item.uom is not none else '' }}
+                                        {% endif %}
+                                    </div>
+
+                                    <div style="margin-top:0.25rem;">
+                                        {% if item.our_remarks %}
+                                            <div style="margin-top:0.25rem; font-weight:400;">
+                                                <small><strong>Remarks:</strong> {{ item.our_remarks }}</small>
+                                            </div>
                                         {% endif %}
                                     </div>
                                 </div>
@@ -219,8 +235,7 @@
                                 <input type="file"
                                        class="form-control"
                                        name="cert_{{ item.id }}"
-                                       id="cert_{{ item.id }}"
-                                       {% if not (existing and existing.cert_file_id) %}required{% endif %}>
+                                       id="cert_{{ item.id }}">
 
                                 {% if existing and existing.cert_file_id %}
                                     <div style="margin-top:0.5rem;">
@@ -451,41 +466,18 @@
                                     </div>
 
                                 {% else %}
-                                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                    <div style="display:grid; grid-template-columns: 1fr; gap:0.5rem;">
                                         <div>
-                                            <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
-                                            <input class="form-control ono-dim-input integer-input"
+                                            <label class="form-label" style="font-size:0.85rem;">Packing / UOM Amount</label>
+                                            <input class="form-control ono-text-input"
                                                 type="text"
-                                                inputmode="numeric"
                                                 autocomplete="off"
-                                                pattern="\d*"
                                                 name="ono_uom_qty_{{ item.id }}"
-                                                list="ono-uomqty-list-{{ item.id }}"
-                                                placeholder="Select or type">
-
-                                            <datalist id="ono-uomqty-list-{{ item.id }}"
-                                                    class="integer-datalist"
-                                                    data-max="10000">
-                                                {% if existing and existing.ono_uom_qty is defined and existing.ono_uom_qty %}
-                                                    <option value="{{ existing.ono_uom_qty }}" selected>{{ existing.ono_uom_qty }}</option>
-                                                {% endif %}
-                                            </datalist>
-                                        </div>
-                                        <div>
-                                            <label class="form-label" style="font-size:0.85rem;">UOM</label>
-                                            {% set ou = existing.ono_uom if existing and existing.ono_uom is defined else '' %}
-                                            <select class="form-control" name="ono_uom_{{ item.id }}">
-                                                <option value="" {% if ou=='' %}selected{% endif %}>Select UOM</option>
-                                                <option value="pcs" {% if ou=='pcs' %}selected{% endif %}>pcs</option>
-                                                <option value="kg" {% if ou=='kg' %}selected{% endif %}>kg</option>
-                                                <option value="L" {% if ou=='L' %}selected{% endif %}>L</option>
-                                                <option value="unit" {% if ou=='unit' %}selected{% endif %}>unit</option>
-                                                <option value="set" {% if ou=='set' %}selected{% endif %}>set</option>
-                                                <option value="m" {% if ou=='m' %}selected{% endif %}>m</option>
-                                                <option value="roll" {% if ou=='roll' %}selected{% endif %}>roll</option>
-                                            </select>
+                                                placeholder="Type (e.g. 20 pcs/box, 5L, 1 roll)"
+                                                value="{{ (existing.ono_uom_qty if existing and existing.ono_uom_qty is defined else '')|default('', true) }}">
                                         </div>
                                     </div>
+
                                     <div style="margin-top:0.5rem;">
                                         <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
                                         <input type="text" class="form-control" name="ono_brand_{{ item.id }}" value="{{ (existing.ono_brand if existing else '')|default('', true) }}">

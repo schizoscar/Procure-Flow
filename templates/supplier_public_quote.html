@@ -4,13 +4,40 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Submit Quote - {{ task.task_name }}</title>
+    <title>Submit Quote - Hercules Engineering Procurement</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .public-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .public-header-logo {
+            max-width: 250px;
+            height: auto;
+            margin-bottom: 1rem;
+        }
+
+        .public-header h1 {
+            color: #0052A3;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 0.5rem 0;
+        }
+    </style>
 </head>
 
 <body>
-    <div style="min-height:100vh; display:flex; justify-content:center; align-items:center; padding:2rem;">
-        <div class="card">
+    <div style="max-width: 720px; margin: 20px auto 0; padding: 0 16px;">
+        <div class="public-header">
+            <img src="{{ url_for('static', filename='Hercules-Logo-WS.png') }}" alt="Hercules Logo" class="public-header-logo">
+            <h1>Procurement System</h1>
+        </div>
+    </div>
+
+    <div style="margin: 18px auto 40px; padding: 0 32px;">
+        <div class="card-white">
             <div class="card-header">
                 <h2>Submit Quote</h2>
                 <table style="border-collapse:collapse;">
@@ -26,7 +53,8 @@
                     </tr>
                 </table>
             </div>
-            <div class="card-body">
+
+            <div class="card-body bg-light">
                 <form method="POST" enctype="multipart/form-data">
 
                     <!-- Payment Terms (same style as supplier_public_quote) -->
@@ -49,7 +77,7 @@
 
                     <!-- Master quotation upload (same style) -->
                     <div class="card mb-3" style="border: 1px solid #1a73e8; background-color: #f8faff;">
-                        <div class="card-body">
+                        <div class="card-body bg-light">
                             <label class="form-label" style="font-weight: 600; color: #1a73e8;">
                                 Upload Master Quotation (Optional)
                             </label>
@@ -80,8 +108,8 @@
                     </div>
 
                     <!-- Items table -->
-                    <div style="overflow-x:auto;">
-                        <table class="table" style="width:100%; border-collapse: collapse;">
+                    <div class="table-wrap">
+                        <table class="table">
                             <thead>
                                 <tr>
                                     <th style="min-width:240px;">
@@ -122,8 +150,17 @@
                                                     <span>{{ item.specification }}</span>
                                                 {% endif %}
 
+                                                {% set DIM_CATS = ['Steel Plates','Stainless Steel','Angle Bar','Bolts, Fasteners','Rebar','Nuts'] %}
+                                            </div>
+                                    
+                                            <div style="margin-top:0.25rem;">
+                                                
                                                 <span>
-                                                    • Qty: {{ item.quantity if item.quantity is not none else '-' }}
+                                                    Qty:
+                                                    {{ item.quantity if item.quantity is not none else '-' }}
+                                                    {% if cat not in DIM_CATS and item.uom %}
+                                                        {{ item.uom }}
+                                                    {% endif %}
                                                 </span>
                                             </div>
 
@@ -142,7 +179,14 @@
                                                     × {{ item.length if item.length is not none else '-' }} mm (L)
                                                 {% else %}
                                                     Packing: {{ item.uom_qty if item.uom_qty is not none else '-' }}
-                                                    {{ item.uom if item.uom is not none else '' }}
+                                                {% endif %}
+                                            </div>
+
+                                            <div style="margin-top:0.25rem;">
+                                                {% if item.our_remarks %}
+                                                    <div style="margin-top:0.25rem; font-weight:400;">
+                                                        <small><strong>Remarks:</strong> {{ item.our_remarks }}</small>
+                                                    </div>
                                                 {% endif %}
                                             </div>
                                         </div>
@@ -384,36 +428,17 @@
                                             </div>
 
                                         {% else %}
-                                            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:0.5rem;">
+                                            <div style="display:grid; grid-template-columns: 1fr; gap:0.5rem;">
                                                 <div>
-                                                    <label class="form-label" style="font-size:0.85rem;">UOM Amount</label>
-                                                    <input class="form-control ono-dim-input integer-input"
+                                                    <label class="form-label" style="font-size:0.85rem;">Packing / UOM Amount</label>
+                                                    <input class="form-control ono-text-input"
                                                         type="text"
-                                                        inputmode="numeric"
                                                         autocomplete="off"
-                                                        pattern="\d*"
                                                         name="ono_uom_qty_{{ item.id }}"
-                                                        list="ono-uomqty-list-{{ item.id }}"
-                                                        placeholder="Select or type">
-
-                                                    <datalist id="ono-uomqty-list-{{ item.id }}"
-                                                            class="integer-datalist"
-                                                            data-max="10000"></datalist>
-                                                </div>
-                                                <div>
-                                                    <label class="form-label" style="font-size:0.85rem;">UOM</label>
-                                                    <select class="form-control" name="ono_uom_{{ item.id }}">
-                                                        <option value="">Select UOM</option>
-                                                        <option value="pcs">pcs</option>
-                                                        <option value="kg">kg</option>
-                                                        <option value="L">L</option>
-                                                        <option value="unit">unit</option>
-                                                        <option value="set">set</option>
-                                                        <option value="m">m</option>
-                                                        <option value="roll">roll</option>
-                                                    </select>
+                                                        placeholder="Type (e.g. 20 pcs/box, 5L, 1 roll)">
                                                 </div>
                                             </div>
+
                                             <div style="margin-top:0.5rem;">
                                                 <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
                                                 <input type="text" class="form-control" name="ono_brand_{{ item.id }}">
@@ -615,6 +640,8 @@
 
         });
     </script>
+        </div>
+    </div>
 </body>
 
 </html>
