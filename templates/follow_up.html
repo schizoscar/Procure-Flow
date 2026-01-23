@@ -1,12 +1,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card-white">
     <div class="card-header">
         <h2>Send Follow-up Emails</h2>
         <p>Only suppliers without replies will be contacted.</p>
     </div>
-    <div class="card-body">
+    <div class="card-body bg-light">
         {% if pending_suppliers %}
         <form method="POST">
             <div class="form-group">

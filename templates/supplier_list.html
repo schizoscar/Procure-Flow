@@ -2,7 +2,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card-white">
     <div class="card-header d-flex justify-between align-center">
         <h2>Suppliers List</h2>
         {% if user_role == 'admin' %}
@@ -12,7 +12,7 @@
         {% endif %}
     </div>
 
-    <div class="card-body">
+    <div class="card-body bg-light">
 
         <!-- Search bar row (below title, above table) -->
         <div style="margin: 10px 0 14px;">

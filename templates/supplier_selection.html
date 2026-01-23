@@ -2,12 +2,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card-white">
     <div class="card-header">
         <h2>Assign Suppliers</h2>
         <p>Step 2: Select which suppliers receive which items for {{ task.task_name }}</p>
     </div>
-    <div class="card-body">
+    <div class="card-body bg-light">
         <!-- Progress Steps -->
         <div class="progress-steps">
             <div class="progress-step completed">1</div>
@@ -21,7 +21,7 @@
             <div class="card-header">
                 <h4><i class="fas fa-list"></i> Your Items</h4>
             </div>
-            <div class="card-body">
+            <div class="card-body bg-light">
                 <div class="items-overview">
                     {% for item in pr_items %}
                     <div class="item-card">
@@ -32,32 +32,38 @@
                         <div class="item-details">
                             <p><strong>{{ item.item_name }}</strong></p>
                             {% if item.brand %}<p>Brand / Specification: {{ item.brand }}</p>{% endif %}
-                            <p>Quantity: {{ item.quantity }}</p>
+                            {% set DIM_CATS = ['Steel Plates', 'Stainless Steel', 'Angle Bar', 'Bolts, Fasteners', 'Rebar'] %}
+                            <p>
+                                <strong>Quantity:</strong>
+                                {{ item.quantity or '-' }}
+                                {% if item.item_category not in DIM_CATS and item.uom %}
+                                    {{ item.uom }}
+                                {% endif %}
+                            </p>
+                            <p>Remarks (To Supplier): {{ item.our_remarks or '-' }}</p>
                             {% set cat = item.item_category %}
                             <p class="text-muted">
                                 {# Optional free-text spec (if you still want it) #}
                                 {% if item.specification %}{{ item.specification }}<br>{% endif %}
 
                                 {% if cat in ['Steel Plates', 'Stainless Steel'] %}
-                                    <strong>Dims (W × L × Thk):</strong>
-                                    {{ item.width or '-' }} × {{ item.length or '-' }} × {{ item.thickness or '-' }} mm
+                                    <strong>Dimensions:</strong>
+                                    {{ item.width or '-' }} mm (W) × {{ item.length or '-' }} mm (L) × {{ item.thickness or '-' }} mm (Thk)
 
                                 {% elif cat == 'Angle Bar' %}
-                                    <strong>Dims (A × B × L × Thk):</strong>
-                                    {{ item.dim_a or '-' }} × {{ item.dim_b or '-' }} × {{ item.length or '-' }} × {{ item.thickness or '-' }} mm
+                                    <strong>Dimensions:</strong>
+                                    {{ item.dim_a or '-' }} mm (A) × {{ item.dim_b or '-' }} mm (B) × {{ item.length or '-' }} mm (L) × {{ item.thickness or '-' }} mm (Thk)
 
                                 {% elif cat in ['Bolts, Fasteners', 'Rebar'] %}
-                                    <strong>Dims (D × L):</strong>
-                                    {{ item.diameter or '-' }} × {{ item.length or '-' }} mm
-
+                                    <strong>Dimensions:</strong>
+                                    {{ item.diameter or '-' }} mm (D) × {{ item.length or '-' }} mm (L)
                                 {% else %}
                                     {% if item.uom_qty or item.uom %}
-                                        <strong>UOM:</strong>
+                                        <strong>Packing:</strong>
                                         {{ item.uom_qty or '-' }}{% if item.uom %} {{ item.uom }}{% endif %}
                                     {% endif %}
                                 {% endif %}
                             </p>
-
                         </div>
                     </div>
                     {% endfor %}
@@ -66,12 +72,12 @@
         </div>
 
         <form method="POST">
-            <div class="card">
+            <div class="card-white">
                 <div class="card-header">
                     <h4><i class="fas fa-users"></i> Assign Items to Compatible Suppliers</h4>
                     <p class="mb-0">Select suppliers and choose which items they should quote on</p>
                 </div>
-                <div class="card-body">
+                <div class="card-body bg-light">
                     {% if suppliers %}
                     <div class="compatibility-info mb-4 p-3 bg-info-light border-radius">
                         <h5><i class="fas fa-info-circle"></i> Smart Assignment</h5>
@@ -156,7 +162,7 @@
 }
 
 .supplier-assignment-card:hover {
-    border-color: var(--dusty-purple);
+    border-color: var(--hercules-blue);
     box-shadow: 0 2px 8px rgba(139, 123, 158, 0.1);
 }
 
@@ -170,12 +176,12 @@
 .supplier-selection input[type="checkbox"] {
     width: 18px;
     height: 18px;
-    accent-color: var(--dusty-purple);
+    accent-color: var(--hercules-blue);
 }
 
 .supplier-name {
     font-size: 1.1rem;
-    color: var(--dusty-purple-dark);
+    color: var(--hercules-blue);
     cursor: pointer;
     margin: 0;
 }
@@ -194,7 +200,7 @@
 }
 
 .detail-item i {
-    color: var(--dusty-purple);
+    color: var(--hercules-blue);
     width: 16px;
 }
 
@@ -215,7 +221,7 @@
 }
 
 .item-category {
-    background: var(--dusty-purple);
+    background: var(--hercules-blue);
     color: white;
     padding: 0.25rem 0.5rem;
     border-radius: 4px;

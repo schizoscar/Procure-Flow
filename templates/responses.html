@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card-white">
     <div class="card-header d-flex justify-between align-center">
         <div>
             <h2>Supplier Responses - {{ task.task_name }}</h2>
@@ -12,7 +12,7 @@
             <a href="{{ url_for('export_comparison', task_id=task.id) }}" class="btn btn-secondary"><i class="fas fa-file-excel"></i> Export Comparison</a>
         </div>
     </div>
-    <div class="card-body">
+    <div class="card-body bg-light">
         {% if suppliers %}
         <table class="table">
             <thead>

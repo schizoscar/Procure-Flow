@@ -15,7 +15,10 @@
         <!-- Sidebar -->
         <div class="sidebar" id="sidebar">
             <div class="sidebar-header">
-                <h1><i class="fas fa-shopping-cart"></i> Procure Flow</h1>
+                <div class="sidebar-text">
+                    <h1>Procure Flow</h1>
+                    <p class="app-subtitle">Procurement System</p>
+                </div>
             </div>
             <div class="menu-content">
                 <a href="{{ url_for('index') }}">
@@ -49,9 +52,16 @@
 
         <!-- Main Content -->
         <div class="main-content" id="mainContent">
-            <button class="hamburger" id="hamburger">
-                <i class="fas fa-bars"></i>
-            </button>
+
+            <div class="topbar">
+                <button class="hamburger" id="hamburger">
+                    <i class="fas fa-bars"></i>
+                </button>
+
+                <img src="{{ url_for('static', filename='Hercules-Logo-WS.png') }}"
+                    alt="Hercules Logo"
+                    class="top-logo">
+            </div>
 
             <!-- Flash Messages -->
             {% with messages = get_flashed_messages(with_categories=true) %}

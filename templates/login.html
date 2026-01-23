@@ -5,51 +5,176 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Procure Flow</title>
+    <title>Login - Procure Flow | Hercules Engineering</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .login-container {
+            display: flex;
+            min-height: 100vh;
+            background: linear-gradient(135deg, #003366 0%, #0052A3 100%);
+            align-items: center;
+            justify-content: center;
+            padding: 1rem;
+        }
+
+        .login-card {
+            background: var(--white);
+            border-radius: 12px;
+            padding: 3rem 2.5rem;
+            max-width: 420px;
+            width: 100%;
+            box-shadow: 0 10px 40px rgba(0, 51, 102, 0.2);
+        }
+
+        .login-header {
+            text-align: center;
+            margin-bottom: 2.5rem;
+            border-bottom: 2px solid var(--hercules-blue-lighter);
+            padding-bottom: 2rem;
+        }
+
+        .login-logo {
+            max-width: 100px;
+            height: auto;
+            margin-bottom: 1rem;
+        }
+
+        .login-header h1 {
+            color: var(--hercules-blue);
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 0.5rem 0;
+        }
+
+        .login-header .company-name {
+            color: var(--text-light);
+            font-size: 0.95rem;
+            font-weight: 500;
+            margin: 0.25rem 0;
+        }
+
+        .login-header .app-type {
+            color: var(--text-dark);
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-top: 0.75rem;
+            color: var(--hercules-blue);
+        }
+
+        .login-form {
+            margin-bottom: 1.5rem;
+        }
+
+        .login-form .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .login-form .form-label {
+            color: var(--hercules-blue);
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .login-form .form-control {
+            border: 2px solid var(--gray-border);
+            padding: 0.85rem 1rem;
+            font-size: 1rem;
+        }
+
+        .login-form .form-control:focus {
+            border-color: var(--hercules-blue);
+            box-shadow: 0 0 0 3px rgba(0, 51, 102, 0.1);
+        }
+
+        .login-btn {
+            width: 100%;
+            padding: 0.9rem;
+            background: linear-gradient(135deg, var(--hercules-blue), var(--hercules-blue-light));
+            color: var(--white);
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 12px rgba(0, 51, 102, 0.3);
+        }
+
+        .login-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 51, 102, 0.4);
+        }
+
+        .login-footer {
+            text-align: center;
+            margin-top: 1.5rem;
+            padding-top: 1.5rem;
+            border-top: 1px solid var(--gray-border);
+        }
+
+        .login-footer a {
+            color: var(--hercules-blue);
+            text-decoration: none;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.3s ease;
+        }
+
+        .login-footer a:hover {
+            color: var(--hercules-blue-light);
+            text-decoration: underline;
+        }
+
+        .login-footer i {
+            margin-right: 0.4rem;
+        }
+    </style>
 </head>
 
 <body>
-    <div class="container" style="justify-content: center; align-items: center;">
-        <div class="card" style="max-width: 400px; width: 100%;">
-            <div class="card-header text-center">
-                <h1><i class="fas fa-shopping-cart"></i> Procure Flow</h1>
-                <p>Procurement Management System</p>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-header">
+                <img src="{{ url_for('static', filename='Hercules-Logo-WS.png') }}" alt="Hercules Logo" class="login-logo">
+                <h1>Procure Flow</h1>
+                <p class="company-name">HERCULES ENGINEERING</p>
+                <p class="app-type">Procurement Management System</p>
             </div>
-            <div class="card-body">
-                <form method="POST">
-                    <div class="form-group">
-                        <label class="form-label">Username</label>
-                        <input type="text" class="form-control" name="username" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Password</label>
-                        <input type="password" class="form-control" name="password" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">
-                        <i class="fas fa-sign-in-alt"></i> Login
-                    </button>
-                </form>
 
-                <div class="text-center mt-2">
-                    <a href="{{ url_for('forgot_password') }}" class="link">
-                        <i class="fas fa-unlock-alt"></i> Forgot password?
-                    </a>
+            <form method="POST" class="login-form">
+                <div class="form-group">
+                    <label class="form-label" for="username">
+                        <i class="fas fa-user"></i> Username
+                    </label>
+                    <input type="text" class="form-control" id="username" name="username" required>
                 </div>
-
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                {% if messages %}
-                {% for category, message in messages %}
-                <div class="alert alert-{{ category if category != 'message' else 'info' }} mt-2">
-                    {{ message }}
+                <div class="form-group">
+                    <label class="form-label" for="password">
+                        <i class="fas fa-lock"></i> Password
+                    </label>
+                    <input type="password" class="form-control" id="password" name="password" required>
                 </div>
-                {% endfor %}
-                {% endif %}
-                {% endwith %}
+                <button type="submit" class="login-btn">
+                    <i class="fas fa-sign-in-alt"></i> Login
+                </button>
+            </form>
 
-                <!-- Default credentials removed for security -->
+            <div class="login-footer">
+                <a href="{{ url_for('forgot_password') }}">
+                    <i class="fas fa-unlock-alt"></i> Forgot password?
+                </a>
             </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category if category != 'message' else 'info' }} mt-2">
+                {{ message }}
+            </div>
+            {% endfor %}
+            {% endif %}
+            {% endwith %}
         </div>
     </div>
 </body>

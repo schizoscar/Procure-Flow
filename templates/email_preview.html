@@ -2,12 +2,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card-white">
     <div class="card-header">
         <h2>Edit & Preview Emails</h2>
         <p>Step 3: Write and review emails for {{ task.task_name }}</p>
     </div>
-    <div class="card-body">
+    <div class="card-body bg-light">
         <!-- Progress Steps -->
         <div class="progress-steps">
             <div class="progress-step completed">1</div>
@@ -32,7 +32,7 @@
                         <span class="badge">{{ template.suppliers|length }} recipient(s)</span>
                     </h4>
                 </div>
-                <div class="card-body">
+                <div class="card-body bg-light">
                     <div class="template-info mb-3">
                         <div class="row">
                             <div class="col-md-6">
@@ -126,11 +126,11 @@
         </div>
 
         <!-- Email Editor -->
-        <div class="card">
+        <div class="card-white">
             <div class="card-header">
                 <h4><i class="fas fa-edit"></i> Write Your Email</h4>
             </div>
-            <div class="card-body">
+            <div class="card-body bg-light">
                 <form method="POST" id="emailForm">
                     <div class="form-group">
                         <label class="form-label">Email Subject</label>
@@ -305,7 +305,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .badge {
-    background: var(--dusty-purple);
+    background: var(--hercules-blue);
     color: white;
     padding: 0.25rem 0.75rem;
     border-radius: 12px;
@@ -317,7 +317,7 @@ document.addEventListener('DOMContentLoaded', function() {
     background: #f8f9fa;
     padding: 1rem;
     border-radius: 6px;
-    border-left: 4px solid var(--dusty-purple);
+    border-left: 4px solid var(--hercules-blue);
 }
 
 .recipients-grid {
@@ -336,7 +336,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 .recipient-name {
     font-weight: 600;
-    color: var(--dusty-purple-dark);
+    color: var(--hercules-blue);
     margin-bottom: 0.25rem;
 }
 
@@ -374,7 +374,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .email-body h2 {
-    color: var(--dusty-purple-dark);
+    color: var(--hercules-blue);
     margin-bottom: 1rem;
 }
 
@@ -392,7 +392,7 @@ document.addEventListener('DOMContentLoaded', function() {
     padding: 0.5rem;
     background: #f8f9fa;
     border-radius: 4px;
-    border-left: 3px solid var(--dusty-purple);
+    border-left: 3px solid var(--hercules-blue);
 }
 
 .placeholder {
@@ -438,9 +438,9 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .btn-tool:hover {
-    background: var(--dusty-purple);
+    background: var(--hercules-blue);
     color: white;
-    border-color: var(--dusty-purple);
+    border-color: var(--hercules-blue);
 }
 
 .email-editor {

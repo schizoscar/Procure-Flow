@@ -2,12 +2,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card-white">
     <div class="card-header">
         <h2>Send Emails</h2>
         <p>Final Step: Confirm and send emails for {{ task.task_name }}</p>
     </div>
-    <div class="card-body">
+    <div class="card-body bg-light">
         <!-- Progress Steps -->
         <div class="progress-steps">
             <div class="progress-step completed">1</div>
@@ -25,7 +25,7 @@
             <div class="card-header">
                 <h4><i class="fas fa-paper-plane"></i> Email Summary</h4>
             </div>
-            <div class="card-body">
+            <div class="card-body bg-light">
                 <div class="row">
                     <div class="col-md-6">
                         <h5>Recipients</h5>
@@ -75,9 +75,15 @@
                                         {% else %}
                                             Packing:
                                             {{ item.uom_qty if item.uom_qty is not none else '-' }}
-                                            {{ item.uom if item.uom is not none else '' }}
                                         {% endif %}
-                                        &nbsp;•&nbsp; Qty: {{ item.quantity if item.quantity is not none else '-' }}
+                                        {% set DIM_CATS = ['Steel Plates','Stainless Steel','Angle Bar','Bolts, Fasteners','Rebar','Nuts'] %}
+                                        &nbsp;•&nbsp;
+                                        {% if cat not in DIM_CATS %}
+                                            Qty: {{ item.quantity if item.quantity is not none else '-' }}
+                                            {% if item.uom %} {{ item.uom }}{% endif %}
+                                        {% else %}
+                                            Qty: {{ item.quantity if item.quantity is not none else '-' }}
+                                        {% endif %}
                                     </div>
                                 </li>
                             {% endfor %}
@@ -133,7 +139,7 @@
         margin-bottom: 0.5rem;
         background: #f8f9fa;
         border-radius: 6px;
-        border-left: 3px solid var(--dusty-purple);
+        border-left: 3px solid var(--hercules-blue);
     }
 </style>
 {% endblock %}

@@ -2,12 +2,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card-white">
     <div class="card-header">
         <h2>Generate Email Content</h2>
         <p>Step 3: Customize email content for {{ task.task_name }}</p>
     </div>
-    <div class="card-body">
+    <div class="card-body bg-light">
         <!-- Progress Steps -->
         <div class="progress-steps">
             <div class="progress-step completed">1</div>
@@ -21,7 +21,7 @@
             <div class="card-header">
                 <h4><i class="fas fa-envelope"></i> Email Templates Overview</h4>
             </div>
-            <div class="card-body">
+            <div class="card-body bg-light">
                 <p>Based on your supplier assignments, we've created <strong>{{ email_templates|length }}</strong> unique email template(s):</p>
                 
                 <div class="email-templates-overview">
@@ -54,11 +54,11 @@
 
         <!-- Email Content Editor -->
         <form method="POST">
-            <div class="card">
+            <div class="card-white">
                 <div class="card-header">
                     <h4><i class="fas fa-edit"></i> Edit Email Content</h4>
                 </div>
-                <div class="card-body">
+                <div class="card-body bg-light">
                     <div class="form-group">
                         <label class="form-label">Email Template (All templates use the same content)</label>
                         <p class="text-muted mb-3">
@@ -126,11 +126,11 @@
 
 .template-header h5 {
     margin: 0;
-    color: var(--dusty-purple-dark);
+    color: var(--hercules-blue);
 }
 
 .badge {
-    background: var(--dusty-purple);
+    background: var(--hercules-blue);
     color: white;
     padding: 0.25rem 0.5rem;
     border-radius: 12px;
@@ -168,7 +168,7 @@
     padding-bottom: 0.5rem;
     margin-bottom: 0.5rem;
     border-bottom: 1px solid #e9ecef;
-    color: var(--dusty-purple-dark);
+    color: var(--hercules-blue);
 }
 
 .preview-body {
