@@ -208,58 +208,71 @@ def validate_password(password):
     return True
 
 def generate_email_content(pr_items, task_name):
-    items_html = """
+    # Decide header label based on the category used in this PR
+    first_cat = ""
+    for it in (pr_items or []):
+        d = dict(it) if it is not None else {}
+        c = (d.get("item_category") or "").strip()
+        if c:
+            first_cat = c
+            break
+
+    DIM_CATS = {"Steel Plates", "Stainless Steel", "Angle Bar", "Rebar", "Bolts, Fasteners"}
+    is_other = first_cat not in DIM_CATS
+
+    dim_header = "Dimensions" if not is_other else "Packing"
+    qty_header = "Qty (UOM)" if is_other else "Qty"
+
+    items_html = f"""
     <table border="1" cellpadding="8" cellspacing="0" style="border-collapse: collapse; width: 100%; border: 1px solid #ddd; font-family: Arial, sans-serif;">
         <thead style="background-color: #f2f2f2;">
             <tr>
                 <th style="text-align: center; width: 5%;">No.</th>
                 <th style="text-align: left;">Description</th>
-                <th style="text-align: left;">Dimensions</th>
+                <th style="text-align: left;">{dim_header}</th>
                 <th style="text-align: left;">Brand / Specification</th>
-                <th style="text-align: center; width: 10%;">Qty</th>
+                <th style="text-align: center; width: 10%;">{qty_header}</th>
                 <th style="text-align: left;">Remark</th>
             </tr>
         </thead>
         <tbody>
     """
-    
+
     for idx, item in enumerate(pr_items, 1):
         item = dict(item) if item is not None else {}
         category = (item.get('item_category') or '').strip()
 
-        # Build Specification (Dimensions)
+        # Build Specification (Dimensions/Packing content)
         spec = ''
         if category in ['Steel Plates', 'Stainless Steel']:
             w = item.get('width') or ''
             l = item.get('length') or ''
             thk = item.get('thickness') or ''
             if w or l or thk:
-                spec = f"{w} x {l} x {thk} mm (W x L x Thk)"
+                spec = f"{w} mm (W) x {l} mm (L) x {thk} mm (Thk)"
+
         elif category == 'Angle Bar':
             a = item.get('dim_a') or ''
             b = item.get('dim_b') or ''
             l = item.get('length') or ''
             thk = item.get('thickness') or ''
             if a or b or l or thk:
-                spec = f"{a} x {b} x {l} x {thk} mm (A x B x L x Thk)"
+                spec = f"{a} mm (A) x {b} mm (B) x {l} mm (L) x {thk} mm (Thk)"
+
         elif category in ['Rebar', 'Bolts, Fasteners']:
             d = item.get('diameter') or ''
             l = item.get('length') or ''
             if d or l:
-                spec = f"{d} x {l} mm (D x L)"
+                spec = f"{d} mm (D) x {l} mm (L)"
+
         else:
-            uom = item.get('uom') or ''
-            uom_qty = item.get('uom_qty') or ''
-            if uom_qty and uom:
-                spec = f"{uom_qty} {uom}"
-            elif uom_qty:
-                spec = f"Qty: {uom_qty}"
-            elif uom:
-                spec = f"UOM: {uom}"
-        
-        # Fallback to direct spec field if dynamic dim is empty, or append?
-        # User image shows "Specification" column often having sizes. try to use 'specification' field if dims are empty?
-        # Actually in pr_items we have 'specification' column.
+            # "Others" -> Packing should use ONLY uom_qty now
+            uom_qty = (item.get('uom_qty') or '').strip() if isinstance(item.get('uom_qty'), str) else (item.get('uom_qty') or '')
+            if uom_qty:
+                spec = f"{uom_qty}"
+            else:
+                spec = ""
+
         original_spec = item.get('specification') or ''
         if spec and original_spec:
             final_spec = f"{spec}<br><small>{original_spec}</small>"
@@ -268,29 +281,37 @@ def generate_email_content(pr_items, task_name):
         else:
             final_spec = original_spec or 'N/A'
 
+        # Qty display: for Others show "quantity + uom", else just quantity
+        qty_val = item.get('quantity') or ''
+        if category not in DIM_CATS:
+            uom = (item.get('uom') or '').strip()
+            qty_display = f"{qty_val} {uom}".strip() if (qty_val or uom) else ''
+        else:
+            qty_display = f"{qty_val}"
+
         items_html += f"""
             <tr>
                 <td style="text-align: center;">{idx}</td>
-                <td>{item['item_name']}</td>
+                <td>{item.get('item_name') or ''}</td>
                 <td>{final_spec}</td>
                 <td>{item.get('brand') or ''}</td>
-                <td style="text-align: center;">{item['quantity']}</td>
-                <td></td> <!-- Empty Remark for now, as in image -->
+                <td style="text-align: center;">{qty_display}</td>
+                <td>{item.get('our_remarks') or ''}</td>
             </tr>
         """
 
     items_html += "</tbody></table>"
-    
+
     return f"""
     <html>
     <body>
         <h2>Procurement Inquiry</h2>
         <p>Dear {{supplier_name}}{{contact_person}},</p>
-        
+
         <p>We are inquiring about the following items for procurement:</p>
         
         {items_html}
-        
+
         <p>Please provide us with your quotation including:</p>
         <ul>
             <li>Payment Terms (Days)</li>
@@ -300,7 +321,7 @@ def generate_email_content(pr_items, task_name):
             <li>Warranty (If Applicable)</li>
             <li>Mill Certificate / Certificate of Analysis (COA)</li>
         </ul>
-
+        
         <p>Please fill in the quotation in the link below:</p>
         <p>Supplier form:</p>
         <p>↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓</p>
@@ -326,43 +347,32 @@ def dashboard():
     """Main dashboard showing recent tasks and stats."""
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
+
     conn = get_db_connection()
 
-    if session.get('role') == 'admin':
-        recent_tasks = conn.execute('''
-            SELECT 
-                t.*,
-                u.username AS created_by,
-                (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
-            FROM tasks t
-            LEFT JOIN users u ON u.id = t.user_id
-            ORDER BY t.created_at DESC
-            LIMIT 10
-        ''').fetchall()
-    else:
-        recent_tasks = conn.execute('''
-            SELECT 
-                t.*,
-                (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
-            FROM tasks t
-            WHERE t.user_id = ?
-            ORDER BY t.created_at DESC
-            LIMIT 10
-        ''', (session['user_id'],)).fetchall()
+    # Everyone sees all tasks + who created it
+    recent_tasks = conn.execute('''
+        SELECT 
+            t.*,
+            u.username AS created_by,
+            (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
+        FROM tasks t
+        LEFT JOIN users u ON u.id = t.user_id
+        ORDER BY t.created_at DESC
+        LIMIT 10
+    ''').fetchall()
 
-    stats = None
-    if session.get('role') == 'admin':
-        stats = {
-            'total_tasks': conn.execute('SELECT COUNT(*) FROM tasks').fetchone()[0],
-            'active_tasks': conn.execute(
-                "SELECT COUNT(*) FROM tasks WHERE status NOT IN ('completed', 'cancelled')"
-            ).fetchone()[0],
-            'total_suppliers': conn.execute(
-                'SELECT COUNT(*) FROM suppliers WHERE is_active = 1'
-            ).fetchone()[0]
-        }
-    
+    # Optional: keep stats visible for everyone (or remove if you want)
+    stats = {
+        'total_tasks': conn.execute('SELECT COUNT(*) FROM tasks').fetchone()[0],
+        'active_tasks': conn.execute(
+            "SELECT COUNT(*) FROM tasks WHERE status NOT IN ('completed', 'cancelled')"
+        ).fetchone()[0],
+        'total_suppliers': conn.execute(
+            'SELECT COUNT(*) FROM suppliers WHERE is_active = 1'
+        ).fetchone()[0]
+    }
+
     conn.close()
     return render_template('dashboard.html', recent_tasks=recent_tasks, stats=stats)
 
@@ -371,28 +381,18 @@ def purchase_requisitions():
     """Show saved Purchase Requisitions that haven't been sent to suppliers yet."""
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
+
     conn = get_db_connection()
-    
-    # Get PRs with status 'purchase_requisition' (saved but not yet in supplier selection)
-    if session.get('role') == 'admin':
-        prs = conn.execute('''
-            SELECT t.*, u.username,
-                   (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) as item_count
-            FROM tasks t
-            LEFT JOIN users u ON t.user_id = u.id
-            WHERE t.status = 'purchase_requisition'
-            ORDER BY t.created_at DESC
-        ''').fetchall()
-    else:
-        prs = conn.execute('''
-            SELECT t.*, 
-                   (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) as item_count
-            FROM tasks t
-            WHERE t.user_id = ? AND t.status = 'purchase_requisition'
-            ORDER BY t.created_at DESC
-        ''', (session['user_id'],)).fetchall()
-    
+
+    prs = conn.execute('''
+        SELECT t.*, u.username AS created_by,
+               (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) as item_count
+        FROM tasks t
+        LEFT JOIN users u ON t.user_id = u.id
+        WHERE t.status = 'purchase_requisition'
+        ORDER BY t.created_at DESC
+    ''').fetchall()
+
     conn.close()
     return render_template('purchase_requisitions.html', prs=prs)
 
@@ -649,8 +649,8 @@ def new_task(task_id=None):
     if task_id:
         # Editing existing task - verify ownership
         task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-        if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
-            flash('Task not found or access denied', 'error')
+        if not task:
+            flash('Task not found', 'error')
             conn.close()
             return redirect(url_for('task_list'))
         
@@ -686,7 +686,11 @@ def new_task(task_id=None):
 
                 diameter = parse_optional_int(request.form.get(f'items[{item_index}][diameter]'))
 
-                uom_qty = parse_optional_int(request.form.get(f'items[{item_index}][uom_qty]'))
+                uom_qty_raw = (request.form.get(f'items[{item_index}][uom_qty]') or '').strip()
+                uom_qty = uom_qty_raw if uom_qty_raw else None
+
+                our_remarks_raw = (request.form.get(f'items[{item_index}][our_remarks]') or '').strip()
+                our_remarks = our_remarks_raw if our_remarks_raw else None
 
             except ValueError as e:
                 flash(f"Item #{item_index+1}: invalid number input ({str(e)})", "error")
@@ -711,6 +715,8 @@ def new_task(task_id=None):
 
                 'uom_qty': uom_qty,
                 'uom': request.form.get(f'items[{item_index}][uom]') or None,
+
+                'our_remarks': our_remarks,
             })
             item_index += 1
         
@@ -735,8 +741,8 @@ def new_task(task_id=None):
         for item_data in items:
             conn.execute('''
                 INSERT INTO pr_items (task_id, item_category, item_name, brand, quantity, payment_terms,
-                                      width, length, thickness, dim_a, dim_b, diameter, uom_qty, uom)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                    width, length, thickness, dim_a, dim_b, diameter, uom_qty, uom, our_remarks)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ''', (
                 task_id_to_use,
                 item_data['item_category'],
@@ -751,7 +757,8 @@ def new_task(task_id=None):
                 item_data.get('dim_b'),
                 item_data.get('diameter'),
                 item_data.get('uom_qty'),
-                item_data.get('uom')
+                item_data.get('uom'),
+                item_data.get('our_remarks')
             ))
         
         conn.commit()
@@ -777,8 +784,8 @@ def edit_task(task_id):
     
     # Verify task ownership
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-    if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
-        flash('Task not found or access denied', 'error')
+    if not task:
+        flash('Task not found', 'error')
         conn.close()
         return redirect(url_for('task_list'))
     
@@ -805,8 +812,8 @@ def email_preview(task_id):
     
     # Verify task ownership
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-    if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
-        flash('Task not found or access denied', 'error')
+    if not task:
+        flash('Task not found', 'error')
         return redirect(url_for('task_list'))
     
     # Get selected suppliers with their assigned items
@@ -895,8 +902,8 @@ def email_confirmation(task_id):
     
     # Verify task ownership
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-    if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
-        flash('Task not found or access denied', 'error')
+    if not task:
+        flash('Task not found', 'error')
         conn.close()
         return redirect(url_for('task_list'))
     
@@ -1003,42 +1010,21 @@ def email_confirmation(task_id):
 def task_list():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
+
     conn = get_db_connection()
 
-    if session['role'] == 'admin':
-        # Admin sees all tasks
-        all_tasks = conn.execute('''
-            SELECT t.*,
-                u.username,
-                (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
-            FROM tasks t
-            LEFT JOIN users u ON u.id = t.user_id
-            ORDER BY t.created_at DESC
-        ''').fetchall()
+    all_tasks = conn.execute('''
+        SELECT 
+            t.*,
+            u.username AS created_by,
+            (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
+        FROM tasks t
+        LEFT JOIN users u ON u.id = t.user_id
+        ORDER BY t.created_at DESC
+    ''').fetchall()
 
-        my_tasks = conn.execute('''
-            SELECT t.*,
-                (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
-            FROM tasks t
-            WHERE t.user_id = ?
-            ORDER BY t.created_at DESC
-        ''', (session['user_id'],)).fetchall()
-        
-        conn.close()
-        return render_template('task_list.html', all_tasks=all_tasks, my_tasks=my_tasks)
-    else:
-        # Regular users see only their tasks
-        my_tasks = conn.execute('''
-            SELECT t.*,
-                (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
-            FROM tasks t
-            WHERE t.user_id = ?
-            ORDER BY t.created_at DESC
-        ''', (session['user_id'],)).fetchall()
-
-        conn.close()
-        return render_template('task_list.html', my_tasks=my_tasks)
+    conn.close()
+    return render_template('task_list.html', all_tasks=all_tasks)
 
 @app.route('/task/<int:task_id>/follow-up', methods=['GET', 'POST'])
 def follow_up(task_id):
@@ -1048,8 +1034,8 @@ def follow_up(task_id):
     conn = get_db_connection()
 
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-    if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
-        flash('Task not found or access denied', 'error')
+    if not task:
+        flash('Task not found', 'error')
         conn.close()
         return redirect(url_for('task_list'))
 
@@ -1152,8 +1138,8 @@ def task_responses(task_id):
 
     conn = get_db_connection()
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-    if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
-        flash('Task not found or access denied', 'error')
+    if not task:
+        flash('Task not found', 'error')
         conn.close()
         return redirect(url_for('task_list'))
 
@@ -1211,6 +1197,26 @@ def get_or_create_quote_form_link(conn, task_id, supplier_id):
         conn.commit()
 
     return public_url_for("supplier_quote_form", token=token)
+
+def get_optional_cert_file_id(conn, request, task_id, supplier_id, pr_item_id, uid, old_cert_files):
+    """
+    COA is OPTIONAL:
+    - If new file uploaded: save and return new id
+    - Else: return old id (preserve previously uploaded file)
+    - Else: None
+    """
+    file_key = f'cert_{uid}'
+    cert_file_id = None
+
+    cert_file = request.files.get(file_key)
+    if cert_file and cert_file.filename:
+        cert_file_id = save_uploaded_file(conn, cert_file, task_id, supplier_id, pr_item_id)
+
+    if not cert_file_id and pr_item_id in old_cert_files:
+        cert_file_id = old_cert_files[pr_item_id]
+
+    return cert_file_id
+
 
 @app.route('/task/<int:task_id>/quotes/<int:supplier_id>', methods=['GET', 'POST'])
 def capture_quotes(task_id, supplier_id):
@@ -1302,7 +1308,7 @@ def capture_quotes(task_id, supplier_id):
                     uid = str(item['id'])
                     app.logger.debug("Processing pr_item_id=%s uid=%s", item["id"], uid)
 
-                    unit_price = parse_decimal_field(request.form.get(f'unit_price_{uid}') or None, f"Unit Price for Item {item['id']}")
+                    unit_price = float(parse_decimal_field(request.form.get(f'unit_price_{uid}') or None, f"Unit Price for Item {item['id']}"))
                     stock_availability = request.form.get(f'stock_availability_{uid}') or None
                     lead_time = parse_optional_int(request.form.get(f'lead_time_{uid}') or None)
                     warranty = request.form.get(f'warranty_{uid}') or None
@@ -1319,16 +1325,15 @@ def capture_quotes(task_id, supplier_id):
                     ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
                     ono_brand = request.form.get(f'ono_brand_{uid}') or None
 
-                    cert_file_id = None
-                    file_key = f'cert_{uid}'
-                    if file_key in request.files:
-                        cert_file = request.files[file_key]
-                        if cert_file and cert_file.filename:
-                            cert_file_id = save_uploaded_file(conn, cert_file, task_id, supplier_id, item['id'])
-                    
-                    # If no new certificate uploaded, preserve the old one
-                    if not cert_file_id and item['id'] in old_cert_files:
-                        cert_file_id = old_cert_files[item['id']]
+                    cert_file_id = get_optional_cert_file_id(
+                        conn=conn,
+                        request=request,
+                        task_id=task_id,
+                        supplier_id=supplier_id,
+                        pr_item_id=item['id'],
+                        uid=uid,
+                        old_cert_files=old_cert_files
+                    )
 
                     has_any_input = any([
                         unit_price, stock_availability, lead_time, warranty, notes,
@@ -1489,7 +1494,7 @@ def supplier_quote_form(token):
                 for item in pr_items:
                     uid = str(item['id'])
 
-                    unit_price = parse_decimal_field(request.form.get(f'unit_price_{uid}') or None, f"Unit Price for Item {item['id']}")
+                    unit_price = float(parse_decimal_field(request.form.get(f'unit_price_{uid}') or None, f"Unit Price for Item {item['id']}"))
                     stock_availability = request.form.get(f'stock_availability_{uid}') or None
                     lead_time = parse_optional_int(request.form.get(f'lead_time_{uid}') or None)
                     warranty = request.form.get(f'warranty_{uid}') or None
@@ -1507,17 +1512,15 @@ def supplier_quote_form(token):
                     ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
                     ono_brand = request.form.get(f'ono_brand_{uid}') or None
 
-                    # Handle certificate file upload
-                    cert_file_id = None
-                    if f'cert_{uid}' in request.files:
-                        cert_file = request.files[f'cert_{uid}']
-                        if cert_file and cert_file.filename:
-                            # if not allowed_file(cert_file.filename): raise ValueError("Only PDF allowed")
-                            cert_file_id = save_uploaded_file(conn, cert_file, task_id, supplier_id, item['id'])
-                    
-                    # If no new certificate uploaded, preserve the old one
-                    if not cert_file_id and item['id'] in old_cert_files:
-                        cert_file_id = old_cert_files[item['id']]
+                    cert_file_id = get_optional_cert_file_id(
+                        conn=conn,
+                        request=request,
+                        task_id=task_id,
+                        supplier_id=supplier_id,
+                        pr_item_id=item['id'],
+                        uid=uid,
+                        old_cert_files=old_cert_files
+                    )
 
                     # Save row if ANY meaningful input exists, OR ONO checked
                     has_any_input = any([
@@ -1621,8 +1624,8 @@ def export_comparison(task_id):
     
     conn = get_db_connection()
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-    if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
-        flash('Task not found or access denied', 'error')
+    if not task:
+        flash('Task not found', 'error')
         conn.close()
         return redirect(url_for('task_list'))
 
@@ -1649,9 +1652,16 @@ def export_comparison(task_id):
         return ["Qty", "UOM"], 2
 
     cat = (pr_items[0].get("item_category") or "").strip() if pr_items else ""
+
+    WEIGHT_CATS = {"Steel Plates", "Stainless Steel", "Angle Bar", "Rebar", "Bolts, Fasteners"}
+    has_weight = cat in WEIGHT_CATS
+
+    dim_group_label = "Dimensions" if has_weight else "Packing"
     dim_headers, DIM_COUNT = get_dim_spec(cat)
-    
-    BASE_COLS = 3 + DIM_COUNT + 2  # 3 fixed + DIM_COUNT dims + Qty + Weight
+
+    # BASE columns:
+    # 3 fixed + DIM_COUNT dims + Qty + (Weight only if has_weight)
+    BASE_COLS = 3 + DIM_COUNT + 1 + (1 if has_weight else 0)
     SUPPLIER_START_COL = BASE_COLS + 1
     conn.close()
 
@@ -1791,7 +1801,7 @@ def export_comparison(task_id):
             w = _num(dims[0])
             L = _num(dims[1])
             thk = _num(dims[2])
-            if w and L and thk:
+            if w is not None and L is not None and thk is not None:
                 return round((w * L * thk * 7.85) / 1_000_000, 2)
             return base_weight
 
@@ -1800,7 +1810,7 @@ def export_comparison(task_id):
             # dims = [D, L]
             d = _num(dims[0])
             L = _num(dims[1])
-            if d and L:
+            if d is not None and L is not None:
                 return round((math.pi / 4) * (d ** 2) * L * 7.85 * 0.000001, 2)
             return base_weight
 
@@ -1811,21 +1821,39 @@ def export_comparison(task_id):
             b = _num(dims[1])
             L = _num(dims[2])
             thk = _num(dims[3])
-            if a and b and L and thk:
+            if a is not None and b is not None and L is not None and thk is not None:
                 return round((L * thk * (a + b - thk) * 7.85) / 1_000_000, 2)
             return base_weight
 
         # Other categories
         return base_weight
 
-    SUPPLIER_BLOCK_COLS = 7
-    OFF_RATE  = 0
-    OFF_PRICE = 1
-    OFF_TOTAL = 2
-    OFF_LEAD  = 3
-    OFF_STOCK = 4
-    OFF_COA   = 5
-    OFF_REMARKS = 6
+    SUPPLIER_HEADERS = [
+        "Quoted Price (RM)",
+        "Total Amount Quoted (RM)",
+        "Delivery Lead Time (Days)",
+        "Stock Availability",
+        "COA",
+        "Remarks",
+    ]
+
+    # Only add Rate if we have weight
+    if has_weight:
+        SUPPLIER_HEADERS = ["Rate (RM/Kg)"] + SUPPLIER_HEADERS
+
+    SUPPLIER_BLOCK_COLS = len(SUPPLIER_HEADERS)
+
+    # Offsets must be computed AFTER SUPPLIER_HEADERS is finalized
+    def idx(name): 
+        return SUPPLIER_HEADERS.index(name)
+
+    OFF_RATE   = idx("Rate (RM/Kg)") if has_weight else None
+    OFF_PRICE  = idx("Quoted Price (RM)")
+    OFF_TOTAL  = idx("Total Amount Quoted (RM)")
+    OFF_LEAD   = idx("Delivery Lead Time (Days)")
+    OFF_STOCK  = idx("Stock Availability")
+    OFF_COA    = idx("COA")
+    OFF_REMARKS = idx("Remarks")
 
     suppliers = {}  # supplier_id -> supplier_name
     supplier_terms = {}  # supplier_id -> set(payment_terms)
@@ -1865,36 +1893,35 @@ def export_comparison(task_id):
         "Item Name (O.N.O.)",
         "Brand/Specification",
         "Category",
-    ] + (["Dimensions"] + [""] * (DIM_COUNT - 1)) + [
+    ] + ([dim_group_label] + [""] * (DIM_COUNT - 1)) + [
         "Qty",
-        "Weight (Kg)"
     ]
+
+    if has_weight:
+        row1.append("Weight (Kg)")
 
     for supplier_id, supplier_name in suppliers_list:
         row1.extend([supplier_header_label(supplier_id, supplier_name)] + [""] * (SUPPLIER_BLOCK_COLS - 1))
     ws.append(row1)
 
-    row2 = ["", "", ""] + dim_headers + ["", ""]
+    row2 = ["", "", ""] + dim_headers + [""]  # blank under Qty
+    if has_weight:
+        row2.append("")  # blank under Weight
 
     for supplier_id, supplier_name in suppliers_list:
-        row2.extend([
-            "Rate (RM/Kg)",
-            "Quoted Price (RM)",
-            "Total Amount Quoted (RM)",
-            "Delivery Lead Time (Days)",
-            "Stock Availability",
-            "COA",
-            "Remarks"
-        ])
+        row2.extend(SUPPLIER_HEADERS)
     ws.append(row2)
 
     bold = Font(bold=True)
     center = Alignment(horizontal="center", vertical="center")
 
     # ---- Header styling (Row 1–2) ----
-    header_fill = PatternFill(fill_type="solid", fgColor="8DB4E2")  # dark blue
-    header_font = Font(bold=True, color="0000FF")
+    header_fill = PatternFill(fill_type="solid", fgColor="FF2b86e1")   # ARGB - Hercules Blue
+    header_font = Font(bold=True, color="FFFFFFFF")                   # WHITE, visible
     header_align = Alignment(horizontal="center", vertical="center", wrap_text=True)
+
+    best_fill  = PatternFill(fill_type="solid", fgColor="FFFFEB9C")   # ARGB
+    total_fill = PatternFill(fill_type="solid", fgColor="FFD9D9D9")   # ARGB
 
     # Make sure we color all header cells across the full table width
     max_col = ws.max_column
@@ -1920,6 +1947,7 @@ def export_comparison(task_id):
     ws.merge_cells(start_row=1, start_column=dim_start, end_row=1, end_column=dim_end)
     ws.cell(row=1, column=dim_start).font = bold
     ws.cell(row=1, column=dim_start).alignment = center
+    ws.cell(row=1, column=dim_start).value = dim_group_label
 
     # Center dim headers in row2
     for col in range(dim_start, dim_end + 1):
@@ -1929,49 +1957,46 @@ def export_comparison(task_id):
 
     # Merge Quantity and Weight columns (dynamic positions)
     qty_col = dim_end + 1
-    wt_col  = dim_end + 2
+    wt_col  = dim_end + 2  # only valid if has_weight
 
-    for col in (qty_col, wt_col):
-        ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
-        c = ws.cell(row=1, column=col)
+    # Always merge Qty (row 1-2)
+    ws.merge_cells(start_row=1, start_column=qty_col, end_row=2, end_column=qty_col)
+    c = ws.cell(row=1, column=qty_col)
+    c.font = bold
+    c.alignment = center
+
+    # Merge Weight only when applicable
+    if has_weight:
+        ws.merge_cells(start_row=1, start_column=wt_col, end_row=2, end_column=wt_col)
+        c = ws.cell(row=1, column=wt_col)
         c.font = bold
         c.alignment = center
 
     # Merge and center each supplier header (8 columns each)
     col_idx = SUPPLIER_START_COL
     for supplier_id, supplier_name in suppliers_list:
-        ws.merge_cells(start_row=1, start_column=col_idx, end_row=1, end_column=col_idx + (SUPPLIER_BLOCK_COLS - 1))
-        c = ws.cell(row=1, column=col_idx)
-
-        # Keep the header style (fill already applied earlier in your header loop)
-        c.alignment = center
-        c.font = Font(
-            name=header_font.name,
-            size=header_font.size,
-            bold=True,
-            color=header_font.color  # keeps your blue
+        ws.merge_cells(
+            start_row=1, start_column=col_idx,
+            end_row=1, end_column=col_idx + (SUPPLIER_BLOCK_COLS - 1)
         )
+        c = ws.cell(row=1, column=col_idx)
+        c.alignment = center
 
-        # ✅ Add master quotation hyperlink (if exists) without removing formats
         qfile_id = supplier_quotation_files.get(supplier_id)
         if qfile_id:
             mq_url = public_url_for("serve_file", file_id=qfile_id)
             c.hyperlink = mq_url
-
-            # Make it look like hyperlink but preserve header formatting
-            c.font = Font(
-                name=c.font.name,
-                size=c.font.size,
-                bold=True,
-                color=c.font.color,
-                underline="single"
-            )
+            # hyperlink look - use Hercules blue
+            c.font = Font(bold=True, color="FF003366", underline="single")  # Hercules Blue
+        else:
+            # normal look
+            c.font = Font(bold=True, color="FF000000")  # BLACK
 
         col_idx += SUPPLIER_BLOCK_COLS
 
     # Format row 2 as bold and centered
     for cell in ws[2]:
-        cell.font = bold
+        cell.font = Font(bold=True, color="FF000000")
         cell.alignment = center
 
     best_fill = PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
@@ -2140,24 +2165,32 @@ def export_comparison(task_id):
 
             # Construct Label
             row_label = f"{item['item_name']} (O.N.O)" if is_ono else item['item_name']
+            base_weight = item.get("weight")  # if you have it in DB, else None
+            row_weight = weight_for_dims(category, list(dims), base_weight)
 
             row = [
                 row_label,
                 brand_val or (item["brand"] or ""),
                 category,
-                *dims,                         # <-- dynamic number of dim cells
+                *dims,
                 item["quantity"] or "",
-                weight
             ]
+
+            row_weight = None
+            if has_weight:
+                base_weight = item.get("weight")
+                row_weight = weight_for_dims(category, list(dims), base_weight)
+                row.append(row_weight)
             
             # Fill supplier columns
             # Metric candidates for highlighting *within this row*
             row_metric_candidates = {
-                "rate": [],
                 "price": [],
                 "total": [],
                 "lead": []
             }
+            if has_weight:
+                row_metric_candidates["rate"] = []
 
             col_idx = SUPPLIER_START_COL
             for supplier_id, supplier_name in suppliers_list:
@@ -2196,19 +2229,25 @@ def export_comparison(task_id):
                     unit_price_val = to_float(unit_price)
 
                     qty_val = to_float(item['quantity'])
-                    weight_val = to_float(weight)
 
                     rate_val = ""
-                    if unit_price_val is not None and weight_val not in (None, 0):
-                        rate_val = round(unit_price_val / weight_val, 4)
+                    if has_weight:
+                        weight_val = to_float(row_weight)
+                        if unit_price_val is not None and weight_val not in (None, 0):
+                            rate_val = round(unit_price_val / weight_val, 4)
 
                     total_amount_val = ""
                     if unit_price_val is not None and qty_val is not None:
                         total_amount_val = round(unit_price_val * qty_val, 2)
                         supplier_total_amounts[supplier_id] += float(total_amount_val)
 
-                    row.extend([
-                        rate_val,
+                    # Build supplier cells in the same order as SUPPLIER_HEADERS
+                    supplier_cells = []
+
+                    if has_weight:
+                        supplier_cells.append(rate_val)
+
+                    supplier_cells.extend([
                         unit_price,
                         total_amount_val,
                         q.get('lead_time') or "",
@@ -2217,11 +2256,15 @@ def export_comparison(task_id):
                         q.get('notes') or ""
                     ])
 
+                    row.extend(supplier_cells)
+
                     if cert_url:
                         cert_links[(current_row, col_idx + OFF_COA)] = cert_url
 
                     # highlight candidates
-                    row_metric_candidates["rate"].append((col_idx + OFF_RATE, to_float(rate_val)))
+                    if has_weight:
+                        row_metric_candidates["rate"].append((col_idx + OFF_RATE, to_float(rate_val)))
+
                     row_metric_candidates["price"].append((col_idx + OFF_PRICE, unit_price_val))
                     row_metric_candidates["total"].append((col_idx + OFF_TOTAL, to_float(total_amount_val)))
                     row_metric_candidates["lead"].append((col_idx + OFF_LEAD, lead_time_to_days(q.get('lead_time'))))
@@ -2235,8 +2278,8 @@ def export_comparison(task_id):
             ws.append(row)
 
             # Apply per-row best highlighting (lowest wins)
-            for key in ["rate", "price", "total", "lead"]:
-                vals = [(col, v) for (col, v) in row_metric_candidates[key] if v is not None]
+            for k in (["rate", "price", "total", "lead"] if has_weight else ["price", "total", "lead"]):
+                vals = [(col, v) for (col, v) in row_metric_candidates[k] if v is not None]
                 if not vals:
                     continue
                 best_val = min(v for _, v in vals)
@@ -2332,7 +2375,7 @@ def export_comparison(task_id):
     def col_cap(c: int) -> int:
         if dim_start <= c <= dim_end:
             return DIM_CAP
-        if c in (qty_col, wt_col):
+        if c == qty_col or (has_weight and c == wt_col):
             return 12
         if c == 1:  # item name
             return 35
@@ -2526,31 +2569,39 @@ def add_supplier():
     
     return render_template('edit_supplier.html', categories=categories)
 
-@app.route('/delete-task/<int:task_id>')
+@app.route('/delete-task/<int:task_id>', methods=['POST'])
 def delete_task(task_id):
     if 'user_id' not in session:
         flash('Access denied', 'error')
         return redirect(url_for('login'))
-    
+
     conn = get_db_connection()
-    
-    # Verify task ownership
-    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-    if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
-        flash('Task not found or access denied', 'error')
+    try:
+        # Just check it exists (no ownership check)
+        task = conn.execute('SELECT id FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        if not task:
+            flash('Task not found', 'error')
+            return redirect(url_for('task_list'))
+
+        conn.execute('DELETE FROM supplier_quotes WHERE task_id = ?', (task_id,))
+        conn.execute('DELETE FROM task_suppliers WHERE task_id = ?', (task_id,))
+        conn.execute('DELETE FROM pr_items WHERE task_id = ?', (task_id,))
+        conn.execute('DELETE FROM email_logs WHERE task_id = ?', (task_id,))
+        conn.execute('DELETE FROM file_assets WHERE task_id = ?', (task_id,))
+        conn.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
+
+        conn.commit()
+        flash('Task deleted successfully!', 'success')
         return redirect(url_for('task_list'))
-    
-    # Delete task and related records
-    conn.execute('DELETE FROM pr_items WHERE task_id = ?', (task_id,))
-    conn.execute('DELETE FROM task_suppliers WHERE task_id = ?', (task_id,))
-    conn.execute('DELETE FROM email_logs WHERE task_id = ?', (task_id,))
-    conn.execute('DELETE FROM supplier_quotes WHERE task_id = ?', (task_id,))
-    conn.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
-    
-    conn.commit()
-    conn.close()
-    flash('Task deleted successfully!', 'success')
-    return redirect(url_for('task_list'))
+
+    except Exception:
+        conn.rollback()
+        app.logger.exception("Failed to delete task_id=%s", task_id)
+        flash('Failed to delete task due to an unexpected error.', 'error')
+        return redirect(url_for('task_list'))
+
+    finally:
+        conn.close()
 
 @app.route('/logout')
 def logout():
@@ -2681,19 +2732,19 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
                     l = item.get('length') or ''
                     thk = item.get('thickness') or ''
                     if w or l or thk:
-                        spec = f"{w} x {l} x {thk} mm (W x L x Thk)"
+                        spec = f"{w} mm (W) x {l} mm (L) x {thk} mm (Thk)"
                 elif category == 'Angle Bar':
                     a = item.get('dim_a') or ''
                     b = item.get('dim_b') or ''
                     l = item.get('length') or ''
                     thk = item.get('thickness') or ''
                     if a or b or l or thk:
-                        spec = f"{a} x {b} x {l} x {thk} mm (A x B x L x Thk)"
+                        spec = f"{a} mm (A) x {b} mm (B) x {l} mm (L) x {thk} mm (Thk)"
                 elif category in ['Rebar', 'Bolts, Fasteners']:
                     d = item.get('diameter') or ''
                     l = item.get('length') or ''
                     if d or l:
-                        spec = f"{d} x {l} mm (D x L)"
+                        spec = f"{d} mm (D) x {l} mm (L)"
                 else:
                     uom = item.get('uom') or ''
                     uom_qty = item.get('uom_qty') or ''
@@ -2784,8 +2835,8 @@ def supplier_selection(task_id):
     
     # Verify task ownership
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-    if not task or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
-        flash('Task not found or access denied', 'error')
+    if not task:
+        flash('Task not found', 'error')
         return redirect(url_for('task_list'))
     
     if request.method == 'POST':
