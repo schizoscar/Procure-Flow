@@ -520,6 +520,119 @@ def create_user():
 
     return render_template('create_user.html')
 
+@app.route('/user-list')
+def user_list():
+    """Display all users for admin management."""
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('index'))
+
+    conn = get_db_connection()
+    users = conn.execute('SELECT id, username, email, role, created_at FROM users ORDER BY created_at DESC').fetchall()
+    conn.close()
+    
+    return render_template('user_list.html', users=users)
+
+@app.route('/user/<int:user_id>/edit', methods=['GET', 'POST'])
+def edit_user(user_id):
+    """Edit user details (admin only)."""
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('index'))
+
+    conn = get_db_connection()
+    user = conn.execute('SELECT id, username, email, role FROM users WHERE id = ?', (user_id,)).fetchone()
+    
+    if not user:
+        flash('User not found', 'error')
+        conn.close()
+        return redirect(url_for('user_list'))
+
+    if request.method == 'POST':
+        new_username = request.form['username'].strip()
+        new_email = request.form['email'].strip().lower()
+        new_role = request.form['role']
+        new_password = (request.form.get('password') or "").strip()
+        confirm_password = (request.form.get('confirm_password') or "").strip()
+
+        # Validation
+        if not validate_email(new_email):
+            flash('Invalid email format', 'error')
+            conn.close()
+            return render_template('edit_user.html', user=user)
+
+        # Check if password change requested
+        if new_password or confirm_password:
+            if new_password != confirm_password:
+                flash('Passwords do not match', 'error')
+                conn.close()
+                return render_template('edit_user.html', user=user)
+
+            if not validate_password(new_password):
+                flash('Password must contain at least 5 letters and 1 number', 'error')
+                conn.close()
+                return render_template('edit_user.html', user=user)
+
+            password_hash = generate_password_hash(new_password)
+            conn.execute(
+                'UPDATE users SET username = ?, email = ?, role = ?, password_hash = ? WHERE id = ?',
+                (new_username, new_email, new_role, password_hash, user_id)
+            )
+        else:
+            # No password change, just update other fields
+            conn.execute(
+                'UPDATE users SET username = ?, email = ?, role = ? WHERE id = ?',
+                (new_username, new_email, new_role, user_id)
+            )
+
+        try:
+            conn.commit()
+            flash('User updated successfully!', 'success')
+        except sqlite3.IntegrityError:
+            conn.rollback()
+            flash('Username or email already exists', 'error')
+            conn.close()
+            return render_template('edit_user.html', user=user)
+        finally:
+            conn.close()
+
+        return redirect(url_for('user_list'))
+
+    conn.close()
+    return render_template('edit_user.html', user=user)
+
+@app.route('/user/<int:user_id>/delete', methods=['POST'])
+def delete_user(user_id):
+    """Delete a user (admin only)."""
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('index'))
+
+    # Prevent self-deletion
+    if user_id == session['user_id']:
+        flash('You cannot delete your own account', 'error')
+        return redirect(url_for('user_list'))
+
+    conn = get_db_connection()
+    user = conn.execute('SELECT username FROM users WHERE id = ?', (user_id,)).fetchone()
+    
+    if not user:
+        flash('User not found', 'error')
+        conn.close()
+        return redirect(url_for('user_list'))
+
+    try:
+        conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
+        conn.commit()
+        flash(f'User "{user["username"]}" has been deleted successfully.', 'success')
+    except sqlite3.IntegrityError:
+        conn.rollback()
+        flash('Cannot delete this user due to related records. Please contact support.', 'error')
+    finally:
+        conn.close()
+
+    return redirect(url_for('user_list'))
+
 @app.route('/forgot-password', methods=['GET', 'POST'])
 def forgot_password():
     if request.method == 'POST':
