@@ -8,149 +8,25 @@
     <title>Login - Procure Flow | Hercules Engineering</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <style>
-        .login-container {
-            display: flex;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #003366 0%, #0052A3 100%);
-            align-items: center;
-            justify-content: center;
-            padding: 1rem;
-        }
-
-        .login-card {
-            background: var(--white);
-            border-radius: 12px;
-            padding: 3rem 2.5rem;
-            max-width: 480px;
-            width: 100%;
-            box-shadow: 0 15px 50px rgba(0, 51, 102, 0.3);
-            border: 2px solid #5ba3e8;
-            min-height: 500px;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
-
-        .product-image {
-            border-radius: 12px;
-            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
-            width: 160px;
-            height: auto;
-            object-fit: cover;
-        }
-
-        .login-header {
-            text-align: center;
-            margin-bottom: 2.5rem;
-            border-bottom: 2px solid var(--hercules-blue-lighter);
-            padding-bottom: 2rem;
-        }
-
-        .login-logo {
-            max-width: 150px;
-            height: auto;
-            margin-bottom: 1.5rem;
-        }
-
-        .login-header h1 {
-            color: var(--hercules-blue);
-            font-size: 2.2rem;
-            font-weight: 700;
-            margin: 0.5rem 0;
-        }
-
-        .login-header .company-name {
-            color: var(--text-light);
-            font-size: 0.95rem;
-            font-weight: 500;
-            margin: 0.25rem 0;
-        }
-
-        .login-header .app-type {
-            color: var(--text-dark);
-            font-size: 1.1rem;
-            font-weight: 600;
-            margin-top: 0.75rem;
-            color: var(--hercules-blue);
-        }
-
-        .login-form {
-            margin-bottom: 1.5rem;
-        }
-
-        .login-form .form-group {
-            margin-bottom: 1.5rem;
-        }
-
-        .login-form .form-label {
-            color: var(--hercules-blue);
-            font-weight: 600;
-            font-size: 0.95rem;
-        }
-
-        .login-form .form-control {
-            border: 2px solid var(--gray-border);
-            padding: 0.85rem 1rem;
-            font-size: 1rem;
-        }
-
-        .login-form .form-control:focus {
-            border-color: var(--hercules-blue);
-            box-shadow: 0 0 0 3px rgba(0, 51, 102, 0.1);
-        }
-
-        .login-btn {
-            width: 100%;
-            padding: 0.9rem;
-            background: linear-gradient(135deg, var(--hercules-blue), var(--hercules-blue-light));
-            color: var(--white);
-            border: none;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.3s ease;
-            box-shadow: 0 4px 12px rgba(0, 51, 102, 0.3);
-        }
-
-        .login-btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 20px rgba(0, 51, 102, 0.4);
-        }
-
-        .login-footer {
-            text-align: center;
-            margin-top: 1.5rem;
-            padding-top: 1.5rem;
-            border-top: 1px solid var(--gray-border);
-        }
-
-        .login-footer a {
-            color: var(--hercules-blue);
-            text-decoration: none;
-            font-weight: 500;
-            font-size: 0.9rem;
-            transition: all 0.3s ease;
-        }
-
-        .login-footer a:hover {
-            color: var(--hercules-blue-light);
-            text-decoration: underline;
-        }
-
-        .login-footer i {
-            margin-right: 0.4rem;
-        }
-    </style>
 </head>
 
-<body>
+<body class="login-page">
     <div class="login-container">
+
+        <!-- LEFT GALLERY (static/pictures/...) -->
+        <div class="login-gallery" aria-hidden="true">
+            <img src="{{ url_for('static', filename='pictures/rebar_bundle.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/pvc_fitting.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/steel_plates_2.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/drill_bits.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/fasteners.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/steel_plates_1.jpeg') }}" alt="">
+        </div>
+
+        <!-- CENTER CARD -->
         <div class="login-card">
             <div class="login-header">
-                <img src="{{ url_for('static', filename='Hercules-Logo-WS.png') }}" alt="Hercules Logo"
-                    class="login-logo">
+                <img src="{{ url_for('static', filename='pictures/Hercules-Logo-WS.png') }}" alt="Hercules Logo" class="login-logo">
                 <h1>Procure Flow</h1>
                 <p class="company-name">HERCULES ENGINEERING</p>
                 <p class="app-type">Procurement Management System</p>
@@ -176,20 +52,31 @@
 
             <div class="login-footer">
                 <a href="{{ url_for('forgot_password') }}">
-                    <i class="fas fa-unlock-alt"></i> Forgot password?
+                <i class="fas fa-unlock-alt"></i> Forgot password?
                 </a>
             </div>
 
             {% with messages = get_flashed_messages(with_categories=true) %}
-            {% if messages %}
-            {% for category, message in messages %}
-            <div class="alert alert-{{ category if category != 'message' else 'info' }} mt-2">
-                {{ message }}
-            </div>
-            {% endfor %}
-            {% endif %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'message' else 'info' }} mt-2">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
             {% endwith %}
         </div>
+
+        <!-- RIGHT GALLERY -->
+        <div class="login-gallery" aria-hidden="true">
+            <img src="{{ url_for('static', filename='pictures/factory_bag.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/socket_head_bolt.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/cutting_tools.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/chemical_containers.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/steel_plates_3.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/bolts_bag.jpeg') }}" alt="">
+        </div>
+
     </div>
 </body>
 
