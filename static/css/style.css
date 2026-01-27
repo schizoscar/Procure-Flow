@@ -182,7 +182,7 @@ body {
 }
 
 .card-grey{
-    background: var(--grey-bg);
+    background: var(--gray-bg);
     border-radius: 12px;
     padding: 2rem;
     margin-bottom: 2rem;
@@ -747,4 +747,223 @@ a:hover {
     .table-wrap table {
         min-width: 980px;
     }
+}
+
+/* =========================
+   LOGIN PAGE ONLY STYLES
+   (scoped with .login-page)
+   ========================= */
+
+.login-page .login-container {
+    display: flex;
+    min-height: 100vh;
+    background: linear-gradient(135deg, #003366 0%, #0052A3 100%);
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    position: relative;
+    transform-origin: center center;
+}
+
+.login-page .login-card {
+    background: var(--white);
+    border-radius: 12px;
+    padding: 3rem 2.5rem;
+    max-width: 480px;
+    width: 100%;
+    box-shadow: 0 15px 40px rgba(0, 51, 102, 0.3);
+    position: relative;
+    border: 2px solid #5ba3e8;
+    min-height: 500px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.login-page .login-header {
+    text-align: center;
+    margin-bottom: 2.5rem;
+    border-bottom: 2px solid var(--hercules-blue-lighter);
+    padding-bottom: 2rem;
+}
+
+.login-page .login-logo {
+    max-width: 250px;
+    height: auto;
+    margin-bottom: 1.5rem;
+}
+
+.login-page .login-header h1 {
+    color: var(--hercules-blue);
+    font-size: 2.2rem;
+    font-weight: 700;
+    margin: 0.5rem 0;
+}
+
+.login-page .login-header .company-name {
+    color: var(--text-light);
+    font-size: 0.95rem;
+    font-weight: 500;
+    margin: 0.25rem 0;
+}
+
+.login-page .login-header .app-type {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-top: 0.75rem;
+    color: var(--hercules-blue);
+}
+
+.login-page .login-form {
+    margin-bottom: 1.5rem;
+}
+
+.login-page .login-form .form-group {
+    margin-bottom: 1.5rem;
+}
+
+.login-page .login-form .form-label {
+    color: var(--hercules-blue);
+    font-weight: 600;
+    font-size: 0.95rem;
+}
+
+.login-page .login-form .form-control {
+    border: 2px solid var(--gray-border);
+    padding: 0.85rem 1rem;
+    font-size: 1rem;
+}
+
+.login-page .login-form .form-control:focus {
+    border-color: var(--hercules-blue);
+    box-shadow: 0 0 0 3px rgba(0, 51, 102, 0.1);
+}
+
+.login-page .login-btn {
+    width: 100%;
+    padding: 0.9rem;
+    background: linear-gradient(135deg, var(--hercules-blue), var(--hercules-blue-light));
+    color: var(--white);
+    border: none;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    box-shadow: 0 4px 12px rgba(0, 51, 102, 0.3);
+}
+
+.login-page .login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 51, 102, 0.4);
+}
+
+.login-page .login-footer {
+    text-align: center;
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--gray-border);
+}
+
+.login-page .login-footer a {
+    color: var(--hercules-blue);
+    text-decoration: none;
+    font-weight: 500;
+    font-size: 0.9rem;
+    transition: all 0.3s ease;
+}
+
+.login-page .login-footer a:hover {
+    color: var(--hercules-blue-light);
+    text-decoration: underline;
+}
+
+.login-page .login-footer i {
+    margin-right: 0.4rem;
+}
+
+/* ===== LOGIN LAYOUT ===== */
+.login-page .login-container{
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1.5rem;
+
+    width: 100vw;          
+    min-height: 100vh;
+    margin: 0;             
+    padding: 0;            
+    overflow: hidden;      
+    background: linear-gradient(135deg, #003366 0%, #0052A3 100%);
+}
+
+/* ===== COLLAGE CANVAS (WIDER) ===== */
+.login-page .login-gallery{
+    position: relative;
+    flex: 1 1 560px;                   
+    max-width: 620px;
+    height: 760px;                     
+    pointer-events: none;
+    user-select: none;
+    overflow: visible;
+}
+
+/* ===== IMAGE BASE STYLE ===== */
+.login-page .login-gallery img{
+    position: absolute;
+    width: 250px;                      
+    height: 150px;                     
+    object-fit: cover;
+
+    border: 3px solid #2b86e1;
+    border-radius: 14px;
+    background: #fff;
+
+    box-shadow: 0 14px 32px rgba(0,0,0,0.25);
+    opacity: 0.98;
+}
+
+/* Put collages behind the login card */
+.login-page .login-gallery{
+    z-index: 1;
+    overflow: hidden;
+    clip-path: inset(0 0 0 0);
+}
+
+.login-page .login-card > *{
+    position: relative;
+    z-index: 2;
+}
+
+/* ===== LEFT GALLERY scatter (spread wider) ===== */
+.login-page .login-gallery:first-of-type img:nth-child(1){ top: 20px;  left: 40px;  transform: rotate(-10deg); }
+.login-page .login-gallery:first-of-type img:nth-child(2){ top: 70px;  left: 260px; transform: rotate(8deg);  }
+.login-page .login-gallery:first-of-type img:nth-child(3){ top: 210px; left: 90px;  transform: rotate(-4deg); }
+.login-page .login-gallery:first-of-type img:nth-child(4){ top: 300px; left: 320px; transform: rotate(11deg); }
+.login-page .login-gallery:first-of-type img:nth-child(5){ top: 470px; left: 60px;  transform: rotate(-12deg); }
+.login-page .login-gallery:first-of-type img:nth-child(6){ top: 560px; left: 280px; transform: rotate(6deg);  }
+
+/* ===== RIGHT GALLERY scatter (also spread wider) ===== */
+.login-page .login-gallery:last-of-type img:nth-child(1){ top: 25px;  left: 300px; transform: rotate(10deg); }
+.login-page .login-gallery:last-of-type img:nth-child(2){ top: 85px;  left: 60px;  transform: rotate(-8deg); }
+.login-page .login-gallery:last-of-type img:nth-child(3){ top: 230px; left: 270px; transform: rotate(12deg); }
+.login-page .login-gallery:last-of-type img:nth-child(4){ top: 320px; left: 40px;  transform: rotate(-11deg); }
+.login-page .login-gallery:last-of-type img:nth-child(5){ top: 485px; left: 290px; transform: rotate(7deg);  }
+.login-page .login-gallery:last-of-type img:nth-child(6){ top: 575px; left: 70px;  transform: rotate(-5deg); }
+
+/* ===== Responsive: shrink galleries ===== */
+@media (max-width: 1200px){
+  .login-page .login-gallery{
+    max-width: 480px;
+    height: 700px;
+  }
+  .login-page .login-container{
+    padding: 1rem 1.25rem;
+  }
+}
+
+/* Hide galleries on small screens */
+@media (max-width: 900px){
+  .login-page .login-gallery{ display: none; }
+  .login-page .login-container{ justify-content: center; }
 }

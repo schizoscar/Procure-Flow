@@ -34,7 +34,7 @@
                             {% if item.brand %}<p>Brand / Specification: {{ item.brand }}</p>{% endif %}
                             {% set DIM_CATS = ['Steel Plates', 'Stainless Steel', 'Angle Bar', 'Bolts, Fasteners', 'Rebar'] %}
                             <p>
-                                <strong>Quantity:</strong>
+                                Quantity:
                                 {{ item.quantity or '-' }}
                                 {% if item.item_category not in DIM_CATS and item.uom %}
                                     {{ item.uom }}
