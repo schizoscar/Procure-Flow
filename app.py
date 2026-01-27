@@ -2527,7 +2527,7 @@ def edit_supplier(supplier_id):
 
 @app.route('/add-supplier', methods=['GET', 'POST'])
 def add_supplier():
-    if 'user_id' not in session or session.get('role') != 'admin':
+    if 'user_id' not in session:
         flash('Access denied', 'error')
         return redirect(url_for('suppliers'))
     
@@ -2952,7 +2952,7 @@ def categories():
 
 @app.route('/add-category', methods=['POST'])
 def add_category():
-    if 'user_id' not in session or session.get('role') != 'admin':
+    if 'user_id' not in session:
         return jsonify({'error': 'Access denied'}), 403
     
     name = request.form.get('name')
@@ -3017,7 +3017,7 @@ def category_items(category_id):
 
 @app.route('/category/<int:category_id>/add-item', methods=['POST'])
 def add_category_item(category_id):
-    if 'user_id' not in session or session.get('role') != 'admin':
+    if 'user_id' not in session:
         return redirect(url_for('index'))
     
     name = request.form.get('name')

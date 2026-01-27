@@ -10,7 +10,6 @@
         </a>
     </div>
     <div class="card-body bg-light">
-        {% if can_edit %}
         <form method="POST" action="{{ url_for('add_category_item', category_id=category.id) }}"
             class="d-flex gap-1 mb-2">
             <div class="form-group" style="flex: 1;">
@@ -21,7 +20,6 @@
                 <i class="fas fa-plus"></i> Add Item
             </button>
         </form>
-        {% endif %}
 
         {% if items %}
         <table class="table">

@@ -7,7 +7,6 @@
         <h2>{% if can_edit %}Manage {% endif %}Categories</h2>
     </div>
     <div class="card-body bg-light">
-        {% if can_edit %}
         <form method="POST" action="{{ url_for('add_category') }}" class="d-flex gap-1 mb-2">
             <div class="form-group" style="flex: 1;">
                 <input type="text" class="form-control" name="name" placeholder="Enter new category name" required>
@@ -16,7 +15,6 @@
                 <i class="fas fa-plus"></i> Add Category
             </button>
         </form>
-        {% endif %}
 
         {% if categories %}
         <table class="table">
