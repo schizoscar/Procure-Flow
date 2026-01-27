@@ -22,9 +22,22 @@
             background: var(--white);
             border-radius: 12px;
             padding: 3rem 2.5rem;
-            max-width: 420px;
+            max-width: 480px;
             width: 100%;
-            box-shadow: 0 10px 40px rgba(0, 51, 102, 0.2);
+            box-shadow: 0 15px 50px rgba(0, 51, 102, 0.3);
+            border: 2px solid #5ba3e8;
+            min-height: 500px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .product-image {
+            border-radius: 12px;
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+            width: 160px;
+            height: auto;
+            object-fit: cover;
         }
 
         .login-header {
@@ -35,14 +48,14 @@
         }
 
         .login-logo {
-            max-width: 100px;
+            max-width: 150px;
             height: auto;
-            margin-bottom: 1rem;
+            margin-bottom: 1.5rem;
         }
 
         .login-header h1 {
             color: var(--hercules-blue);
-            font-size: 1.8rem;
+            font-size: 2.2rem;
             font-weight: 700;
             margin: 0.5rem 0;
         }
@@ -136,7 +149,8 @@
     <div class="login-container">
         <div class="login-card">
             <div class="login-header">
-                <img src="{{ url_for('static', filename='Hercules-Logo-WS.png') }}" alt="Hercules Logo" class="login-logo">
+                <img src="{{ url_for('static', filename='Hercules-Logo-WS.png') }}" alt="Hercules Logo"
+                    class="login-logo">
                 <h1>Procure Flow</h1>
                 <p class="company-name">HERCULES ENGINEERING</p>
                 <p class="app-type">Procurement Management System</p>

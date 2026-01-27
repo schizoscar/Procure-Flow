@@ -1648,8 +1648,8 @@ def export_comparison(task_id):
             return ["A (mm)", "B (mm)", "L (mm)", "Thk (mm)"], 4
         if cat in ["Rebar", "Bolts, Fasteners"]:
             return ["D (mm)", "L (mm)"], 2
-        # Other categories
-        return ["Qty", "UOM"], 2
+        # Other categories - single "Packing" column (no sub-header needed)
+        return [""], 1
 
     cat = (pr_items[0].get("item_category") or "").strip() if pr_items else ""
 
@@ -1773,7 +1773,6 @@ def export_comparison(task_id):
 
         return [
             pick("ono_uom_qty", "uom_qty"),
-            pick("ono_uom", "uom"),
         ]
 
     def weight_for_dims(category: str, dims: list, base_weight):
@@ -2168,12 +2167,28 @@ def export_comparison(task_id):
             base_weight = item.get("weight")  # if you have it in DB, else None
             row_weight = weight_for_dims(category, list(dims), base_weight)
 
+            # Determine Quantity display (append UOM for "Other" categories)
+            qty_display = item["quantity"] or ""
+            if not has_weight and qty_display:
+                # For non-weight categories (Other), usually implies UOM-based
+                # Get effective UOM for this row
+                if not is_ono:
+                    eff_uom = item.get("uom")
+                else:
+                    # Pick UOM from any quote in this group
+                    # (Assuming grouped by Packing size implicitly groups by UOM or UOM is consistent)
+                    any_q = next(iter(quotes_for_row_map.values()))
+                    eff_uom = any_q.get("ono_uom")
+                
+                if eff_uom:
+                    qty_display = f"{qty_display} {eff_uom}"
+
             row = [
                 row_label,
                 brand_val or (item["brand"] or ""),
                 category,
                 *dims,
-                item["quantity"] or "",
+                qty_display,
             ]
 
             row_weight = None
@@ -2920,18 +2935,20 @@ def delete_supplier(supplier_id):
     flash('Supplier deleted successfully!', 'success')
     return redirect(url_for('suppliers'))
 
-# Add route for categories management (admin only)
+# Add route for categories management (view for all, edit for admin)
 @app.route('/categories')
 def categories():
-    if 'user_id' not in session or session.get('role') != 'admin':
-        flash('Access denied', 'error')
-        return redirect(url_for('index'))
+    if 'user_id' not in session:
+        flash('Please login first', 'error')
+        return redirect(url_for('login'))
+    
+    can_edit = session.get('role') == 'admin'
     
     conn = get_db_connection()
     categories_list = conn.execute('SELECT * FROM categories ORDER BY name').fetchall()
     conn.close()
     
-    return render_template('categories.html', categories=categories_list)
+    return render_template('categories.html', categories=categories_list, can_edit=can_edit)
 
 @app.route('/add-category', methods=['POST'])
 def add_category():
@@ -2981,9 +2998,11 @@ def delete_category(category_id):
 
 @app.route('/category/<int:category_id>/items')
 def category_items(category_id):
-    if 'user_id' not in session or session.get('role') != 'admin':
-        flash('Access denied', 'error')
-        return redirect(url_for('index'))
+    if 'user_id' not in session:
+        flash('Please login first', 'error')
+        return redirect(url_for('login'))
+    
+    can_edit = session.get('role') == 'admin'
     
     conn = get_db_connection()
     category = conn.execute('SELECT * FROM categories WHERE id = ?', (category_id,)).fetchone()
@@ -2994,7 +3013,7 @@ def category_items(category_id):
         
     items = conn.execute('SELECT * FROM category_items WHERE category_id = ? ORDER BY name', (category_id,)).fetchall()
     conn.close()
-    return render_template('category_items.html', category=category, items=items)
+    return render_template('category_items.html', category=category, items=items, can_edit=can_edit)
 
 @app.route('/category/<int:category_id>/add-item', methods=['POST'])
 def add_category_item(category_id):
