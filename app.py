@@ -877,8 +877,8 @@ def new_task(task_id=None):
         conn.commit()
         conn.close()
         
-        # Redirect to dashboard instead of supplier selection
-        return redirect(url_for('dashboard'))
+        # Redirect to Purchase Requisitions list after save
+        return redirect(url_for('purchase_requisitions'))
     
     conn.close()
     return render_template('pr_form.html', 
