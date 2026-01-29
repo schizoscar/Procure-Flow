@@ -608,9 +608,9 @@ def delete_user(user_id):
         flash('Access denied', 'error')
         return redirect(url_for('index'))
 
-    # Prevent self-deletion
-    if user_id == session['user_id']:
-        flash('You cannot delete your own account', 'error')
+    MAIN_USER_ID = 1
+    if user_id == MAIN_USER_ID:
+        flash('The main admin account cannot be deleted.', 'error')
         return redirect(url_for('user_list'))
 
     conn = get_db_connection()
@@ -3606,7 +3606,6 @@ def server_error(e):
 
 @app.errorhandler(Exception)
 def unhandled_exception(e):
-    # Let HTTP errors pass through (404, 403, etc.)
     if isinstance(e, HTTPException):
         return e
     app.logger.exception("Unhandled exception")
