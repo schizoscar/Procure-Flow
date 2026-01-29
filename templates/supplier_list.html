@@ -53,7 +53,7 @@
                     <select id="searchCategory" class="form-control">
                         <option value="">All categories</option>
                         {% for c in categories %}
-                        <option value="{{ c.id }}">{{ c.name }}</option>
+                        <option value="{{ c.name|lower }}">{{ c.name }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -193,16 +193,22 @@
         return true;
     }
 
-    function matchesCategoryIds(catIdsText, selectedId) {
-        const sel = String(selectedId || "").trim();
+    function normalizeCat(s) {
+        return (s || "")
+            .toLowerCase()
+            .replace(/&/g, "and")     // optional consistency
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function matchesCategoryName(categoriesText, selectedName) {
+        const sel = normalizeCat(selectedName);
         if (!sel) return true;
 
-        const list = String(catIdsText || "")
-            .split(",")
-            .map(s => s.trim())
-            .filter(Boolean);
+        const hay = normalizeCat(categoriesText);
 
-        return list.includes(sel);
+        // since category names may contain commas, do NOT split by comma
+        return hay.includes(sel);
     }
 
     function filterRows() {
@@ -219,7 +225,7 @@
 
             const okName = matchesWordPrefixesInOrder(nameText, qName);
             const okEmail = matchesWordPrefixesInOrder(emailText, qEmail);
-            const okCat = matchesCategoryIds(row.dataset.catids || "", qCat);
+            const okCat = matchesCategoryName(row.dataset.categories || "", qCat);
 
             const match = okName && okEmail && okCat;
             row.style.display = match ? "" : "none";

@@ -48,13 +48,13 @@
             <div class="form-group">
                 <label class="form-label">Categories</label>
                 <div class="grid-3">
-                    {% for category in categories %}
+                    {% for category in categories|sort(attribute='name') %}
                     <div class="checkbox-group">
-                        <input type="checkbox" class="checkbox-input" name="categories" 
-                               value="{{ category.id }}" id="category-{{ category.id }}"
-                               {% if supplier and category.id in supplier_category_ids %}checked{% endif %}>
+                        <input type="checkbox" class="checkbox-input" name="categories"
+                            value="{{ category.id }}" id="category-{{ category.id }}"
+                            {% if supplier and category.id in supplier_category_ids %}checked{% endif %}>
                         <label for="category-{{ category.id }}" class="form-label">
-                            {{ category.name }}
+                        {{ category.name }}
                         </label>
                     </div>
                     {% endfor %}
