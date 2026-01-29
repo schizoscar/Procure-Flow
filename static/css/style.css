@@ -754,216 +754,186 @@ a:hover {
    (scoped with .login-page)
    ========================= */
 
-.login-page .login-container {
-    display: flex;
-    min-height: 100vh;
-    background: linear-gradient(135deg, #003366 0%, #0052A3 100%);
-    align-items: center;
-    justify-content: center;
-    padding: 1rem;
-    position: relative;
-    transform-origin: center center;
+/* Make sure the page truly fills the viewport */
+html, body {
+    height: 100%;
 }
 
-.login-page .login-card {
-    background: var(--white);
-    border-radius: 12px;
-    padding: 3rem 2.5rem;
-    max-width: 480px;
-    width: 100%;
-    box-shadow: 0 15px 40px rgba(0, 51, 102, 0.3);
-    position: relative;
-    border: 2px solid #5ba3e8;
-    min-height: 500px;
+/* Fluid sizing knob for the whole login UI */
+.login-page{
+    --ui: clamp(0.85, 0.6 + 0.55vw, 1.15); /* tweak if you want bigger overall */
+    font-size: calc(16px * var(--ui));     /* EVERYTHING inside scales via rem/em */
+}
+
+/* Slightly lighter blue so image shadows are visible */
+.login-page .login-container{
+    width: 100vw;
+    height: 100vh;
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+
+    display: flex;
+    align-items: stretch;
+    justify-content: space-between;
+    gap: clamp(12px, 28px);
+
+    background: linear-gradient(135deg, #56a0e9 0%, #cbdbe9 100%);
+}
+
+/* ===== CENTER CARD (FULL HEIGHT) ===== */
+.login-page .login-card{
+    height: 100vh;                   /* no top/bottom gap */
+    width: clamp(26rem, 32vw, 44rem);
+    max-width: 92vw;
+
+    background: var(--gray-light);
+    border-left: 2px solid rgba(0, 126, 252, 0.701);
+    border-right: 2px solid rgba(0, 126, 252, 0.701);
+
+    box-shadow: 0 18px 55px rgba(0,0,0,0.35);
+
+    padding: 2.2rem 2rem;
+
     display: flex;
     flex-direction: column;
     justify-content: center;
 }
 
-.login-page .login-header {
-    text-align: center;
-    margin-bottom: 2.5rem;
-    border-bottom: 2px solid var(--hercules-blue-lighter);
-    padding-bottom: 2rem;
-}
-
-.login-page .login-logo {
-    max-width: 250px;
+/* Bigger logo + text that scales */
+.login-page .login-logo{
+    width: min(320px, 70%);
     height: auto;
-    margin-bottom: 1.5rem;
+    margin: 0 auto clamp(10px, 1.2vw, 18px);
+    display: block;
 }
 
-.login-page .login-header h1 {
+.login-page .login-header{
+    text-align: center;
+    margin-bottom: clamp(16px, 2vw, 28px);
+    border-bottom: 2px solid var(--hercules-blue-lighter);
+    padding-bottom: clamp(14px, 2vw, 26px);
+}
+
+.login-page .login-header h1{
     color: var(--hercules-blue);
-    font-size: 2.2rem;
-    font-weight: 700;
-    margin: 0.5rem 0;
+    font-size: clamp(1.8rem, 2.2vw, 2.6rem);
+    font-weight: 800;
+    margin: 0.35rem 0;
 }
 
-.login-page .login-header .company-name {
+.login-page .login-header .company-name{
     color: var(--text-light);
-    font-size: 0.95rem;
-    font-weight: 500;
-    margin: 0.25rem 0;
-}
-
-.login-page .login-header .app-type {
-    font-size: 1.1rem;
+    font-size: clamp(0.95rem, 1.15vw, 1.15rem);
     font-weight: 600;
-    margin-top: 0.75rem;
+    margin: 0.15rem 0;
+}
+
+.login-page .login-header .app-type{
     color: var(--hercules-blue);
+    font-size: clamp(1.05rem, 1.25vw, 1.35rem);
+    font-weight: 700;
+    margin-top: 0.65rem;
 }
 
-.login-page .login-form {
-    margin-bottom: 1.5rem;
-}
-
-.login-page .login-form .form-group {
-    margin-bottom: 1.5rem;
-}
-
-.login-page .login-form .form-label {
+/* Form sizing scales too */
+.login-page .login-form .form-label{
     color: var(--hercules-blue);
-    font-weight: 600;
-    font-size: 0.95rem;
+    font-weight: 700;
+    font-size: clamp(0.95rem, 1.1vw, 1.1rem);
 }
 
-.login-page .login-form .form-control {
+.login-page .login-form .form-control{
     border: 2px solid var(--gray-border);
-    padding: 0.85rem 1rem;
-    font-size: 1rem;
+    padding: clamp(0.85rem, 1vw, 1.05rem) clamp(0.9rem, 1vw, 1.1rem);
+    font-size: clamp(1rem, 1.05vw, 1.15rem);
+    border-radius: 10px;
 }
 
-.login-page .login-form .form-control:focus {
-    border-color: var(--hercules-blue);
-    box-shadow: 0 0 0 3px rgba(0, 51, 102, 0.1);
-}
-
-.login-page .login-btn {
+.login-page .login-btn{
     width: 100%;
-    padding: 0.9rem;
+    padding: clamp(0.9rem, 1.2vw, 1.15rem);
     background: linear-gradient(135deg, var(--hercules-blue), var(--hercules-blue-light));
     color: var(--white);
     border: none;
-    border-radius: 8px;
-    font-size: 1rem;
-    font-weight: 600;
+    border-radius: 10px;
+    font-size: clamp(1rem, 1.1vw, 1.2rem);
+    font-weight: 700;
     cursor: pointer;
-    transition: all 0.3s ease;
-    box-shadow: 0 4px 12px rgba(0, 51, 102, 0.3);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+    box-shadow: 0 10px 25px rgba(0, 51, 102, 0.35);
 }
 
-.login-page .login-btn:hover {
+.login-page .login-btn:hover{
     transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 51, 102, 0.4);
+    box-shadow: 0 14px 34px rgba(0, 51, 102, 0.45);
 }
 
-.login-page .login-footer {
-    text-align: center;
-    margin-top: 1.5rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid var(--gray-border);
-}
-
-.login-page .login-footer a {
-    color: var(--hercules-blue);
-    text-decoration: none;
-    font-weight: 500;
-    font-size: 0.9rem;
-    transition: all 0.3s ease;
-}
-
-.login-page .login-footer a:hover {
-    color: var(--hercules-blue-light);
-    text-decoration: underline;
-}
-
-.login-page .login-footer i {
-    margin-right: 0.4rem;
-}
-
-/* ===== LOGIN LAYOUT ===== */
-.login-page .login-container{
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 1.5rem;
-
-    width: 100vw;          
-    min-height: 100vh;
-    margin: 0;             
-    padding: 0;            
-    overflow: hidden;      
-    background: linear-gradient(135deg, #003366 0%, #0052A3 100%);
-}
-
-/* ===== COLLAGE CANVAS (WIDER) ===== */
+/* ===== GALLERIES (STATIC BESIDE CARD) ===== */
 .login-page .login-gallery{
     position: relative;
-    flex: 1 1 560px;                   
-    max-width: 620px;
-    height: 760px;                     
+    flex: 1 1 auto;
+    height: 100vh; 
+    overflow: hidden; 
     pointer-events: none;
     user-select: none;
-    overflow: visible;
 }
 
-/* ===== IMAGE BASE STYLE ===== */
+/* Image size scales with viewport (still around your 250x150 baseline) */
 .login-page .login-gallery img{
     position: absolute;
-    width: 250px;                      
-    height: 150px;                     
-    object-fit: cover;
 
+    width: clamp(220px, 18vw, 320px);
+    height: clamp(135px, 10.5vw, 200px);
+
+    object-fit: cover;
     border: 3px solid #2b86e1;
-    border-radius: 14px;
+    border-radius: 16px;
     background: #fff;
 
-    box-shadow: 0 14px 32px rgba(0,0,0,0.25);
+    /* STRONGER shadow (visible) */
+    box-shadow:
+        0 22px 55px rgba(0,0,0,0.45),
+        0 0 0 2px rgba(255,255,255,0.08);
+
     opacity: 0.98;
 }
 
-/* Put collages behind the login card */
-.login-page .login-gallery{
-    z-index: 1;
-    overflow: hidden;
-    clip-path: inset(0 0 0 0);
+/* ---- LEFT collage positions (percent-based so it scales) ---- */
+.login-page .login-gallery:first-of-type img:nth-child(1){ top: 8%;  left: 4%;  transform: rotate(-12deg); }
+.login-page .login-gallery:first-of-type img:nth-child(2){ top: 14%; left: 43%; transform: rotate(10deg); }
+.login-page .login-gallery:first-of-type img:nth-child(3){ top: 34%; left: 8%; transform: rotate(-5deg); }
+.login-page .login-gallery:first-of-type img:nth-child(4){ top: 42%; left: 42%; transform: rotate(12deg); }
+.login-page .login-gallery:first-of-type img:nth-child(5){ top: 62%; left: 6%;  transform: rotate(-10deg); }
+.login-page .login-gallery:first-of-type img:nth-child(6){ top: 70%; left: 41%; transform: rotate(6deg); }
+
+/* ---- RIGHT collage positions ---- */
+.login-page .login-gallery:last-of-type img:nth-child(1){ top: 8%;  left: 44%; transform: rotate(12deg); }
+.login-page .login-gallery:last-of-type img:nth-child(2){ top: 16%; left: 4%; transform: rotate(-10deg); }
+.login-page .login-gallery:last-of-type img:nth-child(3){ top: 34%; left: 42%; transform: rotate(14deg); }
+.login-page .login-gallery:last-of-type img:nth-child(4){ top: 42%; left: 6%; transform: rotate(-12deg); }
+.login-page .login-gallery:last-of-type img:nth-child(5){ top: 62%; left: 44%; transform: rotate(8deg); }
+.login-page .login-gallery:last-of-type img:nth-child(6){ top: 70%; left: 6%; transform: rotate(-6deg); }
+
+/* ===== Responsive: hide galleries on smaller screens ===== */
+@media (max-width: 980px){
+    .login-page .login-gallery{ display: none; }
+    .login-page .login-container{ justify-content: center; }
+    .login-page .login-card{
+        width: min(92vw, 560px);
+        border-radius: 14px;  /* looks nicer when it’s centered */
+        height: auto;         /* allow scrolling if needed */
+        min-height: 100vh;
+    }
 }
 
-.login-page .login-card > *{
-    position: relative;
-    z-index: 2;
+/* Wrap supplier name text */
+.table td.col-name,
+.table th.col-name {
+  white-space: normal;       /* allow wrapping */
+  word-break: break-word;    /* break long words */
+  overflow-wrap: anywhere;   /* modern wrap for very long strings */
+  line-height: 1.25;
+  vertical-align: top;
 }
 
-/* ===== LEFT GALLERY scatter (spread wider) ===== */
-.login-page .login-gallery:first-of-type img:nth-child(1){ top: 20px;  left: 40px;  transform: rotate(-10deg); }
-.login-page .login-gallery:first-of-type img:nth-child(2){ top: 70px;  left: 260px; transform: rotate(8deg);  }
-.login-page .login-gallery:first-of-type img:nth-child(3){ top: 210px; left: 90px;  transform: rotate(-4deg); }
-.login-page .login-gallery:first-of-type img:nth-child(4){ top: 300px; left: 320px; transform: rotate(11deg); }
-.login-page .login-gallery:first-of-type img:nth-child(5){ top: 470px; left: 60px;  transform: rotate(-12deg); }
-.login-page .login-gallery:first-of-type img:nth-child(6){ top: 560px; left: 280px; transform: rotate(6deg);  }
-
-/* ===== RIGHT GALLERY scatter (also spread wider) ===== */
-.login-page .login-gallery:last-of-type img:nth-child(1){ top: 25px;  left: 300px; transform: rotate(10deg); }
-.login-page .login-gallery:last-of-type img:nth-child(2){ top: 85px;  left: 60px;  transform: rotate(-8deg); }
-.login-page .login-gallery:last-of-type img:nth-child(3){ top: 230px; left: 270px; transform: rotate(12deg); }
-.login-page .login-gallery:last-of-type img:nth-child(4){ top: 320px; left: 40px;  transform: rotate(-11deg); }
-.login-page .login-gallery:last-of-type img:nth-child(5){ top: 485px; left: 290px; transform: rotate(7deg);  }
-.login-page .login-gallery:last-of-type img:nth-child(6){ top: 575px; left: 70px;  transform: rotate(-5deg); }
-
-/* ===== Responsive: shrink galleries ===== */
-@media (max-width: 1200px){
-  .login-page .login-gallery{
-    max-width: 480px;
-    height: 700px;
-  }
-  .login-page .login-container{
-    padding: 1rem 1.25rem;
-  }
-}
-
-/* Hide galleries on small screens */
-@media (max-width: 900px){
-  .login-page .login-gallery{ display: none; }
-  .login-page .login-container{ justify-content: center; }
-}
