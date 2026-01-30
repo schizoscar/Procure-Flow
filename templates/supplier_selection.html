@@ -117,16 +117,22 @@
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-arrow-right"></i> Save Assignments & Continue
                         </button>
-                        <a href="{{ url_for('new_task', task_id=task.id) }}" class="btn btn-secondary">
+                        <a href="{{ url_for('new_task', task_id=task.id, next=request.args.get('next')) }}" class="btn btn-secondary">
                             <i class="fas fa-arrow-left"></i> Back to PR Form
                         </a>
+
+                        {% if request.args.get('next') %}
+                            <a href="{{ request.args.get('next') }}" class="btn btn-outline-secondary">
+                                <i class="fas fa-list"></i> Back to Task List
+                            </a>
+                        {% endif %}
                     </div>
                     {% else %}
                     <div class="alert alert-warning">
                         <h5><i class="fas fa-exclamation-triangle"></i> No Compatible Suppliers Found</h5>
                         <p>No suppliers found for your item categories: <strong>{{ categories|join(', ') }}</strong></p>
                         <div class="d-flex gap-1 mt-3">
-                            <a href="{{ url_for('new_task', task_id=task.id) }}" class="btn btn-primary">
+                            <a href="{{ url_for('new_task', task_id=task.id, next=request.args.get('next')) }}" class="btn btn-primary">
                                 <i class="fas fa-edit"></i> Edit PR Items
                             </a>
                             {% if session.role == 'admin' %}

@@ -892,29 +892,29 @@ def new_task(task_id=None):
 def edit_task(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
+
+    next_url = request.args.get("next")
+
     conn = get_db_connection()
-    
-    # Verify task ownership
     task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    conn.close()
     if not task:
         flash('Task not found', 'error')
-        conn.close()
         return redirect(url_for('task_list'))
-    
-    conn.close()
-    
-    # Redirect based on current status
+
+    def go(endpoint):
+        return redirect(url_for(endpoint, task_id=task_id, next=next_url) if next_url else url_for(endpoint, task_id=task_id))
+
     if task['status'] == 'purchase_requisition':
-        return redirect(url_for('new_task', task_id=task_id))
+        return go('new_task')
     elif task['status'] == 'select_suppliers':
-        return redirect(url_for('supplier_selection', task_id=task_id))
+        return go('supplier_selection')
     elif task['status'] == 'generate_email':
-        return redirect(url_for('email_preview', task_id=task_id))
+        return go('email_preview')
     elif task['status'] == 'confirm_email':
-        return redirect(url_for('email_confirmation', task_id=task_id))
+        return go('email_confirmation')
     else:
-        return redirect(url_for('task_list'))
+        return redirect(next_url) if next_url else redirect(url_for('task_list'))
 
 @app.route('/task/<int:task_id>/email-preview', methods=['GET', 'POST'])
 def email_preview(task_id):
@@ -2045,7 +2045,6 @@ def export_comparison(task_id):
             cell.font = header_font
             cell.alignment = header_align
 
-
     # Merge and center Item Name, Brand, Category (cols 1-3)
     for col in range(1, 4):
         ws.merge_cells(start_row=1, start_column=col, end_row=2, end_column=col)
@@ -2053,13 +2052,31 @@ def export_comparison(task_id):
         cell.font = bold
         cell.alignment = center
 
-    # Merge "Dimensions (mm)" across the dynamic dim columns
+    # Merge and center the dim group header
     dim_start = 4
     dim_end = 3 + DIM_COUNT
-    ws.merge_cells(start_row=1, start_column=dim_start, end_row=1, end_column=dim_end)
-    ws.cell(row=1, column=dim_start).font = bold
-    ws.cell(row=1, column=dim_start).alignment = center
-    ws.cell(row=1, column=dim_start).value = dim_group_label
+
+    if has_weight:
+        # Normal case: Row 1 group header + Row 2 subheaders (W/L/Thk etc.)
+        ws.merge_cells(start_row=1, start_column=dim_start, end_row=1, end_column=dim_end)
+        cell = ws.cell(row=1, column=dim_start)
+        cell.value = dim_group_label  # "Dimensions"
+        cell.font = bold
+        cell.alignment = center
+
+        # Center dim subheaders in row2
+        for col in range(dim_start, dim_end + 1):
+            c = ws.cell(row=2, column=col)
+            c.font = bold
+            c.alignment = center
+    else:
+        # "Other" categories: Packing has NO second header
+        # Merge Row 1–2 for Packing
+        ws.merge_cells(start_row=1, start_column=dim_start, end_row=2, end_column=dim_end)
+        cell = ws.cell(row=1, column=dim_start)
+        cell.value = dim_group_label  # "Packing"
+        cell.font = bold
+        cell.alignment = center
 
     # Center dim headers in row2
     for col in range(dim_start, dim_end + 1):

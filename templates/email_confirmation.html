@@ -107,9 +107,16 @@
                 <button type="submit" class="btn btn-success" id="sendButton" disabled>
                     <i class="fas fa-paper-plane"></i> Send Emails Now
                 </button>
-                <a href="{{ url_for('email_preview', task_id=task.id) }}" class="btn btn-secondary">
+
+                <a href="{{ url_for('email_preview', task_id=task.id, next=request.args.get('next')) }}" class="btn btn-secondary">
                     <i class="fas fa-arrow-left"></i> Back to Preview
                 </a>
+
+                {% if request.args.get('next') %}
+                    <a href="{{ request.args.get('next') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-list"></i> Back to Task List
+                    </a>
+                {% endif %}
             </div>
         </form>
     </div>

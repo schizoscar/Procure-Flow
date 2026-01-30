@@ -520,7 +520,15 @@
                 <button type="submit" class="btn btn-primary">
                 <i class="fas fa-save"></i> Save
                 </button>
-                <a href="{{ url_for('index') }}" class="btn btn-secondary">Cancel</a>
+                <a href="{{ request.args.get('next') or url_for('purchase_requisitions') }}" class="btn btn-secondary">
+                    Cancel
+                </a>
+
+                {% if request.args.get('next') %}
+                    <a href="{{ request.args.get('next') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-list"></i> Back to Task List
+                    </a>
+                {% endif %}
             </div>
         </form>
     </div>
