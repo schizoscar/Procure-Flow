@@ -34,7 +34,11 @@ import math
 from decimal import Decimal, InvalidOperation
 
 
+# Load .env file for local development
 load_dotenv()
+
+# Check if running on Render
+IS_RENDER = os.getenv('RENDER', '0') == '1'
 
 app = Flask(__name__)
 secret = os.getenv("APP_SECRET_KEY")
@@ -3629,8 +3633,9 @@ def unhandled_exception(e):
     return render_template("errors/500.html"), 500
 
 if __name__ == '__main__':
-    debug_mode = os.getenv("FLASK_DEBUG", "0") == "1"
-    host = os.getenv("FLASK_HOST", "127.0.0.1")   # safer default than 0.0.0.0
+    # for Render: always use 0.0.0.0
+    debug_mode = os.getenv("FLASK_DEBUG", "0") == "1" and os.getenv("RENDER", "0") != "1"
+    host = '0.0.0.0'  # Force 0.0.0.0 for Render
     port = int(os.getenv("PORT", "5000"))
-
+    
     app.run(host=host, port=port, debug=debug_mode)
