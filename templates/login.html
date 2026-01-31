@@ -1,50 +1,83 @@
 <!-- templates/login.html -->
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Procure Flow</title>
+    <title>Login - Procure Flow | Hercules Engineering</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
 </head>
-<body>
-    <div class="container" style="justify-content: center; align-items: center;">
-        <div class="card" style="max-width: 400px; width: 100%;">
-            <div class="card-header text-center">
-                <h1><i class="fas fa-shopping-cart"></i> Procure Flow</h1>
-                <p>Procurement Management System</p>
-            </div>
-            <div class="card-body">
-                <form method="POST">
-                    <div class="form-group">
-                        <label class="form-label">Username</label>
-                        <input type="text" class="form-control" name="username" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Password</label>
-                        <input type="password" class="form-control" name="password" required>
-                    </div>
-                    <button type="submit" class="btn btn-primary" style="width: 100%;">
-                        <i class="fas fa-sign-in-alt"></i> Login
-                    </button>
-                </form>
-                
-                {% with messages = get_flashed_messages(with_categories=true) %}
-                    {% if messages %}
-                        {% for category, message in messages %}
-                            <div class="alert alert-{{ category if category != 'message' else 'info' }} mt-2">
-                                {{ message }}
-                            </div>
-                        {% endfor %}
-                    {% endif %}
-                {% endwith %}
-                
-                <div class="text-center mt-2">
-                    <small>Default admin: username: admin, password: admin123</small>
-                </div>
-            </div>
+
+<body class="login-page">
+    <div class="login-container">
+
+        <!-- LEFT GALLERY (static/pictures/...) -->
+        <div class="login-gallery" aria-hidden="true">
+            <img src="{{ url_for('static', filename='pictures/rebar_bundle.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/pvc_fitting.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/steel_plates_2.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/drill_bits.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/fasteners.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/steel_plates_1.jpeg') }}" alt="">
         </div>
+
+        <!-- CENTER CARD -->
+        <div class="login-card">
+            <div class="login-header">
+                <img src="{{ url_for('static', filename='pictures/Hercules-Logo-WS.png') }}" alt="Hercules Logo" class="login-logo">
+                <h1>Procure Flow</h1>
+                <p class="company-name">HERCULES ENGINEERING</p>
+                <p class="app-type">Procurement Management System</p>
+            </div>
+
+            <form method="POST" class="login-form">
+                <div class="form-group">
+                    <label class="form-label" for="username">
+                        <i class="fas fa-user"></i> Username
+                    </label>
+                    <input type="text" class="form-control" id="username" name="username" required>
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="password">
+                        <i class="fas fa-lock"></i> Password
+                    </label>
+                    <input type="password" class="form-control" id="password" name="password" required>
+                </div>
+                <button type="submit" class="login-btn">
+                    <i class="fas fa-sign-in-alt"></i> Login
+                </button>
+            </form>
+
+            <div class="login-footer">
+                <a href="{{ url_for('forgot_password') }}">
+                <i class="fas fa-unlock-alt"></i> Forgot password?
+                </a>
+            </div>
+
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category if category != 'message' else 'info' }} mt-2">
+                            {{ message }}
+                        </div>
+                    {% endfor %}
+                {% endif %}
+            {% endwith %}
+        </div>
+
+        <!-- RIGHT GALLERY -->
+        <div class="login-gallery" aria-hidden="true">
+            <img src="{{ url_for('static', filename='pictures/factory_bag.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/socket_head_bolt.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/cutting_tools.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/chemical_containers.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/steel_plates_3.jpeg') }}" alt="">
+            <img src="{{ url_for('static', filename='pictures/bolts_bag.jpeg') }}" alt="">
+        </div>
+
     </div>
 </body>
+
 </html>

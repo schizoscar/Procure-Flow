@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit Quote - Hercules Engineering Procurement</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        .public-header {
+            text-align: center;
+            margin-bottom: 2rem;
+        }
+
+        .public-header-logo {
+            max-width: 250px;
+            height: auto;
+            margin-bottom: 1rem;
+        }
+
+        .public-header h1 {
+            color: #0052A3;
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin: 0.5rem 0;
+        }
+    </style>
+</head>
+
+<body>
+    <div style="max-width: 720px; margin: 20px auto 0; padding: 0 16px;">
+        <div class="public-header">
+            <img src="{{ url_for('static', filename='pictures/Hercules-Logo-WS.png') }}" alt="Hercules Logo" class="public-header-logo">
+            <h1>Procurement System</h1>
+        </div>
+    </div>
+
+    <div style="margin: 18px auto 40px; padding: 0 32px;">
+        <div class="card-white">
+            <div class="card-header">
+                <h2>Submit Quote</h2>
+                <table style="border-collapse:collapse;">
+                    <tr>
+                        <td style="padding-right:10px; white-space:nowrap;">Task</td>
+                        <td style="padding-right:10px;">:</td>
+                        <td>{{ task.task_name }}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding-right:10px; white-space:nowrap;">Supplier</td>
+                        <td style="padding-right:10px;">:</td>
+                        <td>{{ supplier.name }}</td>
+                    </tr>
+                </table>
+            </div>
+
+            <div class="card-body bg-light">
+                <form method="POST" enctype="multipart/form-data">
+
+                    <!-- Payment Terms (same style as supplier_public_quote) -->
+                    <div class="form-group">
+                        <label class="form-label required">Payment Terms</label>
+                        <select class="form-control form-select" name="payment_terms" required>
+                            {% set pt = payment_terms_default or '' %}
+                            <option value="" {% if pt == '' %}selected{% endif %}>Empty</option>
+                            <option value="Cash" {% if pt == 'Cash' %}selected{% endif %}>Cash</option>
+                            <option value="30 Days" {% if pt == '30 Days' %}selected{% endif %}>30 Days</option>
+                            <option value="30 Days PD" {% if pt == '30 Days PD' %}selected{% endif %}>30 Days PD</option>
+                            <option value="60 Days" {% if pt == '60 Days' %}selected{% endif %}>60 Days</option>
+                            <option value="60 Days PD" {% if pt == '60 Days PD' %}selected{% endif %}>60 Days PD</option>
+                            <option value="90 Days" {% if pt == '90 Days' %}selected{% endif %}>90 Days</option>
+                            <option value="90 Days PD" {% if pt == '90 Days PD' %}selected{% endif %}>90 Days PD</option>
+                            <option value="120 Days" {% if pt == '120 Days' %}selected{% endif %}>120 Days</option>
+                            <option value="120 Days PD" {% if pt == '120 Days PD' %}selected{% endif %}>120 Days PD</option>
+                        </select>
+                    </div>
+
+                    <!-- Master quotation upload (same style) -->
+                    <div class="card mb-3" style="border: 1px solid #1a73e8; background-color: #f8faff;">
+                        <div class="card-body bg-light">
+                            <label class="form-label" style="font-weight: 600; color: #1a73e8;">
+                                Upload Master Quotation (Optional)
+                            </label>
+                            <p class="text-muted" style="font-size: 0.9em; margin-bottom: 0.5rem;">
+                                If you have a formal quotation document, please upload it here. You may still fill in the unit prices below for faster processing.
+                            </p>
+
+                            <input id="quotation_file" type="file" class="form-control" name="quotation_file">
+
+                            {% if master_quotation_file %}
+                                <div style="margin-top:0.5rem;">
+                                    <small class="text-success" style="font-weight: 600;">
+                                        <i class="fas fa-file-pdf"></i> File already uploaded
+                                    </small>
+                                    <a href="{{ url_for('serve_file', file_id=master_quotation_file) }}"
+                                    target="_blank"
+                                    class="btn btn-sm btn-outline-primary"
+                                    style="margin-left: 0.5rem;">
+                                        <i class="fas fa-download"></i> View/Download
+                                    </a>
+                                </div>
+                            {% endif %}
+
+                            <div id="quotation_filename" style="margin-top:0.5rem;display:none;">
+                                <small class="text-success"><i class="fas fa-check"></i> <span id="quotation_name"></span></small>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Items table -->
+                    <div class="table-wrap">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th style="min-width:240px;">
+                                        Item
+                                        {% if pr_items and pr_items[0].item_category %}
+                                            ({{ pr_items[0].item_category }})
+                                        {% else %}
+                                            (Category)
+                                        {% endif %}
+                                    </th>
+                                    <th class="th-required" style="min-width:170px;">Unit Price (RM)</th>
+                                    <th class="th-required" style="min-width:170px;">Delivery Lead Time (Days)</th>
+                                    <th class="th-required" style="min-width:190px;">Stock Availability</th>
+                                    <th style="min-width:170px;">Warranty (If Applicable)</th>
+                                    <th style="min-width:240px;">Mill Certificate / Certificate of Analysis (COA) (If Applicable)</th>
+                                    <th style="min-width:140px;">Nearest Offer (If Applicable)</th>
+                                    <th style="min-width:240px;">Remarks</th>
+                                </tr>
+                            </thead>
+
+                            <tbody>
+                                {% for item in pr_items %}
+                                {% set cat = item.item_category %}
+
+                                <tr class="item-row" data-item-id="{{ item.id }}">
+                                    <!-- Item info cell -->
+                                    <td>
+                                        {% set spec_label = item.brand or '' %}
+                                        <div style="font-weight:600;">
+                                            <div style="display:flex; gap:0.5rem; flex-wrap:wrap; align-items:baseline;">
+                                                <span>{{ loop.index }}.</span>
+
+                                                {% if spec_label %}
+                                                    <span>{{ spec_label }}</span>
+                                                {% endif %}
+
+                                                {% if item.specification %}
+                                                    <span>{{ item.specification }}</span>
+                                                {% endif %}
+
+                                                {% set DIM_CATS = ['Steel Plates','Stainless Steel','Angle Bar','Bolts, Fasteners','Rebar','Nuts'] %}
+                                            </div>
+                                    
+                                            <div style="margin-top:0.25rem;">
+                                                
+                                                <span>
+                                                    Qty:
+                                                    {{ item.quantity if item.quantity is not none else '-' }}
+                                                    {% if cat not in DIM_CATS and item.uom %}
+                                                        {{ item.uom }}
+                                                    {% endif %}
+                                                </span>
+                                            </div>
+
+                                            <div style="margin-top:0.25rem;">
+                                                {% if cat in ['Steel Plates','Stainless Steel'] %}
+                                                    Sizes: {{ item.width if item.width is not none else '-' }} mm (W)
+                                                    × {{ item.length if item.length is not none else '-' }} mm (L)
+                                                    × {{ item.thickness if item.thickness is not none else '-' }} mm (Thk)
+                                                {% elif cat == 'Angle Bar' %}
+                                                    Sizes: {{ item.dim_a if item.dim_a is not none else '-' }} mm (A)
+                                                    × {{ item.dim_b if item.dim_b is not none else '-' }} mm (B)
+                                                    × {{ item.length if item.length is not none else '-' }} mm (L)
+                                                    × {{ item.thickness if item.thickness is not none else '-' }} mm (Thk)
+                                                {% elif cat in ['Bolts, Fasteners','Rebar','Nuts'] %}
+                                                    Sizes: {{ item.diameter if item.diameter is not none else '-' }} mm (D)
+                                                    × {{ item.length if item.length is not none else '-' }} mm (L)
+                                                {% else %}
+                                                    Packing: {{ item.uom_qty if item.uom_qty is not none else '-' }}
+                                                {% endif %}
+                                            </div>
+
+                                            <div style="margin-top:0.25rem;">
+                                                {% if item.our_remarks %}
+                                                    <div style="margin-top:0.25rem; font-weight:400;">
+                                                        <small><strong>Remarks:</strong> {{ item.our_remarks }}</small>
+                                                    </div>
+                                                {% endif %}
+                                            </div>
+                                        </div>
+                                    </td>
+
+                                    <!-- Unit price dropdown -->
+                                    <td>
+                                        <input class="form-control unit-price-input"
+                                            type="text"
+                                            inputmode="decimal"
+                                            autocomplete="off"
+                                            pattern="^\d+(\.\d{0,2})?$"
+                                            title="Numbers only (up to 2 decimal places). Example: 12.50"
+                                            name="unit_price_{{ item.id }}"
+                                            list="unit-price-list-{{ item.id }}"
+                                            placeholder="Select or type (e.g. 12.50)"
+                                            required>
+
+                                        <datalist id="unit-price-list-{{ item.id }}" class="unit-price-datalist"></datalist>
+                                    </td>
+
+                                    <!-- Lead time dropdown -->
+                                    <td>
+                                        <input class="form-control lead-time-input integer-input"
+                                            type="text"
+                                            inputmode="numeric"
+                                            autocomplete="off"
+                                            pattern="\d*"
+                                            name="lead_time_{{ item.id }}"
+                                            list="lead-time-list-{{ item.id }}"
+                                            placeholder="Select or type"
+                                            required>
+
+                                        <datalist id="lead-time-list-{{ item.id }}"
+                                                    class="integer-datalist"
+                                                    data-max="1000"></datalist>
+                                    </td>
+
+                                    <!-- Stock availability dropdown -->
+                                    <td>
+                                        <select class="form-control form-select" 
+                                            name="stock_availability_{{ item.id }}" 
+                                            required>
+                                            <option value="">Select</option>
+                                            <option value="In Stock">In Stock</option>
+                                            <option value="Out of Stock">Out of Stock</option>
+                                        </select>
+                                    </td>
+
+                                    <!-- Warranty dropdown -->
+                                    <td>
+                                        <select class="form-control form-select" name="warranty_{{ item.id }}">
+                                            <option value="">Select</option>
+                                            <!-- ✅ Warranty choices -->
+                                            <option value="No Warranty">No Warranty</option>
+                                            <option value="1 month">1 month</option>
+                                            <option value="3 months">3 months</option>
+                                            <option value="6 months">6 months</option>
+                                            <option value="1 year">1 year</option>
+                                            <option value="2 years">2 years</option>
+                                            <option value="3 years">3 years</option>
+                                            <option value="5 years">5 years</option>
+                                        </select>
+                                    </td>
+
+                                    <!-- COA -->
+                                    <td>
+                                        <input type="file" 
+                                            class="form-control"
+                                            name="cert_{{ item.id }}"
+                                            id="cert_{{ item.id }}">
+
+                                        <div id="cert_filename_{{ item.id }}" style="margin-top:0.4rem;display:none;">
+                                            <small class="text-success">
+                                                <i class="fas fa-check"></i> <span id="cert_name_{{ item.id }}"></span>
+                                            </small>
+                                        </div>
+                                    </td>
+
+                                    <!-- ONO (Nearest Offer) -->
+                                    <td>
+                                        {% if item.item_category in ['Steel Plates','Stainless Steel'] %}
+                                            <div style="display:grid; grid-template-columns: repeat(3, 1fr); gap:0.5rem;">
+                                                <div>
+                                                    <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_width_{{ item.id }}"
+                                                        list="ono-width-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-width-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_length_{{ item.id }}"
+                                                        list="ono-length-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-length-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_thickness_{{ item.id }}"
+                                                        list="ono-thickness-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-thickness-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
+                                                </div>
+                                            </div>
+                                            <div style="margin-top:0.5rem;">
+                                                <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
+                                                <input type="text" class="form-control" name="ono_brand_{{ item.id }}">
+                                            </div>
+
+                                        {% elif item.item_category == 'Angle Bar' %}
+                                            <div style="display:grid; grid-template-columns: repeat(4, 1fr); gap:0.5rem;">
+                                                <div>
+                                                    <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_dim_a_{{ item.id }}"
+                                                        list="ono-dim_a-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-dim_a-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_dim_b_{{ item.id }}"
+                                                        list="ono-dim_b-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-dim_b-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_length_{{ item.id }}"
+                                                        list="ono-length-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-length-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_thickness_{{ item.id }}"
+                                                        list="ono-thickness-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-thickness-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
+                                                </div>
+                                            </div>
+                                            <div style="margin-top:0.5rem;">
+                                                <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
+                                                <input type="text" class="form-control" name="ono_brand_{{ item.id }}">
+                                            </div>
+
+                                        {% elif item.item_category in ['Bolts, Fasteners','Rebar','Nuts'] %}
+                                            <div style="display:grid; grid-template-columns: repeat(2, 1fr); gap:0.5rem;">
+                                                <div>
+                                                    <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_diameter_{{ item.id }}"
+                                                        list="ono-diameter-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-diameter-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
+                                                </div>
+                                                <div>
+                                                    <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
+                                                    <input class="form-control ono-dim-input integer-input"
+                                                        type="text"
+                                                        inputmode="numeric"
+                                                        autocomplete="off"
+                                                        pattern="\d*"
+                                                        name="ono_length_{{ item.id }}"
+                                                        list="ono-length-list-{{ item.id }}"
+                                                        placeholder="Select or type">
+
+                                                    <datalist id="ono-length-list-{{ item.id }}"
+                                                            class="integer-datalist"
+                                                            data-max="10000"></datalist>
+                                                </div>
+                                            </div>
+                                            <div style="margin-top:0.5rem;">
+                                                <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
+                                                <input type="text" class="form-control" name="ono_brand_{{ item.id }}">
+                                            </div>
+
+                                        {% else %}
+                                            <div style="display:grid; grid-template-columns: 1fr; gap:0.5rem;">
+                                                <div>
+                                                    <label class="form-label" style="font-size:0.85rem;">Packing / UOM Amount</label>
+                                                    <input class="form-control ono-text-input"
+                                                        type="text"
+                                                        autocomplete="off"
+                                                        name="ono_uom_qty_{{ item.id }}"
+                                                        placeholder="Type (e.g. 20 pcs/box, 5L, 1 roll)">
+                                                </div>
+                                            </div>
+
+                                            <div style="margin-top:0.5rem;">
+                                                <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
+                                                <input type="text" class="form-control" name="ono_brand_{{ item.id }}">
+                                            </div>
+                                        {% endif %}
+                                    </td>
+
+                                    <!-- Remarks -->
+                                    <td>
+                                        <input type="text" class="form-control" name="notes_{{ item.id }}">
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="d-flex gap-1 mt-2" style="margin-top: 18px;">
+                        <button type="submit" class="btn btn-primary">
+                            Submit Quote
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+
+            function setEnabled(container, enabled) {
+                container.querySelectorAll('input, select, textarea').forEach(el => {
+                    el.disabled = !enabled;
+                });
+            }
+
+            function showONOSection(itemId, dimType) {
+                const fieldsDiv = document.getElementById('ono_fields_' + itemId);
+                if (!fieldsDiv) return;
+
+                // Hide + disable all sections
+                fieldsDiv.querySelectorAll('.ono-dims-section').forEach(sec => {
+                    sec.style.display = 'none';
+                    setEnabled(sec, false);
+                });
+
+                // Show + enable the selected section
+                const target = fieldsDiv.querySelector('.ono-' + dimType);
+                if (target) {
+                    target.style.display = 'block';
+                    setEnabled(target, true);
+                }
+            }
+
+            // COA filename display
+            document.querySelectorAll('input[type="file"][name^="cert_"]').forEach(function (input) {
+                input.addEventListener('change', function () {
+                    const itemId = this.name.replace('cert_', '');
+                    const filenameDiv = document.getElementById('cert_filename_' + itemId);
+                    const filenameSpan = document.getElementById('cert_name_' + itemId);
+
+                    if (!filenameDiv || !filenameSpan) return;
+
+                    if (this.files && this.files.length > 0) {
+                        filenameSpan.textContent = this.files[0].name;
+                        filenameDiv.style.display = 'block';
+                    } else {
+                        filenameDiv.style.display = 'none';
+                    }
+                });
+            });
+
+            // Master quotation filename display (your old code didn't work because input had no id)
+            const quotationFileInput = document.getElementById('quotation_file');
+            if (quotationFileInput) {
+                quotationFileInput.addEventListener('change', function () {
+                    const filenameDiv = document.getElementById('quotation_filename');
+                    const filenameSpan = document.getElementById('quotation_name');
+
+                    if (!filenameDiv || !filenameSpan) return;
+
+                    if (this.files && this.files[0]) {
+                        filenameSpan.textContent = this.files[0].name;
+                        filenameDiv.style.display = 'block';
+                    } else {
+                        filenameDiv.style.display = 'none';
+                    }
+                });
+            }
+
+            function enforceDecimalInputs(scope = document) {
+                scope.querySelectorAll('.unit-price-input').forEach(inp => {
+                    inp.addEventListener('input', () => {
+                    // Keep only digits and dots
+                    let v = inp.value.replace(/[^\d.]/g, '');
+
+                    // Keep only the first dot
+                    const firstDot = v.indexOf('.');
+                    if (firstDot !== -1) {
+                        v = v.slice(0, firstDot + 1) + v.slice(firstDot + 1).replace(/\./g, '');
+                    }
+
+                    // Limit to 2 decimal places
+                    if (firstDot !== -1) {
+                        const [a, b] = v.split('.');
+                        v = a + '.' + (b || '').slice(0, 2);
+                    }
+
+                    inp.value = v;
+                    });
+                });
+            }
+
+            function enforceIntegerInputs(scope = document) {
+                scope.querySelectorAll('.integer-input').forEach(inp => {
+                    inp.addEventListener('input', () => {
+                    const cleaned = inp.value.replace(/[^\d]/g, '');
+                    if (inp.value !== cleaned) inp.value = cleaned;
+                    });
+                });
+            }
+
+            function populateIntegerDatalists(scope = document) {
+                scope.querySelectorAll('.integer-datalist').forEach(datalist => {
+                    const max = parseInt(datalist.getAttribute('data-max') || '10000', 10);
+                    datalist.innerHTML = '';
+
+                    const addRange = (start, end, step) => {
+                    for (let v = start; v <= end && v <= max; v += step) {
+                        const opt = document.createElement('option');
+                        opt.value = String(v);
+                        datalist.appendChild(opt);
+                    }
+                    };
+
+                    addRange(1, 100, 1);
+                    addRange(110, 1000, 10);
+                    addRange(1100, max, 100);
+                });
+            }
+
+            function fillSelectRange(selectEl, start, end) {
+                if (!selectEl) return;
+
+                // Keep the first option (Select)
+                const first = selectEl.querySelector('option[value=""]');
+                selectEl.innerHTML = '';
+                if (first) selectEl.appendChild(first);
+
+                for (let i = start; i <= end; i++) {
+                const opt = document.createElement('option');
+                opt.value = String(i);
+                opt.textContent = String(i);
+                selectEl.appendChild(opt);
+                }
+            }
+
+            // Populate all unit price selects
+            function fillDatalistRange(datalistEl, start, end, step = 1) {
+                if (!datalistEl) return;
+                datalistEl.innerHTML = '';
+
+                for (let v = start; v <= end; v += step) {
+                    const opt = document.createElement('option');
+                    opt.value = String(v);
+                    datalistEl.appendChild(opt);
+                }
+            }
+
+            // Populate all unit price datalists (suggest 1..10000)
+            document.querySelectorAll('.unit-price-input').forEach(input => {
+                const datalist = document.getElementById(input.getAttribute('list'));
+                if (!datalist) return;
+
+                datalist.innerHTML = '';
+
+                const addRange = (start, end, step) => {
+                    for (let v = start; v <= end; v += step) {
+                        const opt = document.createElement('option');
+                        opt.value = String(v);
+                        datalist.appendChild(opt);
+                    }
+                };
+
+                addRange(1, 100, 1);
+                addRange(110, 1000, 10);
+                addRange(1100, 10000, 100);
+            });
+
+            // Populate all lead time selects
+            document.querySelectorAll('.lead-time-select').forEach(sel => {
+                const max = parseInt(sel.getAttribute('data-max') || '100', 10);
+                fillSelectRange(sel, 1, max);
+            });
+
+            populateIntegerDatalists(document);
+            enforceIntegerInputs(document);
+            enforceDecimalInputs(document);
+
+        });
+    </script>
+        </div>
+    </div>
+</body>
+
+</html>

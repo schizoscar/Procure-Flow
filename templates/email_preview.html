@@ -2,12 +2,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card-white">
     <div class="card-header">
         <h2>Edit & Preview Emails</h2>
         <p>Step 3: Write and review emails for {{ task.task_name }}</p>
     </div>
-    <div class="card-body">
+    <div class="card-body bg-light">
         <!-- Progress Steps -->
         <div class="progress-steps">
             <div class="progress-step completed">1</div>
@@ -32,7 +32,7 @@
                         <span class="badge">{{ template.suppliers|length }} recipient(s)</span>
                     </h4>
                 </div>
-                <div class="card-body">
+                <div class="card-body bg-light">
                     <div class="template-info mb-3">
                         <div class="row">
                             <div class="col-md-6">
@@ -40,7 +40,7 @@
                                 {% if template_key == 'all' %}
                                 All {{ pr_items|length }} items
                                 {% else %}
-                                {{ template.items|length }} specific item(s)
+                                {{ template['items']|length }} specific item(s)
                                 {% endif %}
                             </div>
                             <div class="col-md-6">
@@ -70,17 +70,23 @@
                         <h5><i class="fas fa-eye"></i> Email Preview</h5>
                         <div class="email-preview">
                             <div class="email-header">
-                                <div><strong>To:</strong> [Supplier Name]</div>
+                                <div><strong>To:</strong> [Supplier Name] [Contact Person]</div>
                                 <div><strong>Subject:</strong> {{ email_subject or ("Procurement Inquiry - " + task.task_name) }}</div>
                                 <div><strong>From:</strong> Procurement Department</div>
                             </div>
                             <div class="email-body">
                                 {% if template.email_content %}
-                                    {{ template.email_content|replace('{supplier_name}', '<span class="placeholder">[Supplier Name]</span>')|replace('[Supplier Name]', '<span class="placeholder">[Supplier Name]</span>')|safe }}
+                                    {% set preview = template.email_content
+                                        | replace('{supplier_name}', '<span class="placeholder">[Supplier Name]</span>')
+                                        | replace('[Supplier Name]', '<span class="placeholder">[Supplier Name]</span>')
+                                        | replace('{contact_person}', '<span class="placeholder">[Contact Person]</span>')
+                                        | replace('[Contact Person]', '<span class="placeholder">[Contact Person]</span>')
+                                    %}
+                                    {{ preview|safe }}
                                 {% else %}
-                                    <p>Dear <span class="placeholder">[Supplier Name]</span>,</p>
+                                    <p>Dear <span class="placeholder">[Supplier Name] [Contact Person]</span>,</p>
                                     
-                                    <p>We are inquiring about the following items for procurement:</p>
+                                    <p>We are inquiring about the following items below:</p>
                                     
                                     <ul>
                                         <li><em>Items will be automatically inserted here based on supplier assignments</em></li>
@@ -88,11 +94,23 @@
                                     
                                     <p>Please provide us with your quotation including:</p>
                                     <ul>
-                                        <li>Unit price and total price</li>
-                                        <li>Delivery timeline</li>
-                                        <li>Warranty information</li>
-                                        <li>Payment terms</li>
+                                        <li>Payment Terms (Days)</li>
+                                        <li>Unit Price (RM)</li>
+                                        <li>Delivery Lead Timeline (Days)</li>
+                                        <li>Stock Availability</li>
+                                        <li>Warranty (If Applicable)</li>
+                                        <li>Mill Certificate / Certificate of Analysis (COA)</li>
                                     </ul>
+
+                                    <p>Please fill in the quotation in the link below:</p>
+                                    <p>Supplier form:</p>
+                                    <p>↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓</p>
+                                    <td>
+                                        {% if form_links and form_links.get(s.id) %}
+                                        <a href="{{ form_links.get(s.id) }}" target="_blank">Open Form</a>
+                                        {% else %}—{% endif %}
+                                    </td>
+                                    <p>↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑</p>
                                     
                                     <p>We look forward to your prompt response.</p>
                                     
@@ -108,11 +126,11 @@
         </div>
 
         <!-- Email Editor -->
-        <div class="card">
+        <div class="card-white">
             <div class="card-header">
                 <h4><i class="fas fa-edit"></i> Write Your Email</h4>
             </div>
-            <div class="card-body">
+            <div class="card-body bg-light">
                 <form method="POST" id="emailForm">
                     <div class="form-group">
                         <label class="form-label">Email Subject</label>
@@ -159,15 +177,25 @@
 {%- else -%}
 Dear [Supplier Name],
 
-We are inquiring about the following items for procurement:
+We are inquiring about the following items below:
 
 [Items will be automatically inserted here]
 
 Please provide us with your quotation including:
-• Unit price and total price
-• Delivery timeline  
-• Warranty information
-• Payment terms
+• Payment Terms
+• Unit Price (RM)
+• Delivery Lead Timeline
+• Stock Availability
+• Warranty (If Applicable)
+• Mill Certificate / Certificate of Analysis (COA)
+
+Please fill in the quotation in the link below:
+Supplier form: 
+↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓
+{%- if form_links and form_links.get(s.id) -%}
+{{ form_links.get(s.id) }}
+{% endif %}
+↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑
 
 We look forward to your prompt response.
 
@@ -187,9 +215,15 @@ Procurement Department
                                 <small class="text-muted ml-2">Click to refresh the preview above</small>
                             </div>
                             <div class="d-flex gap-1">
-                                <a href="{{ url_for('supplier_selection', task_id=task.id) }}" class="btn btn-secondary">
+                                <a href="{{ url_for('supplier_selection', task_id=task.id, next=request.args.get('next')) }}" class="btn btn-secondary">
                                     <i class="fas fa-arrow-left"></i> Back to Suppliers
                                 </a>
+
+                                {% if request.args.get('next') %}
+                                    <a href="{{ request.args.get('next') }}" class="btn btn-outline-secondary">
+                                        <i class="fas fa-list"></i> Back to Task List
+                                    </a>
+                                {% endif %}
                                 <button type="submit" name="action" value="send_emails" class="btn btn-success">
                                     <i class="fas fa-paper-plane"></i> Send All Emails
                                 </button>
@@ -277,7 +311,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .badge {
-    background: var(--dusty-purple);
+    background: var(--hercules-blue);
     color: white;
     padding: 0.25rem 0.75rem;
     border-radius: 12px;
@@ -289,7 +323,7 @@ document.addEventListener('DOMContentLoaded', function() {
     background: #f8f9fa;
     padding: 1rem;
     border-radius: 6px;
-    border-left: 4px solid var(--dusty-purple);
+    border-left: 4px solid var(--hercules-blue);
 }
 
 .recipients-grid {
@@ -308,7 +342,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 .recipient-name {
     font-weight: 600;
-    color: var(--dusty-purple-dark);
+    color: var(--hercules-blue);
     margin-bottom: 0.25rem;
 }
 
@@ -346,7 +380,7 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .email-body h2 {
-    color: var(--dusty-purple-dark);
+    color: var(--hercules-blue);
     margin-bottom: 1rem;
 }
 
@@ -364,7 +398,7 @@ document.addEventListener('DOMContentLoaded', function() {
     padding: 0.5rem;
     background: #f8f9fa;
     border-radius: 4px;
-    border-left: 3px solid var(--dusty-purple);
+    border-left: 3px solid var(--hercules-blue);
 }
 
 .placeholder {
@@ -410,9 +444,9 @@ document.addEventListener('DOMContentLoaded', function() {
 }
 
 .btn-tool:hover {
-    background: var(--dusty-purple);
+    background: var(--hercules-blue);
     color: white;
-    border-color: var(--dusty-purple);
+    border-color: var(--hercules-blue);
 }
 
 .email-editor {

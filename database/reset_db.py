@@ -9,7 +9,7 @@ def reset_database():
     # Delete the database file if it exists
     if os.path.exists(db_path):
         os.remove(db_path)
-        print("🗑️  Deleted old database file")
+        print("Deleted old database file")
     
     # Ensure database directory exists
     os.makedirs('database', exist_ok=True)
@@ -17,7 +17,7 @@ def reset_database():
     # Recreate database with proper structure in database folder
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
-    
+
     # Create all tables with the new schema
     tables_sql = [
         '''CREATE TABLE users (
@@ -70,10 +70,24 @@ def reset_database():
             task_id INTEGER,
             item_name TEXT NOT NULL,
             specification TEXT,
+            width INTEGER,
+            length INTEGER,
+            thickness INTEGER,
             brand TEXT,
             balance_stock INTEGER,
             quantity INTEGER NOT NULL,
             item_category TEXT NOT NULL,
+            payment_terms TEXT,
+            -- Steel Plates dimensions
+            -- Angle Bar dimensions
+            dim_a INTEGER,
+            dim_b INTEGER,
+            -- Bolts/Rebar dimensions
+            diameter INTEGER,
+            -- Other category UOM
+            uom_qty TEXT,
+            uom TEXT,
+            our_remarks TEXT,
             FOREIGN KEY (task_id) REFERENCES tasks (id)
         )''',
         
@@ -83,14 +97,110 @@ def reset_database():
             supplier_id INTEGER,
             is_selected BOOLEAN DEFAULT TRUE,
             assigned_items TEXT,
+            initial_sent_at TIMESTAMP,
+            followup_sent_at TIMESTAMP,
+            replied_at TIMESTAMP,
+            reply_token TEXT,
+            quotation_file_id INTEGER,
+            quote_form_token TEXT,
             FOREIGN KEY (task_id) REFERENCES tasks (id),
             FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+        )''',
+        
+        '''CREATE TABLE email_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER,
+            supplier_id INTEGER,
+            email_type TEXT,
+            subject TEXT,
+            body TEXT,
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            status TEXT,
+            error TEXT,
+            FOREIGN KEY (task_id) REFERENCES tasks (id),
+            FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+        )''',
+        
+        '''CREATE TABLE supplier_quotes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            supplier_id INTEGER NOT NULL,
+            pr_item_id INTEGER NOT NULL,
+
+            unit_price REAL,
+            stock_availability TEXT,
+            cert TEXT,
+            cert_file_id INTEGER,
+            lead_time TEXT,
+            warranty TEXT,
+            payment_terms TEXT,
+
+            ono BOOLEAN DEFAULT 0,
+
+            -- O.N.O. dims for steel plates/stainless (W/L/Thk)
+            ono_width INTEGER,
+            ono_length INTEGER,
+            ono_thickness INTEGER,
+
+            -- O.N.O. dims for angle bar (A/B + L/Thk)
+            ono_dim_a INTEGER,
+            ono_dim_b INTEGER,
+
+            -- O.N.O. dims for bolts/rebar (D + L)
+            ono_diameter INTEGER,
+
+            -- O.N.O. for other (UOM amount + UOM text)
+            ono_uom_qty TEXT,
+            ono_uom TEXT,
+            
+            -- O.N.O. brand/specification
+            ono_brand TEXT,
+
+            notes TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+
+            FOREIGN KEY (task_id) REFERENCES tasks (id),
+            FOREIGN KEY (supplier_id) REFERENCES suppliers (id),
+            FOREIGN KEY (pr_item_id) REFERENCES pr_items (id)
+        )''',
+        '''CREATE TABLE IF NOT EXISTS email_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER NOT NULL,
+            supplier_id INTEGER NOT NULL,
+            email_type TEXT NOT NULL,
+            subject TEXT NOT NULL,
+            body TEXT NOT NULL,
+            status TEXT NOT NULL,
+            error TEXT,
+            sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES tasks (id),
+            FOREIGN KEY (supplier_id) REFERENCES suppliers (id)
+        )''',
+        '''CREATE TABLE IF NOT EXISTS file_assets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id INTEGER,
+            supplier_id INTEGER,
+            pr_item_id INTEGER,
+            filename TEXT NOT NULL,
+            mime_type TEXT,
+            data BLOB NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (task_id) REFERENCES tasks (id),
+            FOREIGN KEY (supplier_id) REFERENCES suppliers (id),
+            FOREIGN KEY (pr_item_id) REFERENCES pr_items (id)
+        )''',
+        '''CREATE TABLE IF NOT EXISTS category_items (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            UNIQUE(category_id, name),
+            FOREIGN KEY (category_id) REFERENCES categories (id)
         )'''
     ]
     
     for sql in tables_sql:
         cursor.execute(sql)
-        print(f"✅ Created table: {sql.split(' ')[2]}")
+        print(f"Created table: {sql.split(' ')[2]}")
     
     # Add default data
     from werkzeug.security import generate_password_hash
@@ -103,10 +213,192 @@ def reset_database():
     )
     
     # Default categories
-    default_categories = ['Bolts, Fasteners', 'Calibration Services', 'Casting Services', 'Chemical Products', 'Construction', 'Construction Materials, Grout, Epoxy', 'Construction Services', 'Electronics', 'Galvanizing Services', 
-'Hardware, Consumable Products', 'Hydraulic Equipments, Services', 'IT Equipment', 'Logistic Services', 'Lubricant Products', 'Measuring Instruments & Equipments', 'Mechanical', 'Office Supplies', 'PTFE', 'Paint Coating', 'Rubber Products', 'Stainless Steel', 'Steel Plates', 'Welding Equipments, Machinery, Tools']
-    for category in default_categories:
-        cursor.execute('INSERT INTO categories (name) VALUES (?)', (category,))
+    # ---------- Default item names per category ----------
+    category_items_map = {
+        # STEEL PLATES, ROUND BAR, ETC.
+        'Steel Plates': [
+            'Steel Plates',
+            'Round Bar',
+            'Flat Bar',
+            'I-Beam'
+        ],
+
+        # STAINLESS STEEL, BRASS PRODUCTS, ETC.
+        'Stainless Steel': [
+            'Stainless Steel Plates',
+            'Brass Flat Bar'
+        ],
+
+        # BOLTS, FASTENERS, ETC.
+        'Bolts, Fasteners': [
+            'Bolts',
+            'Nuts',
+            'Washers',
+            'Stud Bar'
+        ],
+
+        # PTFE, ETC.
+        'PTFE': [
+            'Plain PTFE',
+            'Etched PTFE',
+            'Dimpled PTFE',
+            'Etched PTFE Tape',
+            'UHMW-PE'
+        ],
+
+        # RUBBER PRODUCTS, ETC.
+        'Rubber Products': [
+            'Compression Seals',
+            'Rubber Seals',
+            'Nylon Cord',
+            'SMR 20 CV',
+            'SMR 20',
+            'Customised Reclaimed Rubber',
+            'S40 V',
+            'Skim Block'
+        ],
+
+        # PAINT COATING PRODUCTS, ETC.
+        'Paint Coating': [
+            'Paint Coating',
+            'Trichloroethylene',
+            'Chemlok',
+            'Megum'
+        ],
+
+        # CHEMICAL PRODUCTS, ETC.
+        'Chemical Products': [
+            'Flexsys-Santoflex 77PD',
+            'Carbon Black 330',
+            'Carbon Black N220',
+            'Toulene',
+            'Tuladan Oil',
+            'Stearic Acid',
+            'TMTD',
+            'CBS',
+            'PVI',
+            'MBTS',
+            'TMQ',
+            'H3236 WAX',
+            'Sulphur',
+            '6PPD',
+            'ETU',
+            'OPDA',
+            'CLAY',
+            'DFR 903'
+        ],
+
+        # LUBRICANTS PRODUCTS, ETC.
+        'Lubricant Products': [
+            'Silicon Grease for PTFE',
+            'Hydraulic Oil',
+            'Engine Oil',
+            'Compressor Oil'
+        ],
+
+        # CASTING SERVICES, ETC.
+        'Casting Services': [
+            'Steel Casting'
+        ],
+
+        # MEASURING INSTRUMENTS & EQUIPMENTS, ETC.
+        'Measuring Instruments & Equipments': [
+            'Measuring Instruments',
+            'PLC'
+        ],
+
+        # MACHINERY & EQUIPMENTS, MACHINE TOOLS & ABRASIVES, CONSTRUCTION MACHINERY
+        # (all mapped into your existing category name)
+        'Welding Equipments, Machinery, Tools': [
+            'Machineries',
+            'Motors',
+            'Welding Machine',
+            'Lathe Machine',
+            'Milling Machine',
+            'CNC Lathing Machine',
+            'Laser Cutting Machine',
+            'Rubber Moulding Press',
+            'Grinder',
+            'Handrill',
+            'Cutting Tools',
+            'Grinding Disc',
+            'Cutting Disc',
+            'Drill Bits',
+            'Machine Taps',
+            'Blower',
+            'Grout Pump'
+        ],
+
+        # CONSTRUCTION MATERIALS, GROUT, ETC.
+        'Construction Materials, Grout, Epoxy': [
+            'Non Shrink Grout',
+            'Construction Epoxy'
+        ],
+
+        # CALIBRATION SERVICES
+        'Calibration Services': [
+            'Calibration Services for Measuring Instruments & Equipments'
+        ],
+
+        # GALVANIZING SERVICES
+        'Galvanizing Services': [
+            'Steel Plates Galvanizing Services'
+        ],
+
+        # HARDWARE, CONSUMABLE PRODUCTS, ETC.
+        'Hardware, Consumable Products': [
+            'Miscellaneous Hardware',
+            'Tools'
+        ],
+
+        # HYDRAULIC EQUIPMENTS, SERVICES, ETC.
+        'Hydraulic Equipments, Services': [
+            'Hydraulic Jacks',
+            'Manifold',
+            'Hose',
+            'Pressure Gauge'
+        ],
+
+        # LOGISTIC SERVICES, ETC.
+        'Logistic Services': [
+            'Logistic Services',
+            'Delivery Services'
+        ],
+
+        # STATIONERY, PRINTING SERVICES, ETC.
+        # (mapped to Office Supplies since your categories include that)
+        'Office Supplies': [
+            'Stationery Products',
+            'Printing Services'
+        ],
+
+        # Optional: Angle Bar default (you already have category)
+        'Angle Bar': [
+            'Angle Bar'
+        ],
+
+        # Optional: Rebar default (you already have category)
+        'Rebar': [
+            'Rebar'
+        ],
+    }
+
+    # Ensure category exists, then insert items
+    for cat_name, items in category_items_map.items():
+        cursor.execute('INSERT OR IGNORE INTO categories (name) VALUES (?)', (cat_name,))
+        cursor.execute('SELECT id FROM categories WHERE name = ?', (cat_name,))
+        row = cursor.fetchone()
+        if not row:
+            continue
+        cat_id = row[0]
+
+        for item_name in items:
+            cursor.execute(
+                'INSERT OR IGNORE INTO category_items (category_id, name) VALUES (?, ?)',
+                (cat_id, item_name)
+            )
+    # ---------- end default items ----------
+
     
     # Insert default admin user
     admin_password = generate_password_hash("admin123")  # Change this in production
@@ -118,8 +410,8 @@ def reset_database():
     conn.commit()
     conn.close()
     
-    print("🎉 Database reset completed successfully!")
-    print("📊 You can now open procure_flow.db in DB Browser")
+    print("Database reset completed successfully!")
+    print("You can now open procure_flow.db in DB Browser")
 
 if __name__ == '__main__':
     reset_database()

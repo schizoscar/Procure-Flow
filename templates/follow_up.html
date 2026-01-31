@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card-white">
+    <div class="card-header">
+        <h2>Send Follow-up Emails</h2>
+        <p>Only suppliers without replies will be contacted.</p>
+    </div>
+    <div class="card-body bg-light">
+        {% if pending_suppliers %}
+        <form method="POST">
+            <div class="form-group">
+                <label class="form-label">Email Subject</label>
+                <input type="text" class="form-control" name="email_subject" value="{{ email_subject }}" required>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Email Content</label>
+                <textarea class="form-control" name="email_content" rows="8" required>{{ email_content }}</textarea>
+                <small class="text-muted">Use {{ '{supplier_name}' }} to personalize.</small>
+            </div>
+            <div class="form-group">
+                <label class="form-label">Recipients (no reply yet)</label>
+                <ul>
+                    {% for s in pending_suppliers %}
+                    <li>{{ s.name }} ({{ s.email }})</li>
+                    {% endfor %}
+                </ul>
+            </div>
+            <button type="submit" class="btn btn-primary"><i class="fas fa-envelope"></i> Send Follow-ups</button>
+            <a href="{{ url_for('task_responses', task_id=task.id) }}" class="btn btn-secondary">Back</a>
+        </form>
+        {% else %}
+        <p>No suppliers pending follow-up.</p>
+        <a href="{{ url_for('task_responses', task_id=task.id) }}" class="btn btn-secondary">Back</a>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

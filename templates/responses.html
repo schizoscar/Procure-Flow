@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="card-white">
+    <div class="card-header d-flex justify-between align-center">
+        <div>
+            <h2>Supplier Responses - {{ task.task_name }}</h2>
+            <p>Track replies, send follow-ups, and capture quotes.</p>
+        </div>
+        <div class="d-flex gap-1">
+            <a href="{{ url_for('follow_up', task_id=task.id) }}" class="btn btn-primary"><i class="fas fa-envelope"></i> Send Follow-up</a>
+            <a href="{{ url_for('export_comparison', task_id=task.id) }}" class="btn btn-secondary"><i class="fas fa-file-excel"></i> Export Comparison</a>
+        </div>
+    </div>
+    <div class="card-body bg-light">
+        {% if suppliers %}
+        <table class="table">
+            <thead>
+                <tr>
+                    <th>Supplier</th>
+                    <th>Email</th>
+                    <th>Initial Sent</th>
+                    <th>Follow-up Sent</th>
+                    <th>Replied</th>
+                    <th>Supplier Form</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in suppliers %}
+                <tr>
+                    <td>{{ s.name }}</td>
+                    <td>{{ s.email }}</td>
+                    <td>{{ s.initial_sent_at or '—' }}</td>
+                    <td>{{ s.followup_sent_at or '—' }}</td>
+                    <td>{{ s.replied_at or 'No' }}</td>
+                    <td>
+                        {% if form_links and form_links.get(s.id) %}
+                        <a href="{{ form_links.get(s.id) }}" target="_blank">Open Form</a>
+                        {% else %}—{% endif %}
+                    </td>
+                    <td>
+                        <form method="POST" class="d-flex gap-1" style="align-items:center;">
+                            <input type="hidden" name="supplier_id" value="{{ s.id }}">
+                            {% if s.replied_at %}
+                            <button type="submit" name="action" value="mark_pending" class="btn btn-secondary btn-sm">Mark Pending</button>
+                            {% else %}
+                            <button type="submit" name="action" value="mark_replied" class="btn btn-primary btn-sm">Mark Replied</button>
+                            {% endif %}
+                            <a class="btn btn-secondary btn-sm" href="{{ url_for('capture_quotes', task_id=task.id, supplier_id=s.id) }}">Edit Quote</a>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <p>No suppliers selected for this task.</p>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

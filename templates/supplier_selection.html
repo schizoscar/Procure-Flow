@@ -2,12 +2,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card-white">
     <div class="card-header">
-        <h2>Assign Items to Suppliers</h2>
+        <h2>Assign Suppliers</h2>
         <p>Step 2: Select which suppliers receive which items for {{ task.task_name }}</p>
     </div>
-    <div class="card-body">
+    <div class="card-body bg-light">
         <!-- Progress Steps -->
         <div class="progress-steps">
             <div class="progress-step completed">1</div>
@@ -21,7 +21,7 @@
             <div class="card-header">
                 <h4><i class="fas fa-list"></i> Your Items</h4>
             </div>
-            <div class="card-body">
+            <div class="card-body bg-light">
                 <div class="items-overview">
                     {% for item in pr_items %}
                     <div class="item-card">
@@ -31,9 +31,39 @@
                         </div>
                         <div class="item-details">
                             <p><strong>{{ item.item_name }}</strong></p>
-                            <p>Quantity: {{ item.quantity }}</p>
-                            {% if item.specification %}<p>Specs: {{ item.specification }}</p>{% endif %}
-                            {% if item.brand %}<p>Brand: {{ item.brand }}</p>{% endif %}
+                            {% if item.brand %}<p>Brand / Specification: {{ item.brand }}</p>{% endif %}
+                            {% set DIM_CATS = ['Steel Plates', 'Stainless Steel', 'Angle Bar', 'Bolts, Fasteners', 'Rebar'] %}
+                            <p>
+                                Quantity:
+                                {{ item.quantity or '-' }}
+                                {% if item.item_category not in DIM_CATS and item.uom %}
+                                    {{ item.uom }}
+                                {% endif %}
+                            </p>
+                            <p>Remarks (To Supplier): {{ item.our_remarks or '-' }}</p>
+                            {% set cat = item.item_category %}
+                            <p class="text-muted">
+                                {# Optional free-text spec (if you still want it) #}
+                                {% if item.specification %}{{ item.specification }}<br>{% endif %}
+
+                                {% if cat in ['Steel Plates', 'Stainless Steel'] %}
+                                    <strong>Dimensions:</strong>
+                                    {{ item.width or '-' }} mm (W) × {{ item.length or '-' }} mm (L) × {{ item.thickness or '-' }} mm (Thk)
+
+                                {% elif cat == 'Angle Bar' %}
+                                    <strong>Dimensions:</strong>
+                                    {{ item.dim_a or '-' }} mm (A) × {{ item.dim_b or '-' }} mm (B) × {{ item.length or '-' }} mm (L) × {{ item.thickness or '-' }} mm (Thk)
+
+                                {% elif cat in ['Bolts, Fasteners', 'Rebar'] %}
+                                    <strong>Dimensions:</strong>
+                                    {{ item.diameter or '-' }} mm (D) × {{ item.length or '-' }} mm (L)
+                                {% else %}
+                                    {% if item.uom_qty or item.uom %}
+                                        <strong>Packing:</strong>
+                                        {{ item.uom_qty or '-' }}{% if item.uom %} {{ item.uom }}{% endif %}
+                                    {% endif %}
+                                {% endif %}
+                            </p>
                         </div>
                     </div>
                     {% endfor %}
@@ -42,12 +72,12 @@
         </div>
 
         <form method="POST">
-            <div class="card">
+            <div class="card-white">
                 <div class="card-header">
                     <h4><i class="fas fa-users"></i> Assign Items to Compatible Suppliers</h4>
                     <p class="mb-0">Select suppliers and choose which items they should quote on</p>
                 </div>
-                <div class="card-body">
+                <div class="card-body bg-light">
                     {% if suppliers %}
                     <div class="compatibility-info mb-4 p-3 bg-info-light border-radius">
                         <h5><i class="fas fa-info-circle"></i> Smart Assignment</h5>
@@ -79,59 +109,30 @@
                                     </div>
                                 </div>
                             </div>
-                            
-                            <div class="item-assignment">
-                                <h6>Assign specific items:</h6>
-                                <div class="assignment-options">
-                                    <div class="assignment-option">
-                                        <input type="radio" 
-                                               name="assignment_type_{{ supplier.id }}" 
-                                               value="all"
-                                               id="all_{{ supplier.id }}"
-                                               checked>
-                                        <label for="all_{{ supplier.id }}">All compatible items</label>
-                                    </div>
-                                    <div class="assignment-option">
-                                        <input type="radio" 
-                                               name="assignment_type_{{ supplier.id }}" 
-                                               value="specific"
-                                               id="specific_{{ supplier.id }}">
-                                        <label for="specific_{{ supplier.id }}">Select specific items:</label>
-                                    </div>
-                                </div>
-                                
-                                <div class="specific-items" style="display: none;">
-                                    {% for item in pr_items %}
-                                    <div class="item-checkbox">
-                                        <input type="checkbox" 
-                                               name="supplier_{{ supplier.id }}_items" 
-                                               value="{{ item.id }}"
-                                               id="item_{{ supplier.id }}_{{ item.id }}">
-                                        <label for="item_{{ supplier.id }}_{{ item.id }}">
-                                            Item {{ loop.index }}: {{ item.item_name }} ({{ item.item_category }})
-                                        </label>
-                                    </div>
-                                    {% endfor %}
-                                </div>
-                            </div>
                         </div>
                         {% endfor %}
                     </div>
 
-                    <div class="d-flex gap-1 mt-4">
+                    <div class="d-flex gap-1 mt-4" style="margin-top: 2.5rem;">
                         <button type="submit" class="btn btn-primary">
                             <i class="fas fa-arrow-right"></i> Save Assignments & Continue
                         </button>
-                        <a href="{{ url_for('new_task', task_id=task.id) }}" class="btn btn-secondary">
+                        <a href="{{ url_for('new_task', task_id=task.id, next=request.args.get('next')) }}" class="btn btn-secondary">
                             <i class="fas fa-arrow-left"></i> Back to PR Form
                         </a>
+
+                        {% if request.args.get('next') %}
+                            <a href="{{ request.args.get('next') }}" class="btn btn-outline-secondary">
+                                <i class="fas fa-list"></i> Back to Task List
+                            </a>
+                        {% endif %}
                     </div>
                     {% else %}
                     <div class="alert alert-warning">
                         <h5><i class="fas fa-exclamation-triangle"></i> No Compatible Suppliers Found</h5>
                         <p>No suppliers found for your item categories: <strong>{{ categories|join(', ') }}</strong></p>
                         <div class="d-flex gap-1 mt-3">
-                            <a href="{{ url_for('new_task', task_id=task.id) }}" class="btn btn-primary">
+                            <a href="{{ url_for('new_task', task_id=task.id, next=request.args.get('next')) }}" class="btn btn-primary">
                                 <i class="fas fa-edit"></i> Edit PR Items
                             </a>
                             {% if session.role == 'admin' %}
@@ -150,34 +151,6 @@
 {% endblock %}
 
 {% block scripts %}
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        // Handle assignment type changes
-        document.querySelectorAll('input[name^="assignment_type_"]').forEach(radio => {
-            radio.addEventListener('change', function () {
-                const supplierId = this.name.replace('assignment_type_', '');
-                const specificItems = this.closest('.supplier-assignment-card').querySelector('.specific-items');
-
-                if (this.value === 'specific') {
-                    specificItems.style.display = 'block';
-                } else {
-                    specificItems.style.display = 'none';
-                    // Uncheck all specific items when switching to "all"
-                    specificItems.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-                        cb.checked = false;
-                    });
-                }
-            });
-        });
-
-        // Initialize based on current state
-        document.querySelectorAll('input[name^="assignment_type_"]').forEach(radio => {
-            if (radio.checked) {
-                radio.dispatchEvent(new Event('change'));
-            }
-        });
-    });
-</script>
 
 <style>
 .suppliers-assignment {
@@ -195,14 +168,8 @@
 }
 
 .supplier-assignment-card:hover {
-    border-color: var(--dusty-purple);
+    border-color: var(--hercules-blue);
     box-shadow: 0 2px 8px rgba(139, 123, 158, 0.1);
-}
-
-.supplier-main {
-    margin-bottom: 1rem;
-    padding-bottom: 1rem;
-    border-bottom: 1px solid #f1f3f4;
 }
 
 .supplier-selection {
@@ -215,12 +182,12 @@
 .supplier-selection input[type="checkbox"] {
     width: 18px;
     height: 18px;
-    accent-color: var(--dusty-purple);
+    accent-color: var(--hercules-blue);
 }
 
 .supplier-name {
     font-size: 1.1rem;
-    color: var(--dusty-purple-dark);
+    color: var(--hercules-blue);
     cursor: pointer;
     margin: 0;
 }
@@ -239,53 +206,8 @@
 }
 
 .detail-item i {
-    color: var(--dusty-purple);
+    color: var(--hercules-blue);
     width: 16px;
-}
-
-.item-assignment {
-    background: #f8f9fa;
-    padding: 1rem;
-    border-radius: 8px;
-}
-
-.assignment-options {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    margin-bottom: 1rem;
-}
-
-.assignment-option {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.assignment-option input[type="radio"] {
-    accent-color: var(--dusty-purple);
-}
-
-.specific-items {
-    border-left: 3px solid var(--dusty-purple);
-    padding-left: 1rem;
-}
-
-.item-checkbox {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    margin-bottom: 0.5rem;
-}
-
-.item-checkbox input[type="checkbox"] {
-    accent-color: var(--dusty-purple);
-}
-
-.items-overview {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1rem;
 }
 
 .item-card {
@@ -305,7 +227,7 @@
 }
 
 .item-category {
-    background: var(--dusty-purple);
+    background: var(--hercules-blue);
     color: white;
     padding: 0.25rem 0.5rem;
     border-radius: 4px;

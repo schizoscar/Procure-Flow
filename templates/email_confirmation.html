@@ -2,12 +2,12 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card-white">
     <div class="card-header">
         <h2>Send Emails</h2>
         <p>Final Step: Confirm and send emails for {{ task.task_name }}</p>
     </div>
-    <div class="card-body">
+    <div class="card-body bg-light">
         <!-- Progress Steps -->
         <div class="progress-steps">
             <div class="progress-step completed">1</div>
@@ -25,7 +25,7 @@
             <div class="card-header">
                 <h4><i class="fas fa-paper-plane"></i> Email Summary</h4>
             </div>
-            <div class="card-body">
+            <div class="card-body bg-light">
                 <div class="row">
                     <div class="col-md-6">
                         <h5>Recipients</h5>
@@ -43,9 +43,49 @@
                     </div>
                     <div class="col-md-6">
                         <h5>Items</h5>
-                        <ul>
+                        <ul class="items-list">
                             {% for item in pr_items %}
-                            <li>{{ item.item_name }} (Qty: {{ item.quantity }})</li>
+                                {% set cat = item.item_category %}
+                                <li>
+                                    <div style="font-weight:600;">
+                                        {{ loop.index }}. {{ item.item_name }}
+                                        {% if item.brand %}- {{ item.brand }}{% endif %}
+                                        {{ item.specification or '' }}
+                                    </div>
+
+                                    <div style="font-size:0.9rem; opacity:0.9; margin-top:0.15rem;">
+                                        {% if cat in ['Steel Plates','Stainless Steel'] %}
+                                            Sizes:
+                                            {{ item.width if item.width is not none else '-' }} mm (W)
+                                            × {{ item.length if item.length is not none else '-' }} mm (L)
+                                            × {{ item.thickness if item.thickness is not none else '-' }} mm (Thk)
+
+                                        {% elif cat == 'Angle Bar' %}
+                                            Sizes:
+                                            {{ item.dim_a if item.dim_a is not none else '-' }} mm (A)
+                                            × {{ item.dim_b if item.dim_b is not none else '-' }} mm (B)
+                                            × {{ item.length if item.length is not none else '-' }} mm (L)
+                                            × {{ item.thickness if item.thickness is not none else '-' }} mm (Thk)
+
+                                        {% elif cat in ['Bolts, Fasteners','Rebar','Nuts'] %}
+                                            Sizes:
+                                            {{ item.diameter if item.diameter is not none else '-' }} mm (D)
+                                            × {{ item.length if item.length is not none else '-' }} mm (L)
+
+                                        {% else %}
+                                            Packing:
+                                            {{ item.uom_qty if item.uom_qty is not none else '-' }}
+                                        {% endif %}
+                                        {% set DIM_CATS = ['Steel Plates','Stainless Steel','Angle Bar','Bolts, Fasteners','Rebar','Nuts'] %}
+                                        &nbsp;•&nbsp;
+                                        {% if cat not in DIM_CATS %}
+                                            Qty: {{ item.quantity if item.quantity is not none else '-' }}
+                                            {% if item.uom %} {{ item.uom }}{% endif %}
+                                        {% else %}
+                                            Qty: {{ item.quantity if item.quantity is not none else '-' }}
+                                        {% endif %}
+                                    </div>
+                                </li>
                             {% endfor %}
                         </ul>
                     </div>
@@ -67,9 +107,16 @@
                 <button type="submit" class="btn btn-success" id="sendButton" disabled>
                     <i class="fas fa-paper-plane"></i> Send Emails Now
                 </button>
-                <a href="{{ url_for('email_preview', task_id=task.id) }}" class="btn btn-secondary">
+
+                <a href="{{ url_for('email_preview', task_id=task.id, next=request.args.get('next')) }}" class="btn btn-secondary">
                     <i class="fas fa-arrow-left"></i> Back to Preview
                 </a>
+
+                {% if request.args.get('next') %}
+                    <a href="{{ request.args.get('next') }}" class="btn btn-outline-secondary">
+                        <i class="fas fa-list"></i> Back to Task List
+                    </a>
+                {% endif %}
             </div>
         </form>
     </div>
@@ -89,17 +136,17 @@
 </script>
 
 <style>
-.recipient-list {
-    list-style: none;
-    padding: 0;
-}
+    .recipient-list {
+        list-style: none;
+        padding: 0;
+    }
 
-.recipient-list li {
-    padding: 0.75rem;
-    margin-bottom: 0.5rem;
-    background: #f8f9fa;
-    border-radius: 6px;
-    border-left: 3px solid var(--dusty-purple);
-}
+    .recipient-list li {
+        padding: 0.75rem;
+        margin-bottom: 0.5rem;
+        background: #f8f9fa;
+        border-radius: 6px;
+        border-left: 3px solid var(--hercules-blue);
+    }
 </style>
 {% endblock %}

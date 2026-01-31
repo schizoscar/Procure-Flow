@@ -2,58 +2,266 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="card">
+<div class="card-white">
     <div class="card-header d-flex justify-between align-center">
         <h2>Suppliers List</h2>
-        {% if user_role == 'admin' %}
         <a href="{{ url_for('add_supplier') }}" class="btn btn-primary">
             <i class="fas fa-plus"></i> Add Supplier
         </a>
-        {% endif %}
     </div>
-    <div class="card-body">
-        {% if suppliers %}
-        <table class="table">
-            <thead>
-                <tr>
-                    <th>Name</th>
-                    <th>Contact Person</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    <th>Categories</th>
-                    {% if user_role == 'admin' %}
-                    <th>Actions</th>
-                    {% endif %}
-                </tr>
-            </thead>
-            <tbody>
-                {% for supplier in suppliers %}
-                <tr>
-                    <td>{{ supplier.name }}</td>
-                    <td>{{ supplier.contact_name or 'N/A' }}</td>
-                    <td>{{ supplier.email }}</td>
-                    <td>{{ supplier.contact_number or 'N/A' }}</td>
-                    <td>{{ supplier.categories or 'N/A' }}</td>
-                    {% if user_role == 'admin' %}
-                    <td>
-                        <div class="d-flex gap-1">
-                            <a href="{{ url_for('edit_supplier', supplier_id=supplier.id) }}" class="btn btn-secondary btn-sm">
-                                <i class="fas fa-edit"></i> Edit
-                            </a>
-                            <a href="{{ url_for('delete_supplier', supplier_id=supplier.id) }}" class="btn btn-danger btn-sm" 
-                               onclick="return confirm('Are you sure you want to delete this supplier?')">
-                                <i class="fas fa-trash"></i> Delete
-                            </a>
-                        </div>
-                    </td>
-                    {% endif %}
-                </tr>
-                {% endfor %}
-            </tbody>
-        </table>
+
+    <div class="card-body bg-light">
+
+        <!-- Search bar row (below title, above table) -->
+        <div style="margin: 10px 0 14px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; max-width: 900px;">
+                
+                <!-- Name -->
+                <div>
+                    <label for="searchName" class="form-label" style="display:block; margin-bottom: 6px;">
+                        Search Name
+                    </label>
+                    <input
+                        id="searchName"
+                        type="text"
+                        class="form-control"
+                        placeholder="e.g. aa t"
+                        autocomplete="off"
+                    />
+                </div>
+
+                <!-- Email -->
+                <div>
+                    <label for="searchEmail" class="form-label" style="display:block; margin-bottom: 6px;">
+                        Search Email
+                    </label>
+                    <input
+                        id="searchEmail"
+                        type="text"
+                        class="form-control"
+                        placeholder="e.g. gmail"
+                        autocomplete="off"
+                    />
+                </div>
+
+                <!-- Category (dropdown) -->
+                <div>
+                    <label for="searchCategory" class="form-label" style="display:block; margin-bottom: 6px;">
+                        Category
+                    </label>
+
+                    <select id="searchCategory" class="form-control">
+                        <option value="">All categories</option>
+                        {% for c in categories %}
+                        <option value="{{ c.name|lower }}">{{ c.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>  
+            <small style="display:block; margin-top:8px; opacity:0.75;">
+                Tip: matches are word-based and in-order (e.g. “aa t” matches “AA Technic…” but not “Agensi…”).
+            </small>
+        </div>
+
+        <div class="table-responsive">  
+            {% if suppliers %}
+            <table class="table" id="suppliersTable">
+                <thead>
+                    <tr>
+                        <th style="width: 330px;">Name</th>
+                        <th style="width: 200px;">Contact Person</th>
+                        <th style="width: 300px;">Email</th>
+                        <th style="width: 170px;">Phone</th>
+                        <th style="width: 220px;">Categories</th>
+                        {% if user_role == 'admin' %}
+                        <th>Actions</th>
+                        {% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for supplier in suppliers %}
+                    <tr class="supplier-row"
+                        data-name="{{ (supplier.name or '')|lower }}"
+                        data-email="{{ (supplier.email or '')|lower }}"
+                        data-categories="{{ (supplier.categories or '')|lower }}"
+                        data-catids="{{ supplier.category_ids or '' }}">
+                        <!-- Add a data-name attribute for fast filtering -->
+                        <td class="supplier-name col-name" data-name="{{ supplier.name or '' }}">
+                            {{ supplier.name }}
+                        </td>
+                        <td class="supplier-name col-name">{{ supplier.contact_name or 'N/A' }}</td>
+                        <td class="supplier-name col-name">{{ supplier.email }}</td>
+                        <td class="supplier-name col-name">{{ supplier.contact_number or 'N/A' }}</td>
+                        <td class="supplier-name col-name">{{ supplier.categories or 'N/A' }}</td>
+                        {% if user_role == 'admin' %}
+                        <td>
+                            <div class="d-flex gap-1">
+                                <a href="{{ url_for('edit_supplier', supplier_id=supplier.id) }}" class="btn btn-secondary btn-sm">
+                                    <i class="fas fa-edit"></i> Edit
+                                </a>
+                                <a href="{{ url_for('delete_supplier', supplier_id=supplier.id) }}" class="btn btn-danger btn-sm" 
+                                onclick="return confirm('Are you sure you want to delete this supplier?')">
+                                    <i class="fas fa-trash"></i> Delete
+                                </a>
+                            </div>
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <!-- No results message -->
+        <p id="noResultsMsg" class="text-center" style="display:none; margin-top: 12px;">
+            No matching suppliers found.
+        </p>
+
         {% else %}
         <p class="text-center">No suppliers found.</p>
         {% endif %}
     </div>
 </div>
+
+<!-- Scroll-to-top floating button (bottom-right) -->
+<button
+    id="scrollTopBtn"
+    type="button"
+    title="Back to top"
+    aria-label="Back to top"
+    style="
+        position: fixed;
+        right: 18px;
+        bottom: 18px;
+        width: 44px;
+        height: 44px;
+        border-radius: 50%;
+        border: 1px solid rgba(0,0,0,0.25);
+        background: rgba(255,255,255,0.35);
+        backdrop-filter: blur(6px);
+        -webkit-backdrop-filter: blur(6px);
+        cursor: pointer;
+        display: none; /* hidden until user scrolls */
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+    "
+>
+    <i class="fas fa-arrow-up"></i>
+</button>
+
+<script>
+(function () {
+    const nameInput = document.getElementById("searchName");
+    const emailInput = document.getElementById("searchEmail");
+    const catSelect  = document.getElementById("searchCategory");
+
+    const rows = document.querySelectorAll("#suppliersTable tbody tr.supplier-row");
+    const noResultsMsg = document.getElementById("noResultsMsg");
+
+    function normalizeWords(s) {
+        return (s || "")
+        .toLowerCase()
+        .replace(/&/g, " and ")
+        .replace(/[^\p{L}\p{N}]+/gu, " ") // punctuation -> space
+        .replace(/\s+/g, " ")
+        .trim()
+        .split(" ")
+        .filter(Boolean);
+    }
+
+    // tokens must match START of words, in order (e.g. "aa t" matches "AA Technic...")
+    function matchesWordPrefixesInOrder(text, query) {
+        const tokens = normalizeWords(query);
+        if (tokens.length === 0) return true;
+
+        const words = normalizeWords(text);
+        let i = 0;
+
+        for (const t of tokens) {
+            let found = false;
+            while (i < words.length) {
+                if (words[i].startsWith(t)) {
+                    found = true;
+                    i++;
+                    break;
+                }
+                i++;
+            }
+            if (!found) return false;
+        }
+        return true;
+    }
+
+    function normalizeCat(s) {
+        return (s || "")
+            .toLowerCase()
+            .replace(/&/g, "and")     // optional consistency
+            .replace(/\s+/g, " ")
+            .trim();
+    }
+
+    function matchesCategoryName(categoriesText, selectedName) {
+        const sel = normalizeCat(selectedName);
+        if (!sel) return true;
+
+        const hay = normalizeCat(categoriesText);
+
+        // since category names may contain commas, do NOT split by comma
+        return hay.includes(sel);
+    }
+
+    function filterRows() {
+        const qName = (nameInput?.value || "").trim();
+        const qEmail = (emailInput?.value || "").trim();
+        const qCat = (catSelect?.value || "").trim(); // dropdown
+
+        let visibleCount = 0;
+
+        rows.forEach(row => {
+            const nameText = row.dataset.name || "";
+            const emailText = row.dataset.email || "";
+            const catText = row.dataset.categories || "";
+
+            const okName = matchesWordPrefixesInOrder(nameText, qName);
+            const okEmail = matchesWordPrefixesInOrder(emailText, qEmail);
+            const okCat = matchesCategoryName(row.dataset.categories || "", qCat);
+
+            const match = okName && okEmail && okCat;
+            row.style.display = match ? "" : "none";
+            if (match) visibleCount++;
+        });
+
+        if (noResultsMsg) {
+            noResultsMsg.style.display = (rows.length > 0 && visibleCount === 0) ? "" : "none";
+        }
+    }
+
+    const btn = document.getElementById("scrollTopBtn");
+
+    function toggleScrollBtn() {
+        if (!btn) return;
+        // show after scrolling down a bit
+        btn.style.display = (window.scrollY > 200) ? "flex" : "none";
+    }
+
+    if (btn) {
+        btn.addEventListener("click", () => {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+        });
+    }
+
+    window.addEventListener("scroll", toggleScrollBtn);
+
+    [nameInput, emailInput, catSelect].forEach(el => {
+        if (el) el.addEventListener("input", filterRows);   // works for text inputs
+        if (el) el.addEventListener("change", filterRows);  // important for dropdown
+    });
+
+    filterRows();
+    toggleScrollBtn();
+})();
+</script>
+
+
 {% endblock %}

@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <h2>Invalid request (400)</h2>
+  </div>
+  <div class="card-body">
+    <p>We couldn’t process your request. The link may be invalid, expired, or the form data is incomplete.</p>
+
+    <div class="d-flex gap-1 mt-2">
+      <a class="btn btn-primary" href="{{ url_for('dashboard') }}">Go to Dashboard</a>
+      <a class="btn btn-secondary" href="javascript:history.back()">Go Back</a>
+    </div>
+
+    <p class="text-muted" style="margin-top:1rem;">
+      If you reached this page from a supplier quotation link, please request a new link from the procurement team.
+    </p>
+  </div>
+</div>
+{% endblock %}
