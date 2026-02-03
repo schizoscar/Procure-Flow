@@ -186,6 +186,7 @@ IMAP_PASSWORD = os.getenv('IMAP_PASSWORD', EMAIL_CONFIG['sender_password'])
 ENABLE_DEBUG_ROUTES = os.getenv("ENABLE_DEBUG_ROUTES", "0") == "1"
 
 # ==================================== START OF MIGRATION ====================================
+'''
 def check_database_status():
     """Check if database needs migration."""
     with app.app_context():
@@ -211,7 +212,7 @@ def check_database_status():
 import threading
 thread = threading.Thread(target=check_database_status, daemon=True)
 thread.start()
-
+'''
 # Add admin migration routes
 @app.route('/admin/migrate')
 def admin_migrate_page():
