@@ -21,7 +21,7 @@ else:
 
 try:
     # Import and run migration
-    from migrate_sqlite_to_postgres_fixed import migrate_all_data
+    from migrate_sqlite_to_postgres import migrate_all_data
     print("\nRunning migration...")
     migrate_all_data()
     print("\n✅ Migration completed successfully!")
