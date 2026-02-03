@@ -186,65 +186,9 @@ IMAP_PASSWORD = os.getenv('IMAP_PASSWORD', EMAIL_CONFIG['sender_password'])
 ENABLE_DEBUG_ROUTES = os.getenv("ENABLE_DEBUG_ROUTES", "0") == "1"
 
 # ==================================== START OF MIGRATION ====================================
-'''
-def check_database_status():
-    """Check if database needs migration."""
-    with app.app_context():
-        try:
-            from sqlalchemy import func
-            
-            # Just check suppliers - you know you should have 543
-            supplier_count = db.session.query(func.count(Supplier.id)).scalar()
-            
-            if supplier_count < 10:  # Very low threshold
-                print(f"⚠️ Only {supplier_count} suppliers found (expected ~543)")
-                print("Visit /admin/migrate to run migration manually")
-                return False
-            else:
-                print(f"✅ Database OK: {supplier_count} suppliers")
-                return True
-                
-        except Exception as e:
-            print(f"⚠️ Database check failed: {e}")
-            return False
 
-# Run check on startup
-import threading
-thread = threading.Thread(target=check_database_status, daemon=True)
-thread.start()
-'''
-# Add admin migration routes
-@app.route('/admin/migrate')
-def admin_migrate_page():
-    if 'user_id' not in session or session.get('role') != 'admin':
-        return redirect(url_for('login'))
-    
-    from sqlalchemy import func
-    supplier_count = db.session.query(func.count(Supplier.id)).scalar()
-    
-    return f'''
-    <h2>Database Migration</h2>
-    <p>Current suppliers: {supplier_count}</p>
-    <p>Expected suppliers: 543</p>
-    <form method="POST" action="/admin/migrate/run">
-        <button type="submit">Run Migration</button>
-    </form>
-    '''
 
-@app.route('/admin/migrate/run', methods=['POST'])
-def run_migration_admin():
-    if 'user_id' not in session or session.get('role') != 'admin':
-        return redirect(url_for('login'))
-    
-    try:
-        if os.path.exists('database/procure_flow.db'):
-            from migrate_sqlite_to_postgres import migrate_all_data
-            migrate_all_data()
-            return "✅ Migration completed! <a href='/'>Go to dashboard</a>"
-        else:
-            return "❌ SQLite file not found"
-    except Exception as e:
-        return f"❌ Migration failed: {str(e)}"
+
 # ==================================== END OF MIGRATION ==============================
 
 @app.template_filter('format_date')
