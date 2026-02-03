@@ -10,6 +10,8 @@ services:
         fromDatabase:
           name: procure-flow-db
           property: connectionString
+      - key: FLASK_ENV
+        value: production
 
 databases:
   - name: procure-flow-db
