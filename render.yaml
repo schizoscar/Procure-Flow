@@ -1,3 +1,4 @@
+# render.yaml
 services:
   - type: web
     name: procure-flow
@@ -5,5 +6,13 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
-      - key: PYTHON_VERSION
-        value: 3.11.0
+      - key: DATABASE_URL
+        fromDatabase:
+          name: procure-flow-db
+          property: connectionString
+
+databases:
+  - name: procure-flow-db
+    plan: free
+    databaseName: procure_flow
+    user: procure_flow_user

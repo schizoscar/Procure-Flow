@@ -1,6 +1,6 @@
 # app.py
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file, abort
-import sqlite3
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file, abort, g
+from models import db, User, Supplier, Category, CategoryItem, Task, PRItem, TaskSupplier, SupplierQuote, FileAsset, EmailLog
 import re
 from datetime import datetime
 import json
@@ -32,7 +32,8 @@ import logging
 from werkzeug.exceptions import HTTPException
 import math
 from decimal import Decimal, InvalidOperation
-
+from sqlalchemy import func, text, desc, and_, or_, cast, String, Integer, Float, DateTime, Boolean
+from sqlalchemy.exc import SQLAlchemyError
 
 # Load .env file for local development
 load_dotenv()
@@ -67,22 +68,26 @@ def allowed_file(filename):
     """Check if file extension is allowed."""
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
-def save_uploaded_file(conn, file_obj, task_id, supplier_id, pr_item_id):
+def save_uploaded_file(file_obj, task_id, supplier_id, pr_item_id):
     """
-    Store uploaded file into DB (SQLite) and return file_assets.id
+    Store uploaded file into DB and return file_assets.id
     """
     filename = secure_filename(file_obj.filename or "document.pdf")
     mime_type = file_obj.mimetype or "application/pdf"
     data = file_obj.read()  # bytes
 
-    cur = conn.execute(
-        """
-        INSERT INTO file_assets (task_id, supplier_id, pr_item_id, filename, mime_type, data)
-        VALUES (?, ?, ?, ?, ?, ?)
-        """,
-        (task_id, supplier_id, pr_item_id, filename, mime_type, data)
+    file_asset = FileAsset(
+        task_id=task_id,
+        supplier_id=supplier_id,
+        pr_item_id=pr_item_id,
+        filename=filename,
+        mime_type=mime_type,
+        data=data
     )
-    return cur.lastrowid
+    
+    db.session.add(file_asset)
+    db.session.flush()  # Get the ID without committing
+    return file_asset.id
 
 def public_url(endpoint: str, **values) -> str:
     """
@@ -112,18 +117,16 @@ def public_url_for(endpoint: str, **values) -> str:
 @app.route('/file/<int:file_id>')
 def serve_file(file_id):
     """Serve a file from the database."""
-    conn = get_db_connection()
-    file_asset = conn.execute('SELECT * FROM file_assets WHERE id = ?', (file_id,)).fetchone()
-    conn.close()
+    file_asset = db.session.get(FileAsset, file_id)
     
     if not file_asset:
         return "File not found", 404
         
     return send_file(
-        io.BytesIO(file_asset['data']),
-        mimetype=file_asset['mime_type'],
-        download_name=file_asset['filename'],
-        as_attachment=False # Open in browser
+        io.BytesIO(file_asset.data),
+        mimetype=file_asset.mime_type,
+        download_name=file_asset.filename,
+        as_attachment=False
     )
 
 def get_quote_serializer():
@@ -136,34 +139,33 @@ def make_reset_token(user_id: int, email: str) -> str:
     return get_reset_serializer().dumps({"user_id": user_id, "email": email})
 
 def verify_reset_token(token: str):
-    return get_reset_serializer().loads(token)  # we’ll enforce expiry via our own timestamp check if desired
+    return get_reset_serializer().loads(token)  # we'll enforce expiry via our own timestamp check if desired
 
 def generate_temp_password(length: int = 10) -> str:
     # simple temp password: letters+digits (no symbols to avoid email copy issues)
     alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789"
     return "".join(alphabet[uuid.uuid4().int % len(alphabet)] for _ in range(length))
 
-def init_database_on_startup():
-    """Ensure the SQLite database exists with expected tables."""
-    conn = None
-    try:
-        import database.init_db
-        database.init_db.init_database()
+# Database configuration
+database_url = os.getenv('DATABASE_URL')
+if not database_url:
+    database_url = 'sqlite:///database/procure_flow.db'
+elif database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
 
-        db_path = os.path.join('database', 'procure_flow.db')
-        conn = sqlite3.connect(db_path)
-        cursor = conn.cursor()
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
-        tables = [table[0] for table in cursor.fetchall()]
-        app.logger.info("Database initialized. Tables=%s", tables)
-    except Exception as e:
-        app.logger.exception("Database initialization failed")
-    finally:
-        if conn:
-            conn.close()
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    "pool_recycle": 300,
+    "pool_pre_ping": True,
+}
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-# Call the initialization function
-init_database_on_startup()
+db.init_app(app)
+
+# Create tables on startup
+with app.app_context():
+    db.create_all()
+    print("Database tables created/verified")
 
 # Email Configuration
 EMAIL_CONFIG = {
@@ -183,13 +185,18 @@ IMAP_PASSWORD = os.getenv('IMAP_PASSWORD', EMAIL_CONFIG['sender_password'])
 
 ENABLE_DEBUG_ROUTES = os.getenv("ENABLE_DEBUG_ROUTES", "0") == "1"
 
-# Database connection helper
-def get_db_connection():
-    """Return SQLite connection with row factory."""
-    db_path = os.path.join('database', 'procure_flow.db')
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
-    return conn
+@app.template_filter('format_date')
+def format_date_filter(value, format='%Y-%m-%d'):
+    """Format a datetime object for display."""
+    if value is None:
+        return 'N/A'
+    if isinstance(value, str):
+        # Handle string dates (fallback for compatibility)
+        return value[:10] if len(value) >= 10 else value
+    try:
+        return value.strftime(format)
+    except AttributeError:
+        return str(value)
 
 # Validation functions
 def validate_email(email):
@@ -352,32 +359,47 @@ def dashboard():
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    conn = get_db_connection()
+    # Subquery for item counts
+    item_count_subq = db.session.query(
+        PRItem.task_id,
+        func.count(PRItem.id).label('item_count')
+    ).group_by(PRItem.task_id).subquery()
 
-    # Everyone sees all tasks + who created it
-    recent_tasks = conn.execute('''
-        SELECT 
-            t.*,
-            u.username AS created_by,
-            (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
-        FROM tasks t
-        LEFT JOIN users u ON u.id = t.user_id
-        ORDER BY t.created_at DESC
-        LIMIT 10
-    ''').fetchall()
+    # Get recent tasks with joins
+    recent_tasks_query = db.session.query(
+        Task,
+        User.username.label('created_by'),
+        func.coalesce(item_count_subq.c.item_count, 0).label('item_count')  # Use func.coalesce
+    ).join(
+        User, Task.user_id == User.id
+    ).outerjoin(
+        item_count_subq, Task.id == item_count_subq.c.task_id
+    ).order_by(
+        Task.created_at.desc()
+    ).limit(10).all()
 
-    # Optional: keep stats visible for everyone (or remove if you want)
+    # Convert to list of dictionaries
+    recent_tasks = []
+    for task, created_by, item_count in recent_tasks_query:
+        recent_tasks.append({
+            'id': task.id,
+            'task_name': task.task_name,
+            'user_id': task.user_id,
+            'status': task.status,
+            'created_at': task.created_at,
+            'created_by': created_by,
+            'item_count': item_count
+        })
+
+    # Get stats using SQLAlchemy queries
     stats = {
-        'total_tasks': conn.execute('SELECT COUNT(*) FROM tasks').fetchone()[0],
-        'active_tasks': conn.execute(
-            "SELECT COUNT(*) FROM tasks WHERE status NOT IN ('completed', 'cancelled')"
-        ).fetchone()[0],
-        'total_suppliers': conn.execute(
-            'SELECT COUNT(*) FROM suppliers WHERE is_active = 1'
-        ).fetchone()[0]
+        'total_tasks': db.session.query(Task).count(),
+        'active_tasks': db.session.query(Task).filter(
+            ~Task.status.in_(['completed', 'cancelled'])
+        ).count(),
+        'total_suppliers': db.session.query(Supplier).filter_by(is_active=True).count()
     }
 
-    conn.close()
     return render_template('dashboard.html', recent_tasks=recent_tasks, stats=stats)
 
 @app.route('/purchase-requisitions')
@@ -386,20 +408,36 @@ def purchase_requisitions():
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    conn = get_db_connection()
+    prs = db.session.query(
+        Task,
+        User.username.label('created_by'),
+        func.count(PRItem.id).label('item_count')  # Use func.count
+    ).join(
+        User, Task.user_id == User.id
+    ).outerjoin(
+        PRItem, Task.id == PRItem.task_id
+    ).filter(
+        Task.status == 'purchase_requisition'
+    ).group_by(
+        Task.id, User.username
+    ).order_by(
+        Task.created_at.desc()
+    ).all()
 
-    prs = conn.execute('''
-        SELECT t.*, u.username AS created_by,
-               (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) as item_count
-        FROM tasks t
-        LEFT JOIN users u ON t.user_id = u.id
-        WHERE t.status = 'purchase_requisition'
-        ORDER BY t.created_at DESC
-    ''').fetchall()
+    prs_list = []
+    for task, created_by, item_count in prs:
+        pr_dict = {
+            'id': task.id,
+            'task_name': task.task_name,
+            'user_id': task.user_id,
+            'status': task.status,
+            'created_at': task.created_at,
+            'created_by': created_by,
+            'item_count': item_count
+        }
+        prs_list.append(pr_dict)
 
-    conn.close()
-    return render_template('purchase_requisitions.html', prs=prs)
-
+    return render_template('purchase_requisitions.html', prs=prs_list)
 
 @app.route('/uploads/certificates/<path:filepath>')
 def download_certificate(filepath):
@@ -430,16 +468,12 @@ def login():
         username = request.form['username']
         password = request.form['password']
         
-        conn = get_db_connection()
-        user = conn.execute(
-            'SELECT * FROM users WHERE username = ?', (username,)
-        ).fetchone()
-        conn.close()
+        user = db.session.query(User).filter_by(username=username).first()
         
-        if user and check_password_hash(user['password_hash'], password):
-            session['user_id'] = user['id']
-            session['username'] = user['username']
-            session['role'] = user['role']
+        if user and check_password_hash(user.password_hash, password):
+            session['user_id'] = user.id
+            session['username'] = user.username
+            session['role'] = user.role
             flash('Login successful!', 'success')
             return redirect(url_for('index'))
         else:
@@ -459,7 +493,7 @@ def create_user():
         password = (request.form.get('password') or "").strip()
         role = request.form['role']
 
-        # Validation
+        # Validation (keep your existing validation)
         if not validate_email(email_addr):
             flash('Invalid email format', 'error')
             return render_template('create_user.html')
@@ -476,16 +510,29 @@ def create_user():
 
         password_hash = generate_password_hash(password)
 
-        conn = get_db_connection()
         try:
-            cur = conn.execute(
-                'INSERT INTO users (username, password_hash, email, role) VALUES (?, ?, ?, ?)',
-                (username, password_hash, email_addr, role)
+            # Check if user exists
+            existing_user = db.session.query(User).filter(
+                (User.username == username) | (User.email == email_addr)
+            ).first()
+            
+            if existing_user:
+                flash('Username or email already exists', 'error')
+                return render_template('create_user.html')
+            
+            # Create new user
+            new_user = User(
+                username=username,
+                email=email_addr,
+                password_hash=password_hash,
+                role=role
             )
-            new_user_id = cur.lastrowid
-            conn.commit()
+            
+            db.session.add(new_user)
+            db.session.flush()  # Get the ID
+            new_user_id = new_user.id
 
-            # Build reset link
+            # Build reset link (keep your existing email sending logic)
             token = make_reset_token(new_user_id, email_addr)
             reset_link = public_url_for("reset_password", token=token)
 
@@ -495,16 +542,12 @@ def create_user():
             <html><body>
             <p>Hello {username},</p>
             <p>An account has been created for you in Procure-Flow.</p>
-
             <p><strong>Login details:</strong><br>
             Username: <code>{username}</code><br>
             Email: <code>{email_addr}</code><br>
             Password: <code>{password}</code></p>
-
             <p><strong>Reset your password now (recommended):</strong><br>
             <a href="{reset_link}">{reset_link}</a></p>
-
-            <p>If you did not expect this email, please contact the administrator.</p>
             </body></html>
             """
 
@@ -514,13 +557,13 @@ def create_user():
             else:
                 flash('User created, but failed to send email. Please verify email settings.', 'error')
 
+            db.session.commit()
             return redirect(url_for('index'))
 
-        except sqlite3.IntegrityError:
-            conn.rollback()
-            flash('Username already exists', 'error')
-        finally:
-            conn.close()
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error creating user: {str(e)}', 'error')
+            return render_template('create_user.html')
 
     return render_template('create_user.html')
 
@@ -531,9 +574,7 @@ def user_list():
         flash('Access denied', 'error')
         return redirect(url_for('index'))
 
-    conn = get_db_connection()
-    users = conn.execute('SELECT id, username, email, role, created_at FROM users ORDER BY created_at DESC').fetchall()
-    conn.close()
+    users = db.session.query(User).order_by(User.created_at.desc()).all()
     
     return render_template('user_list.html', users=users)
 
@@ -544,12 +585,10 @@ def edit_user(user_id):
         flash('Access denied', 'error')
         return redirect(url_for('index'))
 
-    conn = get_db_connection()
-    user = conn.execute('SELECT id, username, email, role FROM users WHERE id = ?', (user_id,)).fetchone()
+    user = db.session.get(User, user_id)
     
     if not user:
         flash('User not found', 'error')
-        conn.close()
         return redirect(url_for('user_list'))
 
     if request.method == 'POST':
@@ -562,47 +601,35 @@ def edit_user(user_id):
         # Validation
         if not validate_email(new_email):
             flash('Invalid email format', 'error')
-            conn.close()
             return render_template('edit_user.html', user=user)
 
         # Check if password change requested
         if new_password or confirm_password:
             if new_password != confirm_password:
                 flash('Passwords do not match', 'error')
-                conn.close()
                 return render_template('edit_user.html', user=user)
 
             if not validate_password(new_password):
                 flash('Password must contain at least 5 letters and 1 number', 'error')
-                conn.close()
                 return render_template('edit_user.html', user=user)
 
             password_hash = generate_password_hash(new_password)
-            conn.execute(
-                'UPDATE users SET username = ?, email = ?, role = ?, password_hash = ? WHERE id = ?',
-                (new_username, new_email, new_role, password_hash, user_id)
-            )
-        else:
-            # No password change, just update other fields
-            conn.execute(
-                'UPDATE users SET username = ?, email = ?, role = ? WHERE id = ?',
-                (new_username, new_email, new_role, user_id)
-            )
+            user.password_hash = password_hash
+
+        # Update user fields
+        user.username = new_username
+        user.email = new_email
+        user.role = new_role
 
         try:
-            conn.commit()
+            db.session.commit()
             flash('User updated successfully!', 'success')
-        except sqlite3.IntegrityError:
-            conn.rollback()
-            flash('Username or email already exists', 'error')
-            conn.close()
+            return redirect(url_for('user_list'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error updating user: {str(e)}', 'error')
             return render_template('edit_user.html', user=user)
-        finally:
-            conn.close()
 
-        return redirect(url_for('user_list'))
-
-    conn.close()
     return render_template('edit_user.html', user=user)
 
 @app.route('/user/<int:user_id>/delete', methods=['POST'])
@@ -617,24 +644,26 @@ def delete_user(user_id):
         flash('The main admin account cannot be deleted.', 'error')
         return redirect(url_for('user_list'))
 
-    conn = get_db_connection()
-    user = conn.execute('SELECT username FROM users WHERE id = ?', (user_id,)).fetchone()
+    user = db.session.get(User, user_id)
     
     if not user:
         flash('User not found', 'error')
-        conn.close()
         return redirect(url_for('user_list'))
 
     try:
-        conn.execute('DELETE FROM users WHERE id = ?', (user_id,))
-        conn.commit()
-        flash(f'User "{user["username"]}" has been deleted successfully.', 'success')
-    except sqlite3.IntegrityError:
-        conn.rollback()
-        flash('Cannot delete this user due to related records. Please contact support.', 'error')
-    finally:
-        conn.close()
-
+        # Check if user has created any tasks
+        task_count = db.session.query(Task).filter_by(user_id=user_id).count()
+        if task_count > 0:
+            flash(f'Cannot delete user "{user.username}" because they have created {task_count} task(s).', 'error')
+            return redirect(url_for('user_list'))
+        
+        db.session.delete(user)
+        db.session.commit()
+        flash(f'User "{user.username}" has been deleted successfully.', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Cannot delete this user: {str(e)}', 'error')
+    
     return redirect(url_for('user_list'))
 
 @app.route('/forgot-password', methods=['GET', 'POST'])
@@ -645,36 +674,33 @@ def forgot_password():
             flash("Please enter a valid email address.", "error")
             return render_template("forgot_password.html")
 
-        conn = get_db_connection()
-        try:
-            user = conn.execute('SELECT id, username, email FROM users WHERE LOWER(email) = ?', (email_addr,)).fetchone()
-            # Always respond success to avoid account enumeration
-            if user:
-                token = make_reset_token(user['id'], user['email'])
-                reset_link = public_url_for("reset_password", token=token)
+        user = db.session.query(User).filter(
+            func.lower(User.email) == email_addr  # Use func.lower
+        ).first()
+        
+        # Always respond success to avoid account enumeration
+        if user:
+            token = make_reset_token(user.id, user.email)
+            reset_link = public_url_for("reset_password", token=token)
 
-                subject = "Reset your Procure-Flow password"
-                html = f"""
-                <html><body>
-                <p>Hello {user['username']},</p>
-                <p>Click the link below to reset your password:</p>
-                <p><a href="{reset_link}">{reset_link}</a></p>
-                <p>If you did not request this, you can ignore this email.</p>
-                </body></html>
-                """
-                send_email_html(user['email'], subject, html, to_name=user['username'])
+            subject = "Reset your Procure-Flow password"
+            html = f"""
+            <html><body>
+            <p>Hello {user.username},</p>
+            <p>Click the link below to reset your password:</p>
+            <p><a href="{reset_link}">{reset_link}</a></p>
+            <p>If you did not request this, you can ignore this email.</p>
+            </body></html>
+            """
+            send_email_html(user.email, subject, html, to_name=user.username)
 
-            flash("If an account exists for that email, a reset link has been sent.", "success")
-            return redirect(url_for("login"))
-        finally:
-            conn.close()
+        flash("If an account exists for that email, a reset link has been sent.", "success")
+        return redirect(url_for("login"))
 
     return render_template("forgot_password.html")
 
 @app.route('/reset-password/<token>', methods=['GET', 'POST'])
 def reset_password(token):
-    # Optional expiry control:
-    # If you want expiry, embed created_at in token payload and check it.
     try:
         data = get_reset_serializer().loads(token)
         user_id = data.get("user_id")
@@ -684,34 +710,38 @@ def reset_password(token):
     except BadSignature:
         return render_template("errors/400.html"), 400
 
-    conn = get_db_connection()
-    try:
-        user = conn.execute('SELECT id, username, email FROM users WHERE id = ? AND LOWER(email) = ?', (user_id, email_addr)).fetchone()
-        if not user:
-            return render_template("errors/404.html"), 404
+    user = db.session.query(User).filter(
+        User.id == user_id,
+        func.lower(User.email) == email_addr
+    ).first()
+    
+    if not user:
+        return render_template("errors/404.html"), 404
 
-        if request.method == 'POST':
-            new_password = (request.form.get("password") or "").strip()
-            confirm = (request.form.get("confirm_password") or "").strip()
+    if request.method == 'POST':
+        new_password = (request.form.get("password") or "").strip()
+        confirm = (request.form.get("confirm_password") or "").strip()
 
-            if new_password != confirm:
-                flash("Passwords do not match.", "error")
-                return render_template("reset_password.html", username=user["username"])
+        if new_password != confirm:
+            flash("Passwords do not match.", "error")
+            return render_template("reset_password.html", username=user.username)
 
-            if not validate_password(new_password):
-                flash("Password must contain at least 5 letters and 1 number.", "error")
-                return render_template("reset_password.html", username=user["username"])
+        if not validate_password(new_password):
+            flash("Password must contain at least 5 letters and 1 number.", "error")
+            return render_template("reset_password.html", username=user.username)
 
-            new_hash = generate_password_hash(new_password)
-            conn.execute("UPDATE users SET password_hash = ? WHERE id = ?", (new_hash, user_id))
-            conn.commit()
-
+        new_hash = generate_password_hash(new_password)
+        user.password_hash = new_hash
+        
+        try:
+            db.session.commit()
             flash("Password reset successful. Please log in.", "success")
             return redirect(url_for("login"))
+        except Exception as e:
+            db.session.rollback()
+            flash(f"Error resetting password: {str(e)}", "error")
 
-        return render_template("reset_password.html", username=user["username"])
-    finally:
-        conn.close()
+    return render_template("reset_password.html", username=user.username)
 
 def parse_int_field(value, *, required=False):
     s = (value or "").strip()
@@ -745,36 +775,30 @@ def new_task(task_id=None):
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    conn = get_db_connection()
-    categories = conn.execute('SELECT * FROM categories ORDER BY name').fetchall()
+    categories = db.session.query(Category).order_by(Category.name).all()
     
     # Fetch category items for autocomplete
-    cat_items_data = conn.execute('''
-        SELECT c.name as cat_name, ci.name as item_name
-        FROM category_items ci
-        JOIN categories c ON ci.category_id = c.id
-        ORDER BY ci.name
-    ''').fetchall()
+    cat_items_data = db.session.query(
+        Category.name.label('cat_name'),
+        CategoryItem.name.label('item_name')
+    ).join(CategoryItem).order_by(CategoryItem.name).all()
     
     category_items_map = {}
     for row in cat_items_data:
-        cat = row['cat_name']
+        cat = row.cat_name
         if cat not in category_items_map:
             category_items_map[cat] = []
-        category_items_map[cat].append(row['item_name'])
+        category_items_map[cat].append(row.item_name)
     
     if task_id:
         # Editing existing task - verify ownership
-        task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        task = db.session.get(Task, task_id)
         if not task:
             flash('Task not found', 'error')
-            conn.close()
             return redirect(url_for('task_list'))
         
         # Get existing items
-        existing_items = conn.execute(
-            'SELECT * FROM pr_items WHERE task_id = ?', (task_id,)
-        ).fetchall()
+        existing_items = db.session.query(PRItem).filter_by(task_id=task_id).all()
     else:
         task = None
         existing_items = []
@@ -811,8 +835,12 @@ def new_task(task_id=None):
 
             except ValueError as e:
                 flash(f"Item #{item_index+1}: invalid number input ({str(e)})", "error")
-                conn.close()
-                return redirect(request.url)
+                return render_template('pr_form.html',
+                                     categories=categories,
+                                     task=task,
+                                     existing_items=existing_items,
+                                     is_edit=bool(task_id),
+                                     category_items_map=category_items_map)
 
             items.append({
                 'item_category': global_category,
@@ -837,54 +865,56 @@ def new_task(task_id=None):
             })
             item_index += 1
         
-        if task_id:
-            # Update existing task
-            conn.execute('UPDATE tasks SET task_name = ? WHERE id = ?', (task_name, task_id))
-            # Delete existing items and add new ones
-            conn.execute('DELETE FROM pr_items WHERE task_id = ?', (task_id,))
-            task_id_to_use = task_id
-            flash('Task updated successfully!', 'success')
-        else:
-            # Create new task
-            cursor = conn.cursor()
-            cursor.execute(
-                'INSERT INTO tasks (task_name, user_id, status) VALUES (?, ?, ?)',
-                (task_name, session['user_id'], 'purchase_requisition')
-            )
-            task_id_to_use = cursor.lastrowid
-            flash('Purchase Requisition saved successfully!', 'success')
-        
-        # Add PR items with all dimension fields
-        for item_data in items:
-            conn.execute('''
-                INSERT INTO pr_items (task_id, item_category, item_name, brand, quantity, payment_terms,
-                                    width, length, thickness, dim_a, dim_b, diameter, uom_qty, uom, our_remarks)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            ''', (
-                task_id_to_use,
-                item_data['item_category'],
-                item_data['item_name'],
-                item_data['brand'],
-                item_data['quantity'],
-                item_data['payment_terms'],
-                item_data.get('width'),
-                item_data.get('length'),
-                item_data.get('thickness'),
-                item_data.get('dim_a'),
-                item_data.get('dim_b'),
-                item_data.get('diameter'),
-                item_data.get('uom_qty'),
-                item_data.get('uom'),
-                item_data.get('our_remarks')
-            ))
-        
-        conn.commit()
-        conn.close()
-        
-        # Redirect to Purchase Requisitions list after save
-        return redirect(url_for('purchase_requisitions'))
+        try:
+            if task_id:
+                # Update existing task
+                task.task_name = task_name
+                # Delete existing items and add new ones
+                db.session.query(PRItem).filter_by(task_id=task_id).delete()
+                task_id_to_use = task_id
+                flash('Task updated successfully!', 'success')
+            else:
+                # Create new task
+                new_task = Task(
+                    task_name=task_name,
+                    user_id=session['user_id'],
+                    status='purchase_requisition'
+                )
+                db.session.add(new_task)
+                db.session.flush()
+                task_id_to_use = new_task.id
+                task = new_task  # Update task variable for template if needed
+                flash('Purchase Requisition saved successfully!', 'success')
+            
+            # Add PR items with all dimension fields
+            for item_data in items:
+                pr_item = PRItem(
+                    task_id=task_id_to_use,
+                    item_category=item_data['item_category'],
+                    item_name=item_data['item_name'],
+                    brand=item_data['brand'],
+                    quantity=item_data['quantity'],
+                    payment_terms=item_data['payment_terms'],
+                    width=item_data.get('width'),
+                    length=item_data.get('length'),
+                    thickness=item_data.get('thickness'),
+                    dim_a=item_data.get('dim_a'),
+                    dim_b=item_data.get('dim_b'),
+                    diameter=item_data.get('diameter'),
+                    uom_qty=item_data.get('uom_qty'),
+                    uom=item_data.get('uom'),
+                    our_remarks=item_data.get('our_remarks')
+                )
+                db.session.add(pr_item)
+            
+            db.session.commit()
+            
+            # Redirect to Purchase Requisitions list after save
+            return redirect(url_for('purchase_requisitions'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error saving task: {str(e)}', 'error')
     
-    conn.close()
     return render_template('pr_form.html', 
                          categories=categories, 
                          task=task, 
@@ -899,23 +929,24 @@ def edit_task(task_id):
 
     next_url = request.args.get("next")
 
-    conn = get_db_connection()
-    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-    conn.close()
+    task = db.session.get(Task, task_id)
     if not task:
         flash('Task not found', 'error')
         return redirect(url_for('task_list'))
 
+    # Get the status while session is still available
+    task_status = task.status
+
     def go(endpoint):
         return redirect(url_for(endpoint, task_id=task_id, next=next_url) if next_url else url_for(endpoint, task_id=task_id))
 
-    if task['status'] == 'purchase_requisition':
+    if task_status == 'purchase_requisition':
         return go('new_task')
-    elif task['status'] == 'select_suppliers':
+    elif task_status == 'select_suppliers':
         return go('supplier_selection')
-    elif task['status'] == 'generate_email':
+    elif task_status == 'generate_email':
         return go('email_preview')
-    elif task['status'] == 'confirm_email':
+    elif task_status == 'confirm_email':
         return go('email_confirmation')
     else:
         return redirect(next_url) if next_url else redirect(url_for('task_list'))
@@ -925,84 +956,79 @@ def email_preview(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    conn = get_db_connection()
-    
     # Verify task ownership
-    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    task = db.session.get(Task, task_id)
     if not task:
         flash('Task not found', 'error')
         return redirect(url_for('task_list'))
     
     # Get selected suppliers with their assigned items
-    selected_suppliers = conn.execute('''
-        SELECT s.*, ts.assigned_items 
-        FROM suppliers s
-        JOIN task_suppliers ts ON s.id = ts.supplier_id
-        WHERE ts.task_id = ? AND ts.is_selected = 1
-    ''', (task_id,)).fetchall()
+    selected_suppliers = db.session.query(
+        Supplier,
+        TaskSupplier.assigned_items
+    ).join(
+        TaskSupplier, Supplier.id == TaskSupplier.supplier_id
+    ).filter(
+        TaskSupplier.task_id == task_id,
+        TaskSupplier.is_selected == True
+    ).all()
     
-    pr_items = conn.execute(
-        'SELECT * FROM pr_items WHERE task_id = ?', (task_id,)
-    ).fetchall()
+    pr_items = db.session.query(PRItem).filter_by(task_id=task_id).all()
     
     subject_key = f"email_subject_{task_id}"
     content_key = f"email_content_{task_id}"
-
-    # Initialize email_subject here, outside the POST block
-    email_subject = session.get(subject_key, f"Procurement Inquiry - {task['task_name']}")
+    email_subject = session.get(subject_key, f"Procurement Inquiry - {task.task_name}")
     
     if request.method == 'POST':
         action = request.form.get('action')
         email_content = request.form.get('email_content', '')
-        email_subject = request.form.get('email_subject', email_subject)  # Use form value or existing
+        email_subject = request.form.get('email_subject', email_subject)
         
         if action == 'update_preview':
-            # Just update the preview with new content
             session[content_key] = email_content
             session[subject_key] = email_subject
             flash('Preview updated!', 'success')
             
         elif action == 'send_emails':
-            # Store final email content and proceed to confirmation
             session['final_email_content'] = email_content
             session['final_email_subject'] = email_subject
-            conn.close()
             return redirect(url_for('email_confirmation', task_id=task_id))
     
-    # Group suppliers by email template (based on assigned items)
+    # Group suppliers by email template
     email_templates = {}
-    for supplier in selected_suppliers:
+    for supplier, assigned_items in selected_suppliers:
         assigned_item_ids = None
-        if supplier['assigned_items']:
+        if assigned_items:
             try:
-                assigned_item_ids = json.loads(supplier['assigned_items'])
+                assigned_item_ids = json.loads(assigned_items)
             except:
                 assigned_item_ids = None
         
-        # Create a key based on the assigned items
         if assigned_item_ids:
             key = tuple(sorted(assigned_item_ids))
         else:
             key = 'all'
         
         if key not in email_templates:
-            # Use session content if available, otherwise generate default
             email_content = session.get(content_key, '')
             if not email_content:
-                email_content = generate_email_content(
-                    [item for item in pr_items if not assigned_item_ids or item['id'] in assigned_item_ids],
-                    task['task_name']
-                )
+                # Filter items for this template
+                template_items = [item for item in pr_items if not assigned_item_ids or item.id in assigned_item_ids]
+                email_content = generate_email_content(template_items, task.task_name)
             
             email_templates[key] = {
                 'suppliers': [],
-                'items': assigned_item_ids if assigned_item_ids else [item['id'] for item in pr_items],
+                'items': assigned_item_ids if assigned_item_ids else [item.id for item in pr_items],
                 'email_content': email_content
             }
         
-        email_templates[key]['suppliers'].append(supplier)
-    
-    conn.close()
+        email_templates[key]['suppliers'].append({
+            'id': supplier.id,
+            'name': supplier.name,
+            'email': supplier.email,
+            'contact_name': supplier.contact_name,
+            'assigned_items': assigned_items
+        })
     
     return render_template('email_preview.html',
                          task=task,
@@ -1015,98 +1041,84 @@ def email_confirmation(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    conn = get_db_connection()
-    
-    # Verify task ownership
-    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    task = db.session.get(Task, task_id)
     if not task:
         flash('Task not found', 'error')
-        conn.close()
         return redirect(url_for('task_list'))
     
-    # Get selected suppliers with their assigned items
-    selected_suppliers = conn.execute('''
-        SELECT s.*, ts.assigned_items 
-        FROM suppliers s
-        JOIN task_suppliers ts ON s.id = ts.supplier_id
-        WHERE ts.task_id = ? AND ts.is_selected = 1
-    ''', (task_id,)).fetchall()
+    # Get selected suppliers
+    selected_suppliers = db.session.query(
+        Supplier,
+        TaskSupplier.assigned_items
+    ).join(
+        TaskSupplier, Supplier.id == TaskSupplier.supplier_id
+    ).filter(
+        TaskSupplier.task_id == task_id,
+        TaskSupplier.is_selected == True
+    ).all()
     
-    pr_items = conn.execute(
-        'SELECT * FROM pr_items WHERE task_id = ?', (task_id,)
-    ).fetchall()
+    pr_items = db.session.query(PRItem).filter_by(task_id=task_id).all()
 
     # Mark task as in email generation stage
-    if task['status'] != 'confirm_email':
-        conn.execute('UPDATE tasks SET status = ? WHERE id = ?', ('generate_email', task_id))
-        conn.commit()
+    if task.status != 'confirm_email':
+        task.status = 'generate_email'
+        db.session.commit()
     
     if request.method == 'POST':
         final_email_content = session.get('final_email_content', '')
-        final_email_subject = session.get('final_email_subject', f"Procurement Inquiry - {task['task_name']}")
+        final_email_subject = session.get('final_email_subject', f"Procurement Inquiry - {task.task_name}")
         
-        # Send emails to all selected suppliers with their assigned items
         success_count = 0
-        for supplier in selected_suppliers:
+        for supplier, assigned_items in selected_suppliers:
             assigned_item_ids = None
-            quote_form_link = get_or_create_quote_form_link(conn, task_id, supplier['id'])
+            quote_form_link = get_or_create_quote_form_link(task_id, supplier.id)
 
-            if supplier['assigned_items']:
+            if assigned_items:
                 try:
-                    assigned_item_ids = json.loads(supplier['assigned_items'])
+                    assigned_item_ids = json.loads(assigned_items)
                 except:
                     assigned_item_ids = None
             
+            # Filter items for this supplier
+            supplier_items = [item for item in pr_items if not assigned_item_ids or item.id in assigned_item_ids]
+            
             sent_ok = send_procurement_email(
-                supplier['email'],
-                supplier['name'],
-                pr_items,
-                task['task_name'],
+                supplier.email,
+                supplier.name,
+                supplier_items,
+                task.task_name,
                 assigned_item_ids,
                 final_email_content,
                 final_email_subject,
-                supplier.get('contact_name') if isinstance(supplier, dict) else supplier['contact_name'],
+                supplier.contact_name,
                 quote_form_link=quote_form_link
             )
+            
             if sent_ok:
                 success_count += 1
-                try:
-                    conn.execute(
-                        'UPDATE task_suppliers SET initial_sent_at = COALESCE(initial_sent_at, CURRENT_TIMESTAMP) WHERE task_id = ? AND supplier_id = ?',
-                        (task_id, supplier['id'])
-                    )
-                    conn.execute(
-                        '''
-                        INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        ''',
-                        (task_id, supplier['id'], 'initial', final_email_subject, final_email_content, 'sent')
-                    )
-                    conn.commit()
-                except Exception as e:
-                    conn.rollback()
-                    print(f"Logging/flag update failed for supplier {supplier['id']}: {e}")
-            else:
-                try:
-                    conn.execute(
-                        '''
-                        INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status, error)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        ''',
-                        (task_id, supplier['id'], 'initial', final_email_subject, final_email_content, 'failed', 'send_failed')
-                    )
-                    conn.commit()
-                except Exception as e:
-                    conn.rollback()
-                    print(f"Failed to log failed email for supplier {supplier['id']}: {e}")
+                # Update TaskSupplier
+                task_supplier = db.session.query(TaskSupplier).filter_by(
+                    task_id=task_id,
+                    supplier_id=supplier.id
+                ).first()
+                
+                if task_supplier and not task_supplier.initial_sent_at:
+                    task_supplier.initial_sent_at = datetime.now()
+                
+                # Log email
+                email_log = EmailLog(
+                    task_id=task_id,
+                    supplier_id=supplier.id,
+                    email_type='initial',
+                    subject=final_email_subject,
+                    body=final_email_content,
+                    status='sent'
+                )
+                db.session.add(email_log)
         
         # Update task status
-        conn.execute(
-            'UPDATE tasks SET status = ? WHERE id = ?',
-            ('confirm_email', task_id)
-        )
-        conn.commit()
-        conn.close()
+        task.status = 'confirm_email'
+        db.session.commit()
         
         # Clean up session data
         session.pop('email_content', None)
@@ -1116,11 +1128,9 @@ def email_confirmation(task_id):
         flash(f'Emails sent successfully! {success_count}/{len(selected_suppliers)} emails delivered.', 'success')
         return redirect(url_for('task_list'))
     
-    conn.close()
-    
     return render_template('email_confirmation.html',
                          task=task,
-                         suppliers=selected_suppliers,
+                         suppliers=[s[0] for s in selected_suppliers],
                          pr_items=pr_items)
 
 @app.route('/task-list')
@@ -1128,47 +1138,72 @@ def task_list():
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    conn = get_db_connection()
+    all_tasks = db.session.query(
+        Task,
+        User.username.label('created_by'),
+        func.count(PRItem.id).label('item_count')  # Use func.count
+    ).join(
+        User, Task.user_id == User.id
+    ).outerjoin(
+        PRItem, Task.id == PRItem.task_id
+    ).group_by(
+        Task.id, User.username
+    ).order_by(
+        Task.created_at.desc()
+    ).all()
 
-    all_tasks = conn.execute('''
-        SELECT 
-            t.*,
-            u.username AS created_by,
-            (SELECT COUNT(*) FROM pr_items WHERE task_id = t.id) AS item_count
-        FROM tasks t
-        LEFT JOIN users u ON u.id = t.user_id
-        ORDER BY t.created_at DESC
-    ''').fetchall()
+    tasks_list = []
+    for task, created_by, item_count in all_tasks:
+        tasks_list.append({
+            'id': task.id,
+            'task_name': task.task_name,
+            'user_id': task.user_id,
+            'status': task.status,
+            'created_at': task.created_at,
+            'created_by': created_by,
+            'item_count': item_count
+        })
 
-    conn.close()
-    return render_template('task_list.html', all_tasks=all_tasks)
+    return render_template('task_list.html', all_tasks=tasks_list)
 
 @app.route('/task/<int:task_id>/follow-up', methods=['GET', 'POST'])
 def follow_up(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    conn = get_db_connection()
-
-    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    task = db.session.get(Task, task_id)
     if not task:
         flash('Task not found', 'error')
-        conn.close()
         return redirect(url_for('task_list'))
 
-    suppliers = conn.execute('''
-        SELECT s.*, ts.assigned_items, ts.initial_sent_at, ts.followup_sent_at, ts.replied_at
-        FROM suppliers s
-        JOIN task_suppliers ts ON s.id = ts.supplier_id
-        WHERE ts.task_id = ? AND ts.is_selected = 1
-    ''', (task_id,)).fetchall()
+    # Get suppliers with task supplier info
+    suppliers_data = db.session.query(
+        Supplier,
+        TaskSupplier.assigned_items,
+        TaskSupplier.initial_sent_at,
+        TaskSupplier.followup_sent_at,
+        TaskSupplier.replied_at
+    ).join(
+        TaskSupplier, Supplier.id == TaskSupplier.supplier_id
+    ).filter(
+        TaskSupplier.task_id == task_id,
+        TaskSupplier.is_selected == True
+    ).all()
 
-    pr_items = conn.execute(
-        'SELECT * FROM pr_items WHERE task_id = ?', (task_id,)
-    ).fetchall()
+    pr_items = db.session.query(PRItem).filter_by(task_id=task_id).all()
 
     # Suppliers eligible for follow-up: initial sent, not replied
-    pending_suppliers = [s for s in suppliers if s['initial_sent_at'] and not s['replied_at']]
+    pending_suppliers = []
+    for supplier, assigned_items, initial_sent_at, followup_sent_at, replied_at in suppliers_data:
+        if initial_sent_at and not replied_at:
+            pending_suppliers.append({
+                'id': supplier.id,
+                'name': supplier.name,
+                'email': supplier.email,
+                'contact_name': supplier.contact_name,
+                'assigned_items': assigned_items,
+                'initial_sent_at': initial_sent_at
+            })
 
     default_body = session.get('followup_email_content') or """
     <p>Dear {supplier_name},</p>
@@ -1176,146 +1211,186 @@ def follow_up(task_id):
     <p>Please share your quotation, lead time, and warranty terms at your earliest convenience.</p>
     <p>Thank you.</p>
     """
-    default_subject = session.get('followup_email_subject') or f"Follow-up: Procurement Inquiry - {task['task_name']}"
+    default_subject = session.get('followup_email_subject') or f"Follow-up: Procurement Inquiry - {task.task_name}"
 
     if request.method == 'POST':
         body = request.form.get('email_content', default_body)
         subject = request.form.get('email_subject', default_subject)
 
         sent = 0
-        for supplier in pending_suppliers:
+        for supplier_info in pending_suppliers:
             assigned_item_ids = None
-            quote_form_link = get_or_create_quote_form_link(conn, task_id, supplier['id'])
+            quote_form_link = get_or_create_quote_form_link(task_id, supplier_info['id'])
 
-            if supplier['assigned_items']:
+            if supplier_info['assigned_items']:
                 try:
-                    assigned_item_ids = json.loads(supplier['assigned_items'])
+                    assigned_item_ids = json.loads(supplier_info['assigned_items'])
                 except:
                     assigned_item_ids = None
 
+            # Filter items
+            supplier_items = [item for item in pr_items if not assigned_item_ids or item.id in assigned_item_ids]
+            
             sent_ok = send_procurement_email(
-                supplier['email'],
-                supplier['name'],
-                pr_items,
-                task['task_name'],
+                supplier_info['email'],
+                supplier_info['name'],
+                supplier_items,
+                task.task_name,
                 assigned_item_ids,
                 body,
                 subject,
-                supplier.get('contact_name') if isinstance(supplier, dict) else supplier['contact_name'],
+                supplier_info.get('contact_name'),
                 quote_form_link=quote_form_link
             )
+            
             if sent_ok:
                 sent += 1
-                try:
-                    conn.execute(
-                        'UPDATE task_suppliers SET followup_sent_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
-                        (task_id, supplier['id'])
-                    )
-                    conn.execute(
-                        '''
-                        INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                        ''',
-                        (task_id, supplier['id'], 'followup', subject, body, 'sent')
-                    )
-                    conn.commit()
-                except Exception as e:
-                    conn.rollback()
-                    print(f"Logging follow-up failed for supplier {supplier['id']}: {e}")
+                # Update followup sent time
+                task_supplier = db.session.query(TaskSupplier).filter_by(
+                    task_id=task_id,
+                    supplier_id=supplier_info['id']
+                ).first()
+                if task_supplier:
+                    task_supplier.followup_sent_at = datetime.now()
+                
+                # Log email
+                email_log = EmailLog(
+                    task_id=task_id,
+                    supplier_id=supplier_info['id'],
+                    email_type='followup',
+                    subject=subject,
+                    body=body,
+                    status='sent'
+                )
+                db.session.add(email_log)
             else:
-                try:
-                    conn.execute(
-                        '''
-                        INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status, error)
-                        VALUES (?, ?, ?, ?, ?, ?, ?)
-                        ''',
-                        (task_id, supplier['id'], 'followup', subject, body, 'failed', 'send_failed')
-                    )
-                    conn.commit()
-                except Exception as e:
-                    conn.rollback()
-                    print(f"Failed to log failed follow-up for supplier {supplier['id']}: {e}")
-
-        conn.commit()
+                # Log failed email
+                email_log = EmailLog(
+                    task_id=task_id,
+                    supplier_id=supplier_info['id'],
+                    email_type='followup',
+                    subject=subject,
+                    body=body,
+                    status='failed',
+                    error='send_failed'
+                )
+                db.session.add(email_log)
+        
+        db.session.commit()
         flash(f'Follow-up emails sent: {sent}/{len(pending_suppliers)}', 'success')
-        conn.close()
         return redirect(url_for('task_responses', task_id=task_id))
 
-    conn.close()
     return render_template('follow_up.html',
-                           task=task,
-                           pending_suppliers=pending_suppliers,
-                           email_subject=default_subject,
-                           email_content=default_body)
+                       task=task,
+                       pending_suppliers=pending_suppliers,
+                       email_subject=default_subject,
+                       email_content=default_body)
 
 @app.route('/task/<int:task_id>/responses', methods=['GET', 'POST'])
 def task_responses(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
-    conn = get_db_connection()
-    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    task = db.session.get(Task, task_id)
     if not task:
         flash('Task not found', 'error')
-        conn.close()
         return redirect(url_for('task_list'))
 
     if request.method == 'POST':
         action = request.form.get('action')
         supplier_id = request.form.get('supplier_id')
         if action == 'mark_replied' and supplier_id:
-            conn.execute(
-                'UPDATE task_suppliers SET replied_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
-                (task_id, supplier_id)
-            )
+            task_supplier = db.session.query(TaskSupplier).filter_by(
+                task_id=task_id,
+                supplier_id=supplier_id
+            ).first()
+            if task_supplier:
+                task_supplier.replied_at = datetime.now()
         elif action == 'mark_pending' and supplier_id:
-            conn.execute(
-                'UPDATE task_suppliers SET replied_at = NULL WHERE task_id = ? AND supplier_id = ?',
-                (task_id, supplier_id)
-            )
-        conn.commit()
+            task_supplier = db.session.query(TaskSupplier).filter_by(
+                task_id=task_id,
+                supplier_id=supplier_id
+            ).first()
+            if task_supplier:
+                task_supplier.replied_at = None
+        db.session.commit()
 
-    suppliers = conn.execute('''
-        SELECT s.*, ts.assigned_items, ts.initial_sent_at, ts.followup_sent_at, ts.replied_at, ts.quote_form_token
-        FROM suppliers s
-        JOIN task_suppliers ts ON s.id = ts.supplier_id
-        WHERE ts.task_id = ? AND ts.is_selected = 1
-    ''', (task_id,)).fetchall()
+    # Get suppliers with task info
+    suppliers_data = db.session.query(
+        Supplier,
+        TaskSupplier.assigned_items,
+        TaskSupplier.initial_sent_at,
+        TaskSupplier.followup_sent_at,
+        TaskSupplier.replied_at,
+        TaskSupplier.quote_form_token
+    ).join(
+        TaskSupplier, Supplier.id == TaskSupplier.supplier_id
+    ).filter(
+        TaskSupplier.task_id == task_id,
+        TaskSupplier.is_selected == True
+    ).all()
 
+    suppliers_list = []
     form_links = {}
-    for s in suppliers:
-        token = s['quote_form_token']
+    for supplier, assigned_items, initial_sent_at, followup_sent_at, replied_at, quote_form_token in suppliers_data:
+        token = quote_form_token
         if not token:
-            token = get_quote_serializer().dumps({'task_id': task_id, 'supplier_id': s['id']})
-            conn.execute(
-                "UPDATE task_suppliers SET quote_form_token = ? WHERE task_id = ? AND supplier_id = ?",
-                (token, task_id, s['id'])
-            )
-            conn.commit()
+            token = get_quote_serializer().dumps({'task_id': task_id, 'supplier_id': supplier.id})
+            task_supplier = db.session.query(TaskSupplier).filter_by(
+                task_id=task_id,
+                supplier_id=supplier.id
+            ).first()
+            if task_supplier:
+                task_supplier.quote_form_token = token
+            db.session.commit()
 
-        form_links[s['id']] = public_url_for('supplier_quote_form', token=token)
+        form_links[supplier.id] = public_url_for('supplier_quote_form', token=token)
+        
+        suppliers_list.append({
+            'id': supplier.id,
+            'name': supplier.name,
+            'email': supplier.email,
+            'contact_name': supplier.contact_name,
+            'contact_number': supplier.contact_number,
+            'assigned_items': assigned_items,
+            'initial_sent_at': initial_sent_at,
+            'followup_sent_at': followup_sent_at,
+            'replied_at': replied_at,
+            'quote_form_token': token
+        })
 
-    conn.close()
-    return render_template('responses.html', task=task, suppliers=suppliers, form_links=form_links)
+    return render_template('responses.html', task=task, suppliers=suppliers_list, form_links=form_links)
 
-def get_or_create_quote_form_link(conn, task_id, supplier_id):
-    row = conn.execute(
-        "SELECT quote_form_token FROM task_suppliers WHERE task_id=? AND supplier_id=?",
-        (task_id, supplier_id)
-    ).fetchone()
+def get_or_create_quote_form_link(task_id, supplier_id):
+    """Get or create quote form token for a task-supplier pair."""
+    
+    task_supplier = db.session.query(TaskSupplier).filter_by(
+        task_id=task_id,
+        supplier_id=supplier_id
+    ).first()
 
-    token = row["quote_form_token"] if row else None
-    if not token:
+    if task_supplier and task_supplier.quote_form_token:
+        token = task_supplier.quote_form_token
+    else:
         token = get_quote_serializer().dumps({'task_id': task_id, 'supplier_id': supplier_id})
-        conn.execute(
-            "UPDATE task_suppliers SET quote_form_token=? WHERE task_id=? AND supplier_id=?",
-            (token, task_id, supplier_id)
-        )
-        conn.commit()
+        
+        if not task_supplier:
+            # Create TaskSupplier record if it doesn't exist
+            task_supplier = TaskSupplier(
+                task_id=task_id,
+                supplier_id=supplier_id,
+                is_selected=True,
+                quote_form_token=token
+            )
+            db.session.add(task_supplier)
+        else:
+            task_supplier.quote_form_token = token
+        
+        db.session.flush()
 
     return public_url_for("supplier_quote_form", token=token)
 
-def get_optional_cert_file_id(conn, request, task_id, supplier_id, pr_item_id, uid, old_cert_files):
+def get_optional_cert_file_id(request, task_id, supplier_id, pr_item_id, uid, old_cert_files):
     """
     COA is OPTIONAL:
     - If new file uploaded: save and return new id
@@ -1327,7 +1402,7 @@ def get_optional_cert_file_id(conn, request, task_id, supplier_id, pr_item_id, u
 
     cert_file = request.files.get(file_key)
     if cert_file and cert_file.filename:
-        cert_file_id = save_uploaded_file(conn, cert_file, task_id, supplier_id, pr_item_id)
+        cert_file_id = save_uploaded_file(cert_file, task_id, supplier_id, pr_item_id)
 
     if not cert_file_id and pr_item_id in old_cert_files:
         cert_file_id = old_cert_files[pr_item_id]
@@ -1350,186 +1425,211 @@ def capture_quotes(task_id, supplier_id):
                 return s
         return None
 
-    conn = get_db_connection()
-    try:
-        task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-        supplier = conn.execute('SELECT * FROM suppliers WHERE id = ?', (supplier_id,)).fetchone()
+    task = db.session.get(Task, task_id)
+    supplier = db.session.get(Supplier, supplier_id)
 
-        if not task or not supplier or (session['role'] != 'admin' and task['user_id'] != session['user_id']):
-            flash('Task or supplier not found, or access denied.', 'error')
-            return redirect(url_for('task_list'))
+    if not task or not supplier or (session['role'] != 'admin' and task.user_id != session['user_id']):
+        flash('Task or supplier not found, or access denied.', 'error')
+        return redirect(url_for('task_list'))
 
-        pr_items = conn.execute(
-            'SELECT * FROM pr_items WHERE task_id = ?',
-            (task_id,)
-        ).fetchall()
+    pr_items = db.session.query(PRItem).filter_by(task_id=task_id).all()
 
-        def load_existing_quotes():
-            existing = conn.execute(
-                'SELECT * FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
-                (task_id, supplier_id)
-            ).fetchall()
-            quotes_map_local = {q['pr_item_id']: q for q in existing}
+    def load_existing_quotes():
+        existing = db.session.query(SupplierQuote).filter_by(
+            task_id=task_id,
+            supplier_id=supplier_id
+        ).all()
+        
+        quotes_map = {q.pr_item_id: q for q in existing}
+        payment_terms_default = existing[0].payment_terms if existing else ''
+        return quotes_map, payment_terms_default
 
-            payment_terms_default_local = ''
-            if existing:
-                try:
-                    payment_terms_default_local = existing[0]['payment_terms'] or ''
-                except Exception:
-                    payment_terms_default_local = ''
-            return quotes_map_local, payment_terms_default_local
+    quotes_map, payment_terms_default = load_existing_quotes()
 
-        quotes_map, payment_terms_default = load_existing_quotes()
+    # Get existing master quotation file ID
+    master_quotation_file = None
+    task_supplier = db.session.query(TaskSupplier).filter_by(
+        task_id=task_id,
+        supplier_id=supplier_id
+    ).first()
+    
+    if task_supplier and task_supplier.quotation_file_id:
+        master_quotation_file = task_supplier.quotation_file_id
 
-        # Get existing master quotation file ID
-        master_quotation_file = None
-        ts_row = conn.execute(
-            'SELECT quotation_file_id FROM task_suppliers WHERE task_id = ? AND supplier_id = ?',
-            (task_id, supplier_id)
-        ).fetchone()
-        if ts_row and ts_row['quotation_file_id']:
-            master_quotation_file = ts_row['quotation_file_id']
+    if request.method == 'POST':
+        app.logger.info('capture_quotes POST received for task %s supplier %s', task_id, supplier_id)
 
-        if request.method == 'POST':
-            app.logger.info('capture_quotes POST received for task %s supplier %s', task_id, supplier_id)
+        try:
+            # 1) Preserve old certificate file IDs before deleting
+            old_quotes = db.session.query(SupplierQuote).filter_by(
+                task_id=task_id,
+                supplier_id=supplier_id
+            ).all()
+            
+            old_cert_files = {q.pr_item_id: q.cert_file_id for q in old_quotes}
+            
+            # Clear old quotes for this supplier+task
+            db.session.query(SupplierQuote).filter_by(
+                task_id=task_id,
+                supplier_id=supplier_id
+            ).delete()
 
-            try:
-                # 1) Preserve old certificate file IDs before deleting
-                old_quotes = conn.execute(
-                    'SELECT pr_item_id, cert_file_id FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
-                    (task_id, supplier_id)
-                ).fetchall()
-                old_cert_files = {q['pr_item_id']: q['cert_file_id'] for q in old_quotes}
+            payment_terms_global = request.form.get('payment_terms') or None
+
+            # Handle Master Quotation File
+            quotation_file = request.files.get('quotation_file')
+            if quotation_file and quotation_file.filename:
+                # Save file (pr_item_id is None for general task files)
+                q_file_id = save_uploaded_file(quotation_file, task_id, supplier_id, None)
+                if q_file_id:
+                    if not task_supplier:
+                        task_supplier = TaskSupplier(
+                            task_id=task_id,
+                            supplier_id=supplier_id,
+                            is_selected=True,
+                            quotation_file_id=q_file_id
+                        )
+                        db.session.add(task_supplier)
+                    else:
+                        task_supplier.quotation_file_id = q_file_id
+
+            # 2) insert new
+            for item in pr_items:
+                uid = str(item.id)
+                app.logger.debug("Processing pr_item_id=%s uid=%s", item.id, uid)
+
+                unit_price_val = parse_decimal_field(request.form.get(f'unit_price_{uid}') or None, f"Unit Price for Item {item.id}")
+                unit_price = float(unit_price_val) if unit_price_val else None
                 
-                # Clear old quotes for this supplier+task
-                conn.execute(
-                    'DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
-                    (task_id, supplier_id)
+                stock_availability = request.form.get(f'stock_availability_{uid}') or None
+                lead_time = parse_optional_int(request.form.get(f'lead_time_{uid}') or None)
+                warranty = request.form.get(f'warranty_{uid}') or None
+                notes = request.form.get(f'notes_{uid}') or None
+                ono = True if request.form.get(f"ono_{uid}") else False
+
+                ono_width = parse_optional_int(request.form.get(f'ono_width_{uid}') or None)
+                ono_length = parse_optional_int(request.form.get(f'ono_length_{uid}') or None)
+                ono_thickness = parse_optional_int(request.form.get(f'ono_thickness_{uid}') or None)
+                ono_dim_a = parse_optional_int(request.form.get(f'ono_dim_a_{uid}') or None)
+                ono_dim_b = parse_optional_int(request.form.get(f'ono_dim_b_{uid}') or None)
+                ono_diameter = parse_optional_int(request.form.get(f'ono_diameter_{uid}') or None)
+                ono_uom = request.form.get(f'ono_uom_{uid}') or None
+                ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
+                ono_brand = request.form.get(f'ono_brand_{uid}') or None
+
+                cert_file_id = get_optional_cert_file_id(
+                    request=request,
+                    task_id=task_id,
+                    supplier_id=supplier_id,
+                    pr_item_id=item.id,
+                    uid=uid,
+                    old_cert_files=old_cert_files
                 )
 
-                payment_terms_global = request.form.get('payment_terms') or None
+                has_any_input = any([
+                    unit_price is not None, 
+                    stock_availability, 
+                    lead_time is not None, 
+                    warranty, 
+                    notes,
+                    cert_file_id,
+                    ono_width is not None, 
+                    ono_length is not None, 
+                    ono_thickness is not None,
+                    ono_dim_a is not None, 
+                    ono_dim_b is not None,
+                    ono_diameter is not None,
+                    ono_uom, 
+                    ono_uom_qty, 
+                    ono_brand
+                ]) or ono
 
-                # Handle Master Quotation File
-                quotation_file = request.files.get('quotation_file')
-                if quotation_file and quotation_file.filename:
-                    # Save file (pr_item_id is None for general task files)
-                    q_file_id = save_uploaded_file(conn, quotation_file, task_id, supplier_id, None)
-                    if q_file_id:
-                        conn.execute(
-                            'UPDATE task_suppliers SET quotation_file_id = ? WHERE task_id = ? AND supplier_id = ?',
-                            (q_file_id, task_id, supplier_id)
-                        )
-
-                # 2) insert new
-                for item in pr_items:
-                    uid = str(item['id'])
-                    app.logger.debug("Processing pr_item_id=%s uid=%s", item["id"], uid)
-
-                    unit_price = float(parse_decimal_field(request.form.get(f'unit_price_{uid}') or None, f"Unit Price for Item {item['id']}"))
-                    stock_availability = request.form.get(f'stock_availability_{uid}') or None
-                    lead_time = parse_optional_int(request.form.get(f'lead_time_{uid}') or None)
-                    warranty = request.form.get(f'warranty_{uid}') or None
-                    notes = request.form.get(f'notes_{uid}') or None
-                    ono = 1 if request.form.get(f"ono_{uid}") else 0
-
-                    ono_width = parse_optional_int(request.form.get(f'ono_width_{uid}') or None)
-                    ono_length = parse_optional_int(request.form.get(f'ono_length_{uid}') or None)
-                    ono_thickness = parse_optional_int(request.form.get(f'ono_thickness_{uid}') or None)
-                    ono_dim_a = parse_optional_int(request.form.get(f'ono_dim_a_{uid}') or None)
-                    ono_dim_b = parse_optional_int(request.form.get(f'ono_dim_b_{uid}') or None)
-                    ono_diameter = parse_optional_int(request.form.get(f'ono_diameter_{uid}') or None)
-                    ono_uom = request.form.get(f'ono_uom_{uid}') or None
-                    ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
-                    ono_brand = request.form.get(f'ono_brand_{uid}') or None
-
-                    cert_file_id = get_optional_cert_file_id(
-                        conn=conn,
-                        request=request,
+                if has_any_input:
+                    quote = SupplierQuote(
                         task_id=task_id,
                         supplier_id=supplier_id,
-                        pr_item_id=item['id'],
-                        uid=uid,
-                        old_cert_files=old_cert_files
+                        pr_item_id=item.id,
+                        unit_price=unit_price,
+                        stock_availability=stock_availability,
+                        cert_file_id=cert_file_id,
+                        lead_time=lead_time,
+                        warranty=warranty,
+                        payment_terms=payment_terms_global,
+                        ono=ono,
+                        ono_width=ono_width,
+                        ono_length=ono_length,
+                        ono_thickness=ono_thickness,
+                        ono_dim_a=ono_dim_a,
+                        ono_dim_b=ono_dim_b,
+                        ono_diameter=ono_diameter,
+                        ono_uom=ono_uom,
+                        ono_uom_qty=ono_uom_qty,
+                        ono_brand=ono_brand,
+                        notes=notes
                     )
+                    db.session.add(quote)
 
-                    has_any_input = any([
-                        unit_price, stock_availability, lead_time, warranty, notes,
-                        cert_file_id,
-                        ono_width, ono_length, ono_thickness,
-                        ono_dim_a, ono_dim_b,
-                        ono_diameter,
-                        ono_uom, ono_uom_qty, ono_brand
-                    ]) or (ono == 1)
-
-                    if has_any_input:
-                        conn.execute(
-                            """
-                            INSERT INTO supplier_quotes (
-                                task_id, supplier_id, pr_item_id,
-                                unit_price, stock_availability,
-                                cert_file_id,
-                                lead_time, warranty, payment_terms, ono,
-                                ono_width, ono_length, ono_thickness,
-                                ono_dim_a, ono_dim_b,
-                                ono_diameter,
-                                ono_uom,
-                                ono_uom_qty,
-                                ono_brand,
-                                notes
-                            )
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                task_id, supplier_id, item['id'],
-                                unit_price, stock_availability,
-                                cert_file_id,
-                                lead_time, warranty, payment_terms_global, ono,
-                                ono_width, ono_length, ono_thickness,
-                                ono_dim_a, ono_dim_b,
-                                ono_diameter,
-                                ono_uom,
-                                ono_uom_qty,
-                                ono_brand,
-                                notes
-                            )
-                        )
-
-                # 3) mark replied
-                conn.execute(
-                    'UPDATE task_suppliers SET replied_at = CURRENT_TIMESTAMP WHERE task_id = ? AND supplier_id = ?',
-                    (task_id, supplier_id)
+            # 3) mark replied
+            if not task_supplier:
+                task_supplier = TaskSupplier(
+                    task_id=task_id,
+                    supplier_id=supplier_id,
+                    is_selected=True,
+                    replied_at=datetime.now()
                 )
+                db.session.add(task_supplier)
+            else:
+                task_supplier.replied_at = datetime.now()
 
-                conn.commit()
-                flash('Quotes saved.', 'success')
-                return redirect(url_for('task_responses', task_id=task_id))
+            db.session.commit()
+            flash('Quotes saved.', 'success')
+            return redirect(url_for('task_responses', task_id=task_id))
 
-            except sqlite3.Error:
-                conn.rollback()
-                app.logger.exception("DB error while saving quotes (task_id=%s supplier_id=%s)", task_id, supplier_id)
-                flash("We couldn't save the quotes due to a database issue. Please try again.", "error")
-
-            except Exception:
-                conn.rollback()
-                app.logger.exception("Unhandled error while saving quotes (task_id=%s supplier_id=%s)", task_id, supplier_id)
-                flash("Something went wrong while saving. Please try again.", "error")
-
-            # If we reach here: POST failed, re-load what’s currently in DB (after rollback)
+        except Exception as e:
+            db.session.rollback()
+            app.logger.exception("Error while saving quotes (task_id=%s supplier_id=%s): %s", task_id, supplier_id, str(e))
+            flash(f"We couldn't save the quotes. Error: {str(e)}", "error")
+            
+            # If we reach here: POST failed, re-load what's currently in DB
             quotes_map, payment_terms_default = load_existing_quotes()
 
-        # GET or failed POST -> show form
-        return render_template(
-            'quotes_form.html',
-            task=task,
-            supplier=supplier,
-            pr_items=pr_items,
-            quotes_map=quotes_map,
-            payment_terms_default=payment_terms_default,
-            master_quotation_file=master_quotation_file
-        )
+    # GET or failed POST -> show form
+    # Convert quotes_map to dict format for template
+    quotes_map_dict = {}
+    for pr_item_id, quote in quotes_map.items():
+        quotes_map_dict[pr_item_id] = {
+            'id': quote.id,
+            'task_id': quote.task_id,
+            'supplier_id': quote.supplier_id,
+            'pr_item_id': quote.pr_item_id,
+            'unit_price': quote.unit_price,
+            'stock_availability': quote.stock_availability,
+            'lead_time': quote.lead_time,
+            'warranty': quote.warranty,
+            'payment_terms': quote.payment_terms,
+            'notes': quote.notes,
+            'ono': quote.ono,
+            'ono_width': quote.ono_width,
+            'ono_length': quote.ono_length,
+            'ono_thickness': quote.ono_thickness,
+            'ono_dim_a': quote.ono_dim_a,
+            'ono_dim_b': quote.ono_dim_b,
+            'ono_diameter': quote.ono_diameter,
+            'ono_uom': quote.ono_uom,
+            'ono_uom_qty': quote.ono_uom_qty,
+            'ono_brand': quote.ono_brand,
+            'cert_file_id': quote.cert_file_id
+        }
 
-    finally:
-        conn.close()
+    return render_template(
+        'quotes_form.html',
+        task=task,
+        supplier=supplier,
+        pr_items=pr_items,
+        quotes_map=quotes_map_dict,
+        payment_terms_default=payment_terms_default,
+        master_quotation_file=master_quotation_file
+    )
 
 @app.route('/supplier/quote-form/<token>', methods=['GET', 'POST'])
 def supplier_quote_form(token):
@@ -1538,189 +1638,185 @@ def supplier_quote_form(token):
         task_id = data.get('task_id')
         supplier_id = data.get('supplier_id')
     except BadSignature:
-        # Better: render_template("errors/400.html", message="Invalid or expired link"), 400
         return "Invalid or expired link", 400
 
-    conn = get_db_connection()
-    try:
-        task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
-        supplier = conn.execute('SELECT * FROM suppliers WHERE id = ?', (supplier_id,)).fetchone()
-        if not task or not supplier:
-            # Better: render_template("errors/404.html", message="Task or supplier not found"), 404
-            return "Task or supplier not found", 404
+    # Use db.session instead of get_db_connection()
+    task = db.session.get(Task, task_id)
+    supplier = db.session.get(Supplier, supplier_id)
+    
+    if not task or not supplier:
+        return "Task or supplier not found", 404
 
-        def form_last_nonempty(key: str):
-            vals = request.form.getlist(key)
-            for v in reversed(vals):
-                if v is None:
-                    continue
-                s = str(v).strip()
-                if s != "":
-                    return s
-            return None
+    def form_last_nonempty(key: str):
+        vals = request.form.getlist(key)
+        for v in reversed(vals):
+            if v is None:
+                continue
+            s = str(v).strip()
+            if s != "":
+                return s
+        return None
 
-        ts_row = conn.execute(
-            'SELECT assigned_items FROM task_suppliers WHERE task_id = ? AND supplier_id = ?',
-            (task_id, supplier_id)
-        ).fetchone()
+    # Get TaskSupplier using SQLAlchemy
+    task_supplier = db.session.query(TaskSupplier).filter_by(
+        task_id=task_id,
+        supplier_id=supplier_id
+    ).first()
 
-        assigned_ids = None
-        if ts_row and ts_row['assigned_items']:
-            try:
-                assigned_ids = [int(x) for x in json.loads(ts_row['assigned_items'])]
-            except Exception:
-                assigned_ids = None
+    assigned_ids = None
+    if task_supplier and task_supplier.assigned_items:
+        try:
+            assigned_ids = [int(x) for x in json.loads(task_supplier.assigned_items)]
+        except Exception:
+            assigned_ids = None
 
-        pr_items = conn.execute(
-            'SELECT * FROM pr_items WHERE task_id = ?',
-            (task_id,)
-        ).fetchall()
+    # Get PR items using SQLAlchemy
+    pr_items_query = db.session.query(PRItem).filter_by(task_id=task_id)
+    
+    if assigned_ids:
+        pr_items = pr_items_query.filter(PRItem.id.in_(assigned_ids)).all()
+    else:
+        pr_items = pr_items_query.all()
 
-        if assigned_ids:
-            pr_items = [item for item in pr_items if item['id'] in assigned_ids]
+    if request.method == 'POST':
+        try:
+            # 1) Preserve old certificate file IDs before deleting
+            old_quotes = db.session.query(SupplierQuote).filter_by(
+                task_id=task_id,
+                supplier_id=supplier_id
+            ).all()
+            old_cert_files = {q.pr_item_id: q.cert_file_id for q in old_quotes}
+            
+            # Clear old quotes for this supplier+task
+            db.session.query(SupplierQuote).filter_by(
+                task_id=task_id,
+                supplier_id=supplier_id
+            ).delete()
 
-        if request.method == 'POST':
-            try:
-                # 1) Preserve old certificate file IDs before deleting
-                old_quotes = conn.execute(
-                    'SELECT pr_item_id, cert_file_id FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
-                    (task_id, supplier_id)
-                ).fetchall()
-                old_cert_files = {q['pr_item_id']: q['cert_file_id'] for q in old_quotes}
+            payment_terms_global = request.form.get('payment_terms') or None
+
+            # Handle Master Quotation File
+            quotation_file = request.files.get('quotation_file')
+            if quotation_file and quotation_file.filename:
+                # Save file (pr_item_id is None for general task files)
+                q_file_id = save_uploaded_file(quotation_file, task_id, supplier_id, None)
+                if q_file_id:
+                    if not task_supplier:
+                        task_supplier = TaskSupplier(
+                            task_id=task_id,
+                            supplier_id=supplier_id,
+                            is_selected=True,
+                            quotation_file_id=q_file_id
+                        )
+                        db.session.add(task_supplier)
+                    else:
+                        task_supplier.quotation_file_id = q_file_id
+
+            # 2) Insert new quotes (similar to your capture_quotes function)
+            for item in pr_items:
+                uid = str(item.id)
+
+                unit_price_val = parse_decimal_field(request.form.get(f'unit_price_{uid}') or None, f"Unit Price for Item {item.id}")
+                unit_price = float(unit_price_val) if unit_price_val else None
                 
-                # Clear old
-                conn.execute(
-                    'DELETE FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?',
-                    (task_id, supplier_id)
+                stock_availability = request.form.get(f'stock_availability_{uid}') or None
+                lead_time = parse_optional_int(request.form.get(f'lead_time_{uid}') or None)
+                warranty = request.form.get(f'warranty_{uid}') or None
+                notes = request.form.get(f'notes_{uid}') or None
+                ono = 1 if request.form.get(f"ono_{uid}") else 0
+
+                # O.N.O. alternate dimensions
+                ono_width = parse_optional_int(request.form.get(f'ono_width_{uid}') or None)
+                ono_length = parse_optional_int(request.form.get(f'ono_length_{uid}') or None)
+                ono_thickness = parse_optional_int(request.form.get(f'ono_thickness_{uid}') or None)
+                ono_dim_a = parse_optional_int(request.form.get(f'ono_dim_a_{uid}') or None)
+                ono_dim_b = parse_optional_int(request.form.get(f'ono_dim_b_{uid}') or None)
+                ono_diameter = parse_optional_int(request.form.get(f'ono_diameter_{uid}') or None)
+                ono_uom = request.form.get(f'ono_uom_{uid}') or None
+                ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
+                ono_brand = request.form.get(f'ono_brand_{uid}') or None
+
+                cert_file_id = get_optional_cert_file_id(
+                    request=request,
+                    task_id=task_id,
+                    supplier_id=supplier_id,
+                    pr_item_id=item.id,
+                    uid=uid,
+                    old_cert_files=old_cert_files
                 )
 
-                payment_terms_global = request.form.get('payment_terms') or None
+                # Save row if ANY meaningful input exists, OR ONO checked
+                has_any_input = any([
+                    unit_price, stock_availability, lead_time, warranty, notes,
+                    cert_file_id,
+                    ono_width, ono_length, ono_thickness,
+                    ono_dim_a, ono_dim_b, ono_diameter,
+                    ono_uom, ono_uom_qty, ono_brand
+                ]) or (ono == 1)
 
-                # Handle Master Quotation File
-                quotation_file = request.files.get('quotation_file')
-                if quotation_file and quotation_file.filename:
-                    # Save file (pr_item_id is None for general task files)
-                    q_file_id = save_uploaded_file(conn, quotation_file, task_id, supplier_id, None)
-                    if q_file_id:
-                        conn.execute(
-                            'UPDATE task_suppliers SET quotation_file_id = ? WHERE task_id = ? AND supplier_id = ?',
-                            (q_file_id, task_id, supplier_id)
-                        )
-
-                # 2) insert new
-                for item in pr_items:
-                    uid = str(item['id'])
-
-                    unit_price = float(parse_decimal_field(request.form.get(f'unit_price_{uid}') or None, f"Unit Price for Item {item['id']}"))
-                    stock_availability = request.form.get(f'stock_availability_{uid}') or None
-                    lead_time = parse_optional_int(request.form.get(f'lead_time_{uid}') or None)
-                    warranty = request.form.get(f'warranty_{uid}') or None
-                    notes = request.form.get(f'notes_{uid}') or None
-                    ono = 1 if request.form.get(f"ono_{uid}") else 0
-
-                    # O.N.O. alternate dimensions
-                    ono_width = parse_optional_int(request.form.get(f'ono_width_{uid}') or None)
-                    ono_length = parse_optional_int(request.form.get(f'ono_length_{uid}') or None)
-                    ono_thickness = parse_optional_int(request.form.get(f'ono_thickness_{uid}') or None)
-                    ono_dim_a = parse_optional_int(request.form.get(f'ono_dim_a_{uid}') or None)
-                    ono_dim_b = parse_optional_int(request.form.get(f'ono_dim_b_{uid}') or None)
-                    ono_diameter = parse_optional_int(request.form.get(f'ono_diameter_{uid}') or None)
-                    ono_uom = request.form.get(f'ono_uom_{uid}') or None
-                    ono_uom_qty = request.form.get(f'ono_uom_qty_{uid}') or None
-                    ono_brand = request.form.get(f'ono_brand_{uid}') or None
-
-                    cert_file_id = get_optional_cert_file_id(
-                        conn=conn,
-                        request=request,
+                if has_any_input:
+                    quote = SupplierQuote(
                         task_id=task_id,
                         supplier_id=supplier_id,
-                        pr_item_id=item['id'],
-                        uid=uid,
-                        old_cert_files=old_cert_files
+                        pr_item_id=item.id,
+                        unit_price=unit_price,
+                        stock_availability=stock_availability,
+                        cert_file_id=cert_file_id,
+                        lead_time=lead_time,
+                        warranty=warranty,
+                        payment_terms=payment_terms_global,
+                        ono=bool(ono),
+                        ono_width=ono_width,
+                        ono_length=ono_length,
+                        ono_thickness=ono_thickness,
+                        ono_dim_a=ono_dim_a,
+                        ono_dim_b=ono_dim_b,
+                        ono_diameter=ono_diameter,
+                        ono_uom=ono_uom,
+                        ono_uom_qty=ono_uom_qty,
+                        ono_brand=ono_brand,
+                        notes=notes
                     )
+                    db.session.add(quote)
 
-                    # Save row if ANY meaningful input exists, OR ONO checked
-                    has_any_input = any([
-                        unit_price, stock_availability, lead_time, warranty, notes,
-                        cert_file_id,
-                        ono_width, ono_length, ono_thickness,
-                        ono_dim_a, ono_dim_b, ono_diameter,
-                        ono_uom, ono_uom_qty, ono_brand
-                    ]) or (ono == 1)
-
-                    if has_any_input:
-                        conn.execute(
-                            """
-                            INSERT INTO supplier_quotes (
-                                task_id, supplier_id, pr_item_id,
-                                unit_price, stock_availability,
-                                cert_file_id,
-                                lead_time, warranty, payment_terms, ono,
-                                ono_width, ono_length, ono_thickness,
-                                ono_dim_a, ono_dim_b,
-                                ono_diameter,
-                                ono_uom,
-                                ono_uom_qty,
-                                ono_brand,
-                                notes
-                            )
-                            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                            """,
-                            (
-                                task_id, supplier_id, item['id'],
-                                unit_price, stock_availability,
-                                cert_file_id,
-                                lead_time, warranty, payment_terms_global, ono,
-                                ono_width, ono_length, ono_thickness,
-                                ono_dim_a, ono_dim_b,
-                                ono_diameter,
-                                ono_uom,
-                                ono_uom_qty,
-                                ono_brand,
-                                notes
-                            )
-                        )
-
-                # 3) mark replied + log
-                conn.execute(
-                    'UPDATE task_suppliers SET replied_at = COALESCE(replied_at, CURRENT_TIMESTAMP) WHERE task_id = ? AND supplier_id = ?',
-                    (task_id, supplier_id)
+            # 3) Mark replied + log
+            if not task_supplier:
+                task_supplier = TaskSupplier(
+                    task_id=task_id,
+                    supplier_id=supplier_id,
+                    is_selected=True
                 )
+                db.session.add(task_supplier)
+            
+            task_supplier.replied_at = datetime.now()
 
-                conn.execute(
-                    '''
-                    INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
-                    VALUES (?, ?, ?, ?, ?, ?)
-                    ''',
-                    (task_id, supplier_id, 'supplier_form', f'Quote submitted by {supplier["name"]}', None, 'received')
-                )
+            # Log email
+            email_log = EmailLog(
+                task_id=task_id,
+                supplier_id=supplier_id,
+                email_type='supplier_form',
+                subject=f'Quote submitted by {supplier.name}',
+                body=None,
+                status='received'
+            )
+            db.session.add(email_log)
 
-                conn.commit()
-                return render_template('supplier_form_success.html', supplier=supplier, task=task)
+            db.session.commit()
+            return render_template('supplier_form_success.html', supplier=supplier, task=task)
 
-            except sqlite3.Error:
-                conn.rollback()
-                app.logger.exception("DB error while saving supplier form (task_id=%s supplier_id=%s)", task_id, supplier_id)
-                # Show supplier-friendly message on the same page
-                flash("We couldn't save your quotation due to a system issue. Please try again.", "error")
-                # fall through to re-render the form
+        except Exception as e:
+            db.session.rollback()
+            app.logger.exception("Error while saving supplier form (task_id=%s supplier_id=%s): %s", task_id, supplier_id, str(e))
+            flash("We couldn't save your quotation due to a system issue. Please try again.", "error")
+            # Fall through to re-render the form
 
-            except Exception:
-                conn.rollback()
-                app.logger.exception("Unexpected error while saving supplier form (task_id=%s supplier_id=%s)", task_id, supplier_id)
-                flash("Something went wrong while submitting your quotation. Please review and try again.", "error")
-                # fall through to re-render the form
-
-        # GET or POST failure -> show form again
-        return render_template(
-            'supplier_public_quote.html',
-            task=task,
-            supplier=supplier,
-            pr_items=pr_items
-        )
-
-    finally:
-        conn.close()
+    # GET or failed POST -> show form again
+    return render_template(
+        'supplier_public_quote.html',
+        task=task,
+        supplier=supplier,
+        pr_items=pr_items
+    )
 
 @app.route('/debug/quotes/<int:task_id>/<int:supplier_id>', methods=['GET'])
 def debug_quotes(task_id, supplier_id):
@@ -1728,33 +1824,118 @@ def debug_quotes(task_id, supplier_id):
     if 'user_id' not in session:
         return jsonify({'error': 'login required'}), 403
 
-    conn = get_db_connection()
-    rows = conn.execute('SELECT * FROM supplier_quotes WHERE task_id = ? AND supplier_id = ?', (task_id, supplier_id)).fetchall()
-    conn.close()
-    quotes = [dict(r) for r in rows]
-    return jsonify(quotes)
+    quotes = db.session.query(SupplierQuote).filter_by(
+        task_id=task_id,
+        supplier_id=supplier_id
+    ).all()
+    
+    quotes_list = []
+    for quote in quotes:
+        quotes_list.append({
+            'id': quote.id,
+            'task_id': quote.task_id,
+            'supplier_id': quote.supplier_id,
+            'pr_item_id': quote.pr_item_id,
+            'unit_price': float(quote.unit_price) if quote.unit_price else None,
+            'stock_availability': quote.stock_availability,
+            'lead_time': quote.lead_time,
+            'warranty': quote.warranty,
+            'payment_terms': quote.payment_terms,
+            'notes': quote.notes,
+            'ono': quote.ono,
+            'ono_width': quote.ono_width,
+            'ono_length': quote.ono_length,
+            'ono_thickness': quote.ono_thickness,
+            'ono_dim_a': quote.ono_dim_a,
+            'ono_dim_b': quote.ono_dim_b,
+            'ono_diameter': quote.ono_diameter,
+            'ono_uom': quote.ono_uom,
+            'ono_uom_qty': quote.ono_uom_qty,
+            'ono_brand': quote.ono_brand,
+            'cert_file_id': quote.cert_file_id
+        })
+    
+    return jsonify(quotes_list)
 
 @app.route('/task/<int:task_id>/export-comparison')
 def export_comparison(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    conn = get_db_connection()
-    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    task = db.session.get(Task, task_id)
     if not task:
         flash('Task not found', 'error')
-        conn.close()
         return redirect(url_for('task_list'))
 
-    pr_items = conn.execute('SELECT * FROM pr_items WHERE task_id = ?', (task_id,)).fetchall()
-    pr_items = [dict(r) for r in pr_items]
-    quotes = conn.execute('''
-        SELECT q.*, s.name as supplier_name, ts.replied_at as replied_at, ts.quotation_file_id
-        FROM supplier_quotes q
-        JOIN suppliers s ON q.supplier_id = s.id
-        LEFT JOIN task_suppliers ts ON ts.supplier_id = q.supplier_id AND ts.task_id = q.task_id
-        WHERE q.task_id = ?
-    ''', (task_id,)).fetchall()
+    # Get PR items
+    pr_items_result = db.session.query(PRItem).filter_by(task_id=task_id).all()
+    pr_items = []
+    for item in pr_items_result:
+        pr_items.append({
+            'id': item.id,
+            'task_id': item.task_id,
+            'item_category': item.item_category,
+            'item_name': item.item_name,
+            'brand': item.brand,
+            'quantity': item.quantity,
+            'payment_terms': item.payment_terms,
+            'width': item.width,
+            'length': item.length,
+            'thickness': item.thickness,
+            'dim_a': item.dim_a,
+            'dim_b': item.dim_b,
+            'diameter': item.diameter,
+            'uom_qty': item.uom_qty,
+            'uom': item.uom,
+            'our_remarks': item.our_remarks
+        })
+    
+    # Get quotes with supplier info
+    quotes_result = db.session.query(
+        SupplierQuote,
+        Supplier.name.label('supplier_name'),
+        TaskSupplier.replied_at,
+        TaskSupplier.quotation_file_id
+    ).join(
+        Supplier, SupplierQuote.supplier_id == Supplier.id
+    ).outerjoin(
+        TaskSupplier, 
+        db.and_(
+            TaskSupplier.supplier_id == SupplierQuote.supplier_id,
+            TaskSupplier.task_id == SupplierQuote.task_id
+        )
+    ).filter(
+        SupplierQuote.task_id == task_id
+    ).all()
+    
+    quotes = []
+    for quote, supplier_name, replied_at, quotation_file_id in quotes_result:
+        quotes.append({
+            'id': quote.id,
+            'task_id': quote.task_id,
+            'supplier_id': quote.supplier_id,
+            'pr_item_id': quote.pr_item_id,
+            'unit_price': float(quote.unit_price) if quote.unit_price else None,
+            'stock_availability': quote.stock_availability,
+            'lead_time': quote.lead_time,
+            'warranty': quote.warranty,
+            'payment_terms': quote.payment_terms,
+            'notes': quote.notes,
+            'ono': quote.ono,
+            'ono_width': quote.ono_width,
+            'ono_length': quote.ono_length,
+            'ono_thickness': quote.ono_thickness,
+            'ono_dim_a': quote.ono_dim_a,
+            'ono_dim_b': quote.ono_dim_b,
+            'ono_diameter': quote.ono_diameter,
+            'ono_uom': quote.ono_uom,
+            'ono_uom_qty': quote.ono_uom_qty,
+            'ono_brand': quote.ono_brand,
+            'cert_file_id': quote.cert_file_id,
+            'supplier_name': supplier_name,
+            'replied_at': replied_at,
+            'quotation_file_id': quotation_file_id
+        })
     
     # Define dimension spec function early
     def get_dim_spec(cat: str):
@@ -1780,7 +1961,6 @@ def export_comparison(task_id):
     # 3 fixed + DIM_COUNT dims + Qty + (Weight only if has_weight)
     BASE_COLS = 3 + DIM_COUNT + 1 + (1 if has_weight else 0)
     SUPPLIER_START_COL = BASE_COLS + 1
-    conn.close()
 
     def to_float(x):
         try:
@@ -2589,19 +2769,27 @@ def suppliers():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    conn = get_db_connection()
-    suppliers_list = conn.execute('''
-        SELECT s.*, GROUP_CONCAT(c.name) as categories
-        FROM suppliers s
-        LEFT JOIN supplier_categories sc ON s.id = sc.supplier_id
-        LEFT JOIN categories c ON sc.category_id = c.id
-        WHERE s.is_active = 1
-        GROUP BY s.id
-    ''').fetchall()
+    # Get suppliers with their categories as comma-separated string
+    suppliers_list = []
+    all_suppliers = db.session.query(Supplier).filter_by(is_active=True).all()
     
-    categories = conn.execute('SELECT * FROM categories').fetchall()
-    conn.close()
+    for supplier in all_suppliers:
+        category_names = [cat.name for cat in supplier.categories]
+        supplier_dict = {
+            'id': supplier.id,
+            'name': supplier.name,
+            'contact_name': supplier.contact_name,
+            'email': supplier.email,
+            'contact_number': supplier.contact_number,
+            'address': supplier.address,
+            'products_services': supplier.products_services,
+            'is_active': supplier.is_active,
+            'categories': ', '.join(category_names) if category_names else ''
+        }
+        suppliers_list.append(supplier_dict)
     
+    categories = db.session.query(Category).all()
+
     return render_template('supplier_list.html', 
                          suppliers=suppliers_list, 
                          categories=categories,
@@ -2613,8 +2801,6 @@ def edit_supplier(supplier_id):
         flash('Access denied', 'error')
         return redirect(url_for('suppliers'))
     
-    conn = get_db_connection()
-    
     if request.method == 'POST':
         name = request.form['name']
         contact_name = request.form['contact_name']
@@ -2625,34 +2811,41 @@ def edit_supplier(supplier_id):
         selected_categories = request.form.getlist('categories')
         
         # Update supplier
-        conn.execute('''
-            UPDATE suppliers 
-            SET name=?, contact_name=?, email=?, contact_number=?, address=?, products_services=?
-            WHERE id=?
-        ''', (name, contact_name, email, contact_number, address, products_services, supplier_id))
+        supplier = db.session.get(Supplier, supplier_id)
+        if not supplier:
+            flash('Supplier not found', 'error')
+            return redirect(url_for('suppliers'))
         
-        # Update categories
-        conn.execute('DELETE FROM supplier_categories WHERE supplier_id = ?', (supplier_id,))
+        supplier.name = name
+        supplier.contact_name = contact_name
+        supplier.email = email
+        supplier.contact_number = contact_number
+        supplier.address = address
+        supplier.products_services = products_services
+        
+        # Update categories - clear existing and add new ones
+        supplier.categories.clear()
         for category_id in selected_categories:
-            conn.execute(
-                'INSERT INTO supplier_categories (supplier_id, category_id) VALUES (?, ?)',
-                (supplier_id, category_id)
-            )
+            category = db.session.get(Category, category_id)
+            if category:
+                supplier.categories.append(category)
         
-        conn.commit()
-        conn.close()
-        flash('Supplier updated successfully!', 'success')
+        try:
+            db.session.commit()
+            flash('Supplier updated successfully!', 'success')
+            return redirect(url_for('suppliers'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error updating supplier: {str(e)}', 'error')
+    
+    # GET request
+    supplier = db.session.get(Supplier, supplier_id)
+    if not supplier:
+        flash('Supplier not found', 'error')
         return redirect(url_for('suppliers'))
     
-    supplier = conn.execute('SELECT * FROM suppliers WHERE id = ?', (supplier_id,)).fetchone()
-    categories = conn.execute('SELECT * FROM categories').fetchall()
-    supplier_categories = conn.execute(
-        'SELECT category_id FROM supplier_categories WHERE supplier_id = ?', 
-        (supplier_id,)
-    ).fetchall()
-    supplier_category_ids = [sc['category_id'] for sc in supplier_categories]
-    
-    conn.close()
+    categories = db.session.query(Category).all()
+    supplier_category_ids = [cat.id for cat in supplier.categories]
     
     return render_template('edit_supplier.html', 
                          supplier=supplier, 
@@ -2664,8 +2857,6 @@ def add_supplier():
     if 'user_id' not in session:
         flash('Access denied', 'error')
         return redirect(url_for('suppliers'))
-    
-    conn = get_db_connection()
     
     if request.method == 'POST':
         name = request.form['name']
@@ -2679,43 +2870,55 @@ def add_supplier():
         # Validate email
         if not validate_email(email):
             flash('Invalid email format', 'error')
-            return render_template('edit_supplier.html', categories=conn.execute('SELECT * FROM categories').fetchall())
+            categories = db.session.query(Category).all()
+            return render_template('edit_supplier.html', categories=categories)
         
         # Validate phone
         if contact_number and not validate_phone(contact_number):
             flash('Invalid phone number format', 'error')
-            return render_template('edit_supplier.html', categories=conn.execute('SELECT * FROM categories').fetchall())
+            categories = db.session.query(Category).all()
+            return render_template('edit_supplier.html', categories=categories)
 
         # Check for duplicate supplier (Name or Email)
-        existing = conn.execute('SELECT id, name FROM suppliers WHERE name = ? OR email = ?', (name, email)).fetchone()
+        existing = db.session.query(Supplier).filter(
+            (Supplier.name == name) | (Supplier.email == email)
+        ).first()
+        
         if existing:
-            flash(f'Supplier already exists (Name: {existing["name"]}). Duplicate entry prevented.', 'error')
-            return render_template('edit_supplier.html', categories=conn.execute('SELECT * FROM categories').fetchall())
+            flash(f'Supplier already exists (Name: {existing.name}). Duplicate entry prevented.', 'error')
+            categories = db.session.query(Category).all()
+            return render_template('edit_supplier.html', categories=categories)
         
-        # Add supplier
-        cursor = conn.cursor()
-        cursor.execute('''
-            INSERT INTO suppliers (name, contact_name, email, contact_number, address, products_services)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (name, contact_name, email, contact_number, address, products_services))
-        
-        supplier_id = cursor.lastrowid
+        # Create supplier
+        supplier = Supplier(
+            name=name,
+            contact_name=contact_name,
+            email=email,
+            contact_number=contact_number,
+            address=address,
+            products_services=products_services,
+            is_active=True
+        )
         
         # Add categories
         for category_id in selected_categories:
-            conn.execute(
-                'INSERT INTO supplier_categories (supplier_id, category_id) VALUES (?, ?)',
-                (supplier_id, category_id)
-            )
+            category = db.session.get(Category, category_id)
+            if category:
+                supplier.categories.append(category)
         
-        conn.commit()
-        conn.close()
-        flash('Supplier added successfully!', 'success')
-        return redirect(url_for('suppliers'))
+        try:
+            db.session.add(supplier)
+            db.session.commit()
+            flash('Supplier added successfully!', 'success')
+            return redirect(url_for('suppliers'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error adding supplier: {str(e)}', 'error')
+            categories = db.session.query(Category).all()
+            return render_template('edit_supplier.html', categories=categories)
     
-    categories = conn.execute('SELECT * FROM categories').fetchall()
-    conn.close()
-    
+    # GET request
+    categories = db.session.query(Category).all()
     return render_template('edit_supplier.html', categories=categories)
 
 @app.route('/delete-task/<int:task_id>', methods=['POST'])
@@ -2724,33 +2927,24 @@ def delete_task(task_id):
         flash('Access denied', 'error')
         return redirect(url_for('login'))
 
-    conn = get_db_connection()
     try:
         # Just check it exists (no ownership check)
-        task = conn.execute('SELECT id FROM tasks WHERE id = ?', (task_id,)).fetchone()
+        task = db.session.get(Task, task_id)
         if not task:
             flash('Task not found', 'error')
             return redirect(url_for('task_list'))
 
-        conn.execute('DELETE FROM supplier_quotes WHERE task_id = ?', (task_id,))
-        conn.execute('DELETE FROM task_suppliers WHERE task_id = ?', (task_id,))
-        conn.execute('DELETE FROM pr_items WHERE task_id = ?', (task_id,))
-        conn.execute('DELETE FROM email_logs WHERE task_id = ?', (task_id,))
-        conn.execute('DELETE FROM file_assets WHERE task_id = ?', (task_id,))
-        conn.execute('DELETE FROM tasks WHERE id = ?', (task_id,))
-
-        conn.commit()
+        # Cascading delete should handle related records via relationships
+        db.session.delete(task)
+        db.session.commit()
         flash('Task deleted successfully!', 'success')
         return redirect(url_for('task_list'))
 
-    except Exception:
-        conn.rollback()
-        app.logger.exception("Failed to delete task_id=%s", task_id)
-        flash('Failed to delete task due to an unexpected error.', 'error')
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception("Failed to delete task_id=%s: %s", task_id, str(e))
+        flash(f'Failed to delete task: {str(e)}', 'error')
         return redirect(url_for('task_list'))
-
-    finally:
-        conn.close()
 
 @app.route('/logout')
 def logout():
@@ -2980,70 +3174,62 @@ def supplier_selection(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    conn = get_db_connection()
-    
     # Verify task ownership
-    task = conn.execute('SELECT * FROM tasks WHERE id = ?', (task_id,)).fetchone()
+    task = db.session.get(Task, task_id)
     if not task:
         flash('Task not found', 'error')
         return redirect(url_for('task_list'))
     
     if request.method == 'POST':
-        # Process supplier-item assignments
         selected_suppliers = request.form.getlist('suppliers')
         
         # Clear existing selections
-        conn.execute('DELETE FROM task_suppliers WHERE task_id = ?', (task_id,))
+        db.session.query(TaskSupplier).filter_by(task_id=task_id).delete()
         
-        # Add supplier selections - always with all items (NULL in database)
+        # Add supplier selections
         for supplier_id in selected_suppliers:
-            conn.execute(
-                'INSERT INTO task_suppliers (task_id, supplier_id, is_selected, assigned_items) VALUES (?, ?, ?, ?)',
-                (task_id, supplier_id, True, None)
+            task_supplier = TaskSupplier(
+                task_id=task_id,
+                supplier_id=supplier_id,
+                is_selected=True,
+                assigned_items=None
             )
+            db.session.add(task_supplier)
         
         # Update task status
-        conn.execute(
-            'UPDATE tasks SET status = ? WHERE id = ?',
-            ('select_suppliers', task_id)
-        )
+        task.status = 'select_suppliers'
         
-        conn.commit()
-        conn.close()
-        flash('Suppliers and item assignments saved successfully!', 'success')
-        return redirect(url_for('email_preview', task_id=task_id))
+        try:
+            db.session.commit()
+            flash('Suppliers and item assignments saved successfully!', 'success')
+            return redirect(url_for('email_preview', task_id=task_id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error saving suppliers: {str(e)}', 'error')
     
     # Get PR items
-    pr_items = conn.execute(
-        'SELECT * FROM pr_items WHERE task_id = ?', (task_id,)
-    ).fetchall()
+    pr_items = db.session.query(PRItem).filter_by(task_id=task_id).all()
     
     # Get unique categories from PR items
-    categories = list(set([item['item_category'] for item in pr_items]))
+    categories = list(set([item.item_category for item in pr_items]))
     
     # Get suppliers that match ANY of the categories
+    suppliers = []
     if categories:
-        placeholders = ','.join('?' * len(categories))
-        suppliers = conn.execute(f'''
-            SELECT DISTINCT s.*, GROUP_CONCAT(c.name) as supplier_categories
-            FROM suppliers s
-            JOIN supplier_categories sc ON s.id = sc.supplier_id
-            JOIN categories c ON sc.category_id = c.id
-            WHERE c.name IN ({placeholders}) AND s.is_active = 1
-            GROUP BY s.id
-        ''', categories).fetchall()
-    else:
-        suppliers = []
+        suppliers = db.session.query(Supplier).join(
+            Supplier.categories
+        ).filter(
+            Category.name.in_(categories),
+            Supplier.is_active == True
+        ).distinct().all()
     
     # Get already selected suppliers
-    selected_data = conn.execute(
-        'SELECT supplier_id FROM task_suppliers WHERE task_id = ? AND is_selected = 1',
-        (task_id,)
-    ).fetchall()
+    selected_data = db.session.query(TaskSupplier).filter_by(
+        task_id=task_id,
+        is_selected=True
+    ).all()
     
-    selected_supplier_ids = [str(data['supplier_id']) for data in selected_data]
-    
-    conn.close()
+    selected_supplier_ids = [str(data.supplier_id) for data in selected_data]
     
     return render_template('supplier_selection.html', 
                          task=task, 
@@ -3052,21 +3238,27 @@ def supplier_selection(task_id):
                          selected_supplier_ids=selected_supplier_ids,
                          categories=categories)
 
-# Add route to delete supplier
 @app.route('/delete-supplier/<int:supplier_id>')
 def delete_supplier(supplier_id):
     if 'user_id' not in session or session.get('role') != 'admin':
         flash('Access denied', 'error')
         return redirect(url_for('suppliers'))
     
-    conn = get_db_connection()
+    supplier = db.session.get(Supplier, supplier_id)
+    if not supplier:
+        flash('Supplier not found', 'error')
+        return redirect(url_for('suppliers'))
     
     # Soft delete by setting is_active to 0
-    conn.execute('UPDATE suppliers SET is_active = 0 WHERE id = ?', (supplier_id,))
-    conn.commit()
-    conn.close()
+    supplier.is_active = False
     
-    flash('Supplier deleted successfully!', 'success')
+    try:
+        db.session.commit()
+        flash('Supplier deleted successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error deleting supplier: {str(e)}', 'error')
+    
     return redirect(url_for('suppliers'))
 
 # Add route for categories management (view for all, edit for admin)
@@ -3078,9 +3270,7 @@ def categories():
     
     can_edit = session.get('role') == 'admin'
     
-    conn = get_db_connection()
-    categories_list = conn.execute('SELECT * FROM categories ORDER BY name').fetchall()
-    conn.close()
+    categories_list = db.session.query(Category).order_by(Category.name).all()
     
     return render_template('categories.html', categories=categories_list, can_edit=can_edit)
 
@@ -3094,15 +3284,20 @@ def add_category():
         flash('Category name is required', 'error')
         return redirect(url_for('categories'))
     
-    conn = get_db_connection()
-    try:
-        conn.execute('INSERT INTO categories (name) VALUES (?)', (name,))
-        conn.commit()
-        flash('Category added successfully!', 'success')
-    except sqlite3.IntegrityError:
+    # Check if category exists
+    existing = db.session.query(Category).filter_by(name=name).first()
+    if existing:
         flash('Category already exists', 'error')
-    finally:
-        conn.close()
+        return redirect(url_for('categories'))
+    
+    try:
+        category = Category(name=name)
+        db.session.add(category)
+        db.session.commit()
+        flash('Category added successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error adding category: {str(e)}', 'error')
     
     return redirect(url_for('categories'))
 
@@ -3112,22 +3307,27 @@ def delete_category(category_id):
         flash('Access denied', 'error')
         return redirect(url_for('categories'))
     
-    conn = get_db_connection()
+    category = db.session.get(Category, category_id)
+    if not category:
+        flash('Category not found', 'error')
+        return redirect(url_for('categories'))
     
     # Check if category is used by any suppliers
-    suppliers_count = conn.execute(
-        'SELECT COUNT(*) FROM supplier_categories WHERE category_id = ?', 
-        (category_id,)
-    ).fetchone()[0]
+    suppliers_count = db.session.query(Supplier).filter(
+        Supplier.categories.any(id=category_id)
+    ).count()
     
     if suppliers_count > 0:
         flash('Cannot delete category: it is being used by suppliers', 'error')
     else:
-        conn.execute('DELETE FROM categories WHERE id = ?', (category_id,))
-        conn.commit()
-        flash('Category deleted successfully!', 'success')
+        try:
+            db.session.delete(category)
+            db.session.commit()
+            flash('Category deleted successfully!', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error deleting category: {str(e)}', 'error')
     
-    conn.close()
     return redirect(url_for('categories'))
 
 @app.route('/category/<int:category_id>/items')
@@ -3138,15 +3338,13 @@ def category_items(category_id):
     
     can_edit = session.get('role') == 'admin'
     
-    conn = get_db_connection()
-    category = conn.execute('SELECT * FROM categories WHERE id = ?', (category_id,)).fetchone()
+    category = db.session.get(Category, category_id)
     if not category:
-        conn.close()
         flash('Category not found', 'error')
         return redirect(url_for('categories'))
         
-    items = conn.execute('SELECT * FROM category_items WHERE category_id = ? ORDER BY name', (category_id,)).fetchall()
-    conn.close()
+    items = db.session.query(CategoryItem).filter_by(category_id=category_id).order_by(CategoryItem.name).all()
+    
     return render_template('category_items.html', category=category, items=items, can_edit=can_edit)
 
 @app.route('/category/<int:category_id>/add-item', methods=['POST'])
@@ -3156,11 +3354,14 @@ def add_category_item(category_id):
     
     name = request.form.get('name')
     if name:
-        conn = get_db_connection()
-        conn.execute('INSERT INTO category_items (category_id, name) VALUES (?, ?)', (category_id, name))
-        conn.commit()
-        conn.close()
-        flash('Item added successfully', 'success')
+        try:
+            item = CategoryItem(category_id=category_id, name=name)
+            db.session.add(item)
+            db.session.commit()
+            flash('Item added successfully', 'success')
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error adding item: {str(e)}', 'error')
     
     return redirect(url_for('category_items', category_id=category_id))
 
@@ -3169,17 +3370,18 @@ def delete_category_item(item_id):
     if 'user_id' not in session or session.get('role') != 'admin':
         return redirect(url_for('index'))
     
-    conn = get_db_connection()
-    item = conn.execute('SELECT category_id FROM category_items WHERE id = ?', (item_id,)).fetchone()
+    item = db.session.get(CategoryItem, item_id)
     if item:
-        category_id = item['category_id']
-        conn.execute('DELETE FROM category_items WHERE id = ?', (item_id,))
-        conn.commit()
-        conn.close()
-        flash('Item deleted successfully', 'success')
-        return redirect(url_for('category_items', category_id=category_id))
+        category_id = item.category_id
+        try:
+            db.session.delete(item)
+            db.session.commit()
+            flash('Item deleted successfully', 'success')
+            return redirect(url_for('category_items', category_id=category_id))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Error deleting item: {str(e)}', 'error')
     
-    conn.close()
     return redirect(url_for('categories'))
 
 def parse_reply_fields(body_text):
@@ -3247,246 +3449,6 @@ def get_email_body(msg):
             return msg.get_payload(decode=True).decode(charset, errors="ignore")
         except Exception:
             return str(msg.get_payload())
-
-# def check_inbox_and_mark_replies():
-#     """
-#     Connect to the inbox via IMAP, find unread emails,
-#     match them by sender email to suppliers, and mark
-#     task_suppliers.replied_at for any pending tasks.
-#     Returns number of suppliers/tasks updated.
-#     """
-#     processed = 0
-
-#     print("=== IMAP CHECK START ===")
-#     print("IMAP_SERVER:", IMAP_SERVER)
-#     print("IMAP_USERNAME:", IMAP_USERNAME)
-
-
-#     # 1. Connect to IMAP
-#     try:
-#         mail = imaplib.IMAP4_SSL(IMAP_SERVER, IMAP_PORT)
-#         mail.login(IMAP_USERNAME, IMAP_PASSWORD)
-#     except Exception as e:
-#         print(f"[IMAP] Login failed: {e}")
-#         return 0
-
-#     try:
-#         mail.select("INBOX")
-#         status, messages = mail.search(None, '(UNSEEN)')
-#         if status != "OK":
-#             print("[IMAP] Search failed")
-#             mail.logout()
-#             return 0
-
-#         conn = get_db_connection()
-
-#         for num in messages[0].split():
-#             status, data = mail.fetch(num, "(RFC822)")
-#             if status != "OK":
-#                 continue
-
-#             raw_email = data[0][1]
-#             msg = email.message_from_bytes(raw_email)
-
-#             # Decode subject (not essential for matching, but useful for logs)
-#             raw_subject = msg.get("Subject", "")
-#             decoded = decode_header(raw_subject)
-#             subject_parts = []
-#             for part, enc in decoded:
-#                 if isinstance(part, bytes):
-#                     subject_parts.append(part.decode(enc or "utf-8", errors="ignore"))
-#                 else:
-#                     subject_parts.append(part)
-#             subject = "".join(subject_parts)
-
-#             from_addr = email.utils.parseaddr(msg.get("From"))[1].strip().lower()
-#             print(f"[IMAP] New email from {from_addr} subject={subject!r}")
-
-#             # ----- FIND SUPPLIER BY EMAIL -----
-#             supplier = conn.execute(
-#                 "SELECT id FROM suppliers WHERE LOWER(email) = ?",
-#                 (from_addr,)
-#             ).fetchone()
-
-#             if not supplier:
-#                 # Not from a known supplier; mark seen & skip
-#                 # mail.store(num, '+FLAGS', '\\Seen')
-#                 continue
-
-#             supplier_id = supplier['id']
-
-#             # ----- FIND MATCHING TASKS FOR THIS SUPPLIER BY SUBJECT -----
-#             # Only match tasks where the subject contains the task_name
-#             # Email subjects are typically "Re: Procurement Inquiry - {task_name}" or similar
-            
-#             # First, get all task_names for this supplier
-#             all_supplier_tasks = conn.execute(
-#                 """
-#                 SELECT ts.task_id, t.task_name 
-#                 FROM task_suppliers ts
-#                 JOIN tasks t ON ts.task_id = t.id
-#                 WHERE ts.supplier_id = ?
-#                 """,
-#                 (supplier_id,)
-#             ).fetchall()
-            
-#             if not all_supplier_tasks:
-#                 # No tasks for this supplier; leave unread
-#                 print(f"[IMAP] No tasks found for supplier {supplier_id}, leaving email unread")
-#                 continue
-            
-#             # Check if subject matches any task_name
-#             matched_tasks = []
-#             for task_row in all_supplier_tasks:
-#                 task_name = task_row['task_name']
-#                 # Check if task_name appears in subject (case-insensitive)
-#                 if task_name.lower() in subject.lower():
-#                     matched_tasks.append(task_row)
-#                     print(f"[IMAP] Subject matched task: {task_name}")
-            
-#             if not matched_tasks:
-#                 # Subject doesn't match any known task - leave email UNREAD
-#                 print(f"[IMAP] Subject '{subject}' doesn't match any task for supplier {supplier_id}, leaving unread")
-#                 continue
-            
-#             # Only process matched tasks (not all tasks for this supplier)
-#             pending_rows = matched_tasks
-
-#             # Parse Date header -> replied_at timestamp string
-#             raw_date = msg.get("Date")
-#             reply_dt_str = None
-#             if raw_date:
-#                 try:
-#                     dt = parsedate_to_datetime(raw_date)
-#                     dt = dt.replace(tzinfo=None)  # store naive local-ish time
-#                     reply_dt_str = dt.strftime("%Y-%m-%d %H:%M:%S")
-#                 except Exception as e:
-#                     print(f"[IMAP] Failed to parse Date header {raw_date!r}: {e}")
-
-#             if not reply_dt_str:
-#                 # Fallback to current time
-#                 now = datetime.now()
-#                 reply_dt_str = now.strftime("%Y-%m-%d %H:%M:%S")
-
-#             body_text = get_email_body(msg)
-#             print(body_text)
-
-#             # ✨ NEW: try to parse structured quote from body
-#             parsed = parse_reply_fields(body_text)
-#             print("[IMAP PARSE FIELDS]", parsed)
-
-#             try:
-#                 # For each pending task for this supplier, mark replied_at
-#                 for row in pending_rows:
-#                     task_id = row['task_id']
-
-#                     # 1) Mark replied_at (update every time a reply is seen)
-#                     conn.execute(
-#                         '''
-#                         UPDATE task_suppliers
-#                         SET replied_at = ?
-#                         WHERE task_id = ? AND supplier_id = ?
-#                         ''',
-#                         (reply_dt_str, task_id, supplier_id)
-#                     )
-
-#                     # 2) Log the reply (same as before)
-#                     conn.execute(
-#                         '''
-#                         INSERT INTO email_logs (task_id, supplier_id, email_type, subject, body, status)
-#                         VALUES (?, ?, ?, ?, ?, ?)
-#                         ''',
-#                         (task_id, supplier_id, 'reply', subject, body_text, 'received')
-#                     )
-
-#                     # 3) If we successfully parsed anything, auto-populate supplier_quotes
-#                     if parsed and any(parsed.values()):
-#                         # Check if there are already quotes; don't overwrite user's manual input
-#                         existing = conn.execute(
-#                             '''
-#                             SELECT 1 FROM supplier_quotes
-#                             WHERE task_id = ? AND supplier_id = ?
-#                             LIMIT 1
-#                             ''',
-#                             (task_id, supplier_id)
-#                         ).fetchone()
-
-#                         if not existing:
-#                             # Get all PR items for this task
-#                             pr_items = conn.execute(
-#                                 'SELECT id FROM pr_items WHERE task_id = ?',
-#                                 (task_id,)
-#                             ).fetchall()
-
-#                             # Build a notes field from warranty + payment terms
-#                             notes_parts = []
-#                             if parsed.get("warranty"):
-#                                 notes_parts.append(f"Warranty: {parsed['warranty']}")
-#                             if parsed.get("payment_terms"):
-#                                 notes_parts.append(f"Payment terms: {parsed['payment_terms']}")
-#                             notes = "\n".join(notes_parts) if notes_parts else None
-
-#                             for item in pr_items:
-#                                 pr_item_id = item['id']
-#                                 conn.execute(
-#                                     '''
-#                                     INSERT INTO supplier_quotes
-#                                         (task_id, supplier_id, pr_item_id,
-#                                          unit_price, stock_availability, lead_time, payment_terms, ono, notes)
-#                                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-#                                     ''',
-#                                     (
-#                                         task_id,
-#                                         supplier_id,
-#                                         pr_item_id,
-#                                         parsed.get("unit_price"),
-#                                         parsed.get("stock_availability"),
-#                                         parsed.get("lead_time"),
-#                                         parsed.get("payment_terms"),
-#                                         0,
-#                                         notes
-#                                     )
-#                                 )
-
-#                             print(f"[IMAP] Auto-captured quotes for task_id={task_id}, supplier_id={supplier_id}")
-
-#                     processed += 1
-#                     print(f"[IMAP] Marked replied: task_id={task_id}, supplier_id={supplier_id}, at {reply_dt_str}")
-
-#                 conn.commit()
-#             except Exception as e:
-#                 print(f"[IMAP] DB update failed for supplier {supplier_id}: {e}")
-#                 conn.rollback()
-
-
-#             # Mark this email as seen so we don't process it again
-#             mail.store(num, '+FLAGS', '\\Seen')
-
-#         conn.close()
-#     finally:
-#         try:
-#             mail.logout()
-#         except Exception:
-#             pass
-
-#     return processed
-
-# Do not run inbox checks at import time. This was causing side-effects
-# during the Flask debug reloader (multiple Python processes) and could
-# result in older code/state appearing to run. Use the admin route
-# `/admin/check-replies` or a scheduled job to trigger inbox checks.
-# print(check_inbox_and_mark_replies())
-    
-# @app.route('/admin/check-replies')
-# def admin_check_replies():
-#     if 'user_id' not in session or session.get('role') != 'admin':
-#         flash('Access denied', 'error')
-#         return redirect(url_for('index'))
-
-#     processed = check_inbox_and_mark_replies()
-#     flash(f'Inbox checked. Auto-marked {processed} reply entries.', 'success')
-#     return redirect(url_for('task_list'))
-    
 
 # ==================================== DEBUG ====================================
 # Add this route to your app.py temporarily

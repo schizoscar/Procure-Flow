@@ -369,3 +369,20 @@ venv/
 ENV/
 .venv/
 env-dev-andy-39/
+
+# Test files
+testdb.py
+test_postgres.py
+setup_postgres.py
+backupapp.py
+*.test.py
+
+# Migration scripts
+migrate_data.py
+# migrate_sqlite_to_postgres.py
+# render_migrate.py
+
+# Utility scripts
+fix_db_func.py
+fix_date_template.py
+fix_postgres_sequences.py

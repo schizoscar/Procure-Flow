@@ -28,7 +28,7 @@
                             {{ task.status.replace('_', ' ').title() }}
                         </span>
                     </td>
-                    <td>{{ task.created_at[:10] if task.created_at else 'N/A' }}</td>
+                    <td>{{ task.created_at|format_date if task.created_at else "N/A" }}</td>
                     <td>
                         <div class="d-flex gap-1">
                             {% if task.status == 'purchase_requisition' and (task.item_count or 0) > 0 %}
