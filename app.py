@@ -34,6 +34,14 @@ import math
 from decimal import Decimal, InvalidOperation
 from sqlalchemy import func, text, desc, and_, or_, cast, String, Integer, Float, DateTime, Boolean
 from sqlalchemy.exc import SQLAlchemyError
+import logging
+
+# Configure logging
+logging.basicConfig(
+    level=logging.DEBUG,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 # Load .env file for local development
 load_dotenv()
@@ -161,6 +169,20 @@ app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
+
+# ==================================== START OF DEBUG ====================================
+with app.app_context():
+    try:
+        db.create_all()
+        # Test database connection
+        db.session.execute(db.text('SELECT 1'))
+        logger.info("✅ Database connection successful")
+        print("✅ Database connection successful")
+    except Exception as e:
+        logger.error(f"❌ Database connection failed: {e}")
+        print(f"❌ Database connection failed: {e}")
+
+# ==================================== END OF DEBUG ====================================
 
 # Create tables on startup
 with app.app_context():
