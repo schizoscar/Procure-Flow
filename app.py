@@ -34,14 +34,7 @@ import math
 from decimal import Decimal, InvalidOperation
 from sqlalchemy import func, text, desc, and_, or_, cast, String, Integer, Float, DateTime, Boolean
 from sqlalchemy.exc import SQLAlchemyError
-import logging
-
-# Configure logging
-logging.basicConfig(
-    level=logging.DEBUG,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+import sqlalchemy.dialects.postgresql.asyncpg
 
 # Load .env file for local development
 load_dotenv()
@@ -159,7 +152,7 @@ database_url = os.getenv('DATABASE_URL')
 if not database_url:
     database_url = 'sqlite:///database/procure_flow.db'
 elif database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1) 
+    database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
@@ -181,6 +174,10 @@ with app.app_context():
     except Exception as e:
         logger.error(f"❌ Database connection failed: {e}")
         print(f"❌ Database connection failed: {e}")
+
+@app.route('/health')
+def health():
+    return {'status': 'healthy'}, 200
 
 # ==================================== END OF DEBUG ====================================
 
