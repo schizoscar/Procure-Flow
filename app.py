@@ -151,8 +151,11 @@ def generate_temp_password(length: int = 10) -> str:
 database_url = os.getenv('DATABASE_URL')
 if not database_url:
     database_url = 'sqlite:///database/procure_flow.db'
-elif database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql+pg8000://", 1)
+else:
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql+pg8000://", 1)
+    elif database_url.startswith("postgresql://"):
+        database_url = database_url.replace("postgresql://", "postgresql+pg8000://", 1)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
