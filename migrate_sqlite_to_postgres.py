@@ -2,11 +2,42 @@
 import sqlite3
 import json
 import os
+import sys
 from datetime import datetime
 from werkzeug.security import generate_password_hash
-from sqlalchemy import text, func
-from app import app
+from sqlalchemy import text, func, create_engine
+from sqlalchemy.orm import sessionmaker
+
+# Add the parent directory to path so we can import models
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from models import db, User, Supplier, Category, CategoryItem, Task, PRItem, TaskSupplier, SupplierQuote, FileAsset, EmailLog
+
+def create_app():
+    """Create a minimal Flask app for migration."""
+    from flask import Flask
+    
+    app = Flask(__name__)
+    
+    # Database configuration
+    database_url = os.getenv('DATABASE_URL')
+    if not database_url:
+        database_url = 'sqlite:///database/procure_flow.db'
+    elif "postgresql://" in database_url:
+        database_url = database_url.replace("postgresql://", "postgresql+pg8000://", 1)
+    elif database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql+pg8000://", 1)
+    
+    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+        "pool_recycle": 300,
+        "pool_pre_ping": True,
+    }
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+    
+    db.init_app(app)
+    
+    return app
 
 def parse_datetime(dt_str):
     """Parse datetime from SQLite format"""
@@ -23,7 +54,7 @@ def parse_datetime(dt_str):
             print(f"Warning: Could not parse datetime: {dt_str}")
             return None
 
-def fix_postgres_sequences():
+def fix_postgres_sequences(db_session):
     """Fix PostgreSQL sequences after migration."""
     print("\nFixing PostgreSQL sequences...")
     
@@ -43,52 +74,44 @@ def fix_postgres_sequences():
         ]
         
         for table_name, model in tables:
-            max_id = db.session.query(func.max(model.id)).scalar() or 0
-            db.session.execute(
+            max_id = db_session.query(func.max(model.id)).scalar() or 0
+            db_session.execute(
                 text(f"SELECT setval('{table_name}_id_seq', :max_id + 1, false)"),
                 {'max_id': max_id}
             )
             print(f"✅ Fixed {table_name}_id_seq (max: {max_id})")
         
-        db.session.commit()
+        db_session.commit()
         print("🎉 All sequences fixed!")
         
     except Exception as e:
         print(f"⚠️ Could not fix sequences: {e}")
-        db.session.rollback()
+        db_session.rollback()
 
 def migrate_all_data():
     """Complete migration from SQLite to SQLAlchemy models."""
     
-    print("Connecting to SQLite database...")
-    
-    # Check if SQLite database exists
-    sqlite_db_path = 'database/procure_flow.db'
-    if not os.path.exists(sqlite_db_path):
-        print(f"❌ SQLite database not found at: {sqlite_db_path}")
-        print("Please make sure the SQLite database file exists.")
-        return
-    
-    sqlite_conn = sqlite3.connect(sqlite_db_path)
-    sqlite_conn.row_factory = sqlite3.Row
+    app = create_app()
     
     with app.app_context():
-        print("Connected to PostgreSQL via SQLAlchemy")
+        print("Starting migration process...")
         
-        # Test connection first
+        # Check if SQLite database exists
+        sqlite_db_path = 'database/procure_flow.db'
+        if not os.path.exists(sqlite_db_path):
+            print(f"❌ SQLite database not found at: {sqlite_db_path}")
+            print("Please make sure the SQLite database file exists.")
+            return
+        
+        sqlite_conn = sqlite3.connect(sqlite_db_path)
+        sqlite_conn.row_factory = sqlite3.Row
+        
+        # Test PostgreSQL connection
         try:
-            db.session.execute(text('SELECT 1'))  # Wrap in text()
+            db.session.execute(text('SELECT 1'))
             print("✅ PostgreSQL connection successful")
-            
-            # Show which database we're connected to
-            result = db.session.execute(text("SELECT current_database()"))
-            db_name = result.scalar()
-            print(f"Connected to database: {db_name}")
-            
         except Exception as e:
             print(f"❌ PostgreSQL connection failed: {e}")
-            print("Make sure DATABASE_URL environment variable is set correctly.")
-            print("On Render, DATABASE_URL is automatically set when you add PostgreSQL.")
             sqlite_conn.close()
             return
         
@@ -340,7 +363,7 @@ def migrate_all_data():
             print(f"⚠️  Could not migrate email logs: {e}")
         
         # Fix sequences BEFORE closing SQLite connection
-        fix_postgres_sequences()
+        fix_postgres_sequences(db.session)
         
         print("\n" + "="*60)
         print("MIGRATION COMPLETE!")
@@ -354,8 +377,8 @@ def migrate_all_data():
         print(f"- Supplier Quotes: {len(sqlite_supplier_quotes)}")
         print("\n✅ Data successfully migrated to PostgreSQL!")
         
-    # Close SQLite connection (outside app context)
-    sqlite_conn.close()
+        # Close SQLite connection
+        sqlite_conn.close()
 
 if __name__ == '__main__':
     migrate_all_data()

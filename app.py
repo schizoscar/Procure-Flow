@@ -224,7 +224,56 @@ ENABLE_DEBUG_ROUTES = os.getenv("ENABLE_DEBUG_ROUTES", "0") == "1"
 
 # ==================================== START OF MIGRATION ====================================
 
-
+@app.route('/admin/migrate')
+def admin_migrate():
+    """Admin route to trigger migration from SQLite to PostgreSQL."""
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('login'))
+    
+    try:
+        # Check if SQLite file exists in Render environment
+        sqlite_db_path = 'database/procure_flow.db'
+        if not os.path.exists(sqlite_db_path):
+            return f"""
+            <h1>Migration Failed</h1>
+            <p>SQLite database not found at: {sqlite_db_path}</p>
+            <p>Make sure the SQLite database file is committed to Git.</p>
+            <p><a href="/">Go to Dashboard</a></p>
+            """, 404
+        
+        # Import and run migration
+        from migrate_sqlite_to_postgres import migrate_all_data
+        
+        print("Starting migration from admin panel...")
+        migrate_all_data()
+        
+        return """
+        <h1>Migration Complete!</h1>
+        <p>Data has been successfully migrated from SQLite to PostgreSQL.</p>
+        <p><strong>Next steps:</strong></p>
+        <ol>
+            <li>Verify your data is present in the PostgreSQL database</li>
+            <li>Test all functionality on the live site</li>
+            <li>Once confirmed, you can remove the SQLite database file if desired</li>
+        </ol>
+        <p><a href="/">Go to Dashboard</a></p>
+        """
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"Migration failed: {error_details}")
+        
+        return f"""
+        <h1>Migration Failed</h1>
+        <p>Migration failed with error: {str(e)}</p>
+        <details>
+            <summary>Error Details</summary>
+            <pre>{error_details}</pre>
+        </details>
+        <p><a href="/">Go back</a></p>
+        """, 500
 
 # ==================================== END OF MIGRATION ==============================
 

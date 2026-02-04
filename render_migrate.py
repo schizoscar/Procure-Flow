@@ -5,7 +5,6 @@ import sys
 print("Starting Render migration process...")
 print(f"Current directory: {os.getcwd()}")
 
-# Check if we're on Render
 is_render = os.getenv('RENDER') == 'true'
 print(f"On Render: {is_render}")
 
