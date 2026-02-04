@@ -34,6 +34,7 @@ import math
 from decimal import Decimal, InvalidOperation
 from sqlalchemy import func, text, desc, and_, or_, cast, String, Integer, Float, DateTime, Boolean
 from sqlalchemy.exc import SQLAlchemyError
+import sqlalchemy.dialects.postgresql.pg8000
 
 # Load .env file for local development
 load_dotenv()
