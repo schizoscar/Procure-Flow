@@ -379,8 +379,8 @@ backupapp.py
 
 # Migration scripts
 migrate_data.py
-# migrate_sqlite_to_postgres.py
-# render_migrate.py
+migrate_sqlite_to_postgres.py
+render_migrate.py
 
 # Utility scripts
 fix_db_func.py
