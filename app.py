@@ -3637,21 +3637,6 @@ def unhandled_exception(e):
     app.logger.exception("Unhandled exception")
     return render_template("errors/500.html"), 500
 
-@app.before_first_request
-def startup():
-    print("Application starting up...")
-    print(f"Database URL: {app.config.get('SQLALCHEMY_DATABASE_URI', 'Not set')}")
-    
-    # Test database connection
-    try:
-        with app.app_context():
-            db.session.execute(db.text('SELECT 1'))
-            print("✅ Database connection test successful")
-    except Exception as e:
-        print(f"❌ Database connection failed: {e}")
-        import traceback
-        traceback.print_exc()
-
 if __name__ == '__main__':
     # for Render: always use 0.0.0.0
     debug_mode = os.getenv("FLASK_DEBUG", "0") == "1" and os.getenv("RENDER", "0") != "1"
