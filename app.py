@@ -164,16 +164,31 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
 # ==================================== START OF DEBUG ====================================
+@app.route('/test')
+def test():
+    return "App is running", 200
+
 with app.app_context():
     try:
+        print("Creating database tables...")
         db.create_all()
-        # Test database connection
-        db.session.execute(db.text('SELECT 1'))
-        logger.info("✅ Database connection successful")
-        print("✅ Database connection successful")
+        
+        # Test database connection with more info
+        print("Testing database connection...")
+        result = db.session.execute(db.text('SELECT 1')).fetchone()
+        print(f"✅ Database connection successful: {result}")
+        
+        # List all tables
+        from sqlalchemy import inspect
+        inspector = inspect(db.engine)
+        tables = inspector.get_table_names()
+        print(f"📋 Database tables: {tables}")
+        
     except Exception as e:
-        logger.error(f"❌ Database connection failed: {e}")
-        print(f"❌ Database connection failed: {e}")
+        print(f"❌ Database initialization failed: {e}")
+        import traceback
+        traceback.print_exc()
+        # don't crash the app, just log the error
 
 @app.route('/health')
 def health():
@@ -3618,6 +3633,21 @@ def unhandled_exception(e):
         return e
     app.logger.exception("Unhandled exception")
     return render_template("errors/500.html"), 500
+
+@app.before_first_request
+def startup():
+    print("Application starting up...")
+    print(f"Database URL: {app.config.get('SQLALCHEMY_DATABASE_URI', 'Not set')}")
+    
+    # Test database connection
+    try:
+        with app.app_context():
+            db.session.execute(db.text('SELECT 1'))
+            print("✅ Database connection test successful")
+    except Exception as e:
+        print(f"❌ Database connection failed: {e}")
+        import traceback
+        traceback.print_exc()
 
 if __name__ == '__main__':
     # for Render: always use 0.0.0.0
