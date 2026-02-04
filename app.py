@@ -277,6 +277,35 @@ def admin_migrate():
 
 # ==================================== END OF MIGRATION ==============================
 
+@app.route('/create-first-admin')
+def create_first_admin():
+    """One-time route to create first admin user"""
+    from werkzeug.security import generate_password_hash
+    
+    # Check if any users exist
+    user_count = db.session.query(User).count()
+    
+    if user_count > 0:
+        return "Users already exist. Use normal login.", 400
+    
+    # Create admin user
+    admin_user = User(
+        username="admin",
+        email="scarletsumirepoh@gmail.com",
+        password_hash=generate_password_hash("admin123"),
+        role="admin"
+    )
+    
+    db.session.add(admin_user)
+    db.session.commit()
+    
+    return """
+    <h1>Admin User Created!</h1>
+    <p>Username: admin</p>
+    <p>Password: Admin12345</p>
+    <p><a href="/login">Go to Login</a></p>
+    """
+
 @app.template_filter('format_date')
 def format_date_filter(value, format='%Y-%m-%d'):
     """Format a datetime object for display."""
