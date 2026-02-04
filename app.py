@@ -34,7 +34,6 @@ import math
 from decimal import Decimal, InvalidOperation
 from sqlalchemy import func, text, desc, and_, or_, cast, String, Integer, Float, DateTime, Boolean
 from sqlalchemy.exc import SQLAlchemyError
-import sqlalchemy.dialects.postgresql.asyncpg
 
 # Load .env file for local development
 load_dotenv()
@@ -152,7 +151,7 @@ database_url = os.getenv('DATABASE_URL')
 if not database_url:
     database_url = 'sqlite:///database/procure_flow.db'
 elif database_url.startswith("postgres://"):
-    database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
@@ -3475,7 +3474,7 @@ def get_email_body(msg):
         except Exception:
             return str(msg.get_payload())
 
-# ==================================== DEBUG ====================================
+# ==================================== START OF DEBUG ====================================
 # Add this route to your app.py temporarily
 @app.route('/debug-db')
 def debug_db():
