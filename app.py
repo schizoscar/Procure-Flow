@@ -3369,6 +3369,15 @@ def add_category_item(category_id):
     
     return redirect(url_for('category_items', category_id=category_id))
 
+#Added function to log which DB is in use whether local or production (addition)
+@app.before_request
+def env_banner():
+    app.logger.info(
+        "ENV=%s DB=%s",
+        "RENDER" if IS_RENDER else "LOCAL",
+        app.config['SQLALCHEMY_DATABASE_URI']
+    )
+    
 @app.route('/delete-category-item/<int:item_id>')
 def delete_category_item(item_id):
     if 'user_id' not in session or session.get('role') != 'admin':

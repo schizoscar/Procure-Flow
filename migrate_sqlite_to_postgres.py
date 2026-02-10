@@ -4,6 +4,7 @@ import json
 import os
 import sys
 from datetime import datetime
+from flask import Flask
 from werkzeug.security import generate_password_hash
 from sqlalchemy import text, func, create_engine
 from sqlalchemy.orm import sessionmaker
@@ -13,31 +14,24 @@ sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from models import db, User, Supplier, Category, CategoryItem, Task, PRItem, TaskSupplier, SupplierQuote, FileAsset, EmailLog
 
-def create_app():
-    """Create a minimal Flask app for migration."""
-    from flask import Flask
-    
+def create_postgres_app():
     app = Flask(__name__)
-    
-    # Database configuration
-    database_url = os.getenv('DATABASE_URL')
-    if not database_url:
-        database_url = 'sqlite:///database/procure_flow.db'
-    elif "postgresql://" in database_url:
-        database_url = database_url.replace("postgresql://", "postgresql+pg8000://", 1)
-    elif database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql+pg8000://", 1)
-    
-    app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-    app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
-        "pool_recycle": 300,
-        "pool_pre_ping": True,
-    }
-    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-    
+
+    pg_url = os.getenv("DATABASE_URL")
+    if not pg_url:
+        raise RuntimeError("DATABASE_URL must be set (PostgreSQL target)")
+
+    if pg_url.startswith("postgres://"):
+        pg_url = pg_url.replace("postgres://", "postgresql+pg8000://", 1)
+    elif pg_url.startswith("postgresql://"):
+        pg_url = pg_url.replace("postgresql://", "postgresql+pg8000://", 1)
+
+    app.config["SQLALCHEMY_DATABASE_URI"] = pg_url
+    app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+
     db.init_app(app)
-    
     return app
+
 
 def parse_datetime(dt_str):
     """Parse datetime from SQLite format"""
@@ -103,7 +97,7 @@ def migrate_all_data():
             print("Please make sure the SQLite database file exists.")
             return
         
-        sqlite_conn = sqlite3.connect(sqlite_db_path)
+        sqlite_conn = sqlite3.connect("database/procure_flow.db")
         sqlite_conn.row_factory = sqlite3.Row
         
         # Test PostgreSQL connection

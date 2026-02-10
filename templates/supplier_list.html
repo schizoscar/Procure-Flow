@@ -211,6 +211,14 @@
         return hay.includes(sel);
     }
 
+    function matchesEmailContains(emailText, query) {
+    if (!query) return true;
+
+    return (emailText || "")
+        .toLowerCase()
+        .includes(query.toLowerCase().trim());
+    }
+
     function filterRows() {
         const qName = (nameInput?.value || "").trim();
         const qEmail = (emailInput?.value || "").trim();
@@ -224,7 +232,7 @@
             const catText = row.dataset.categories || "";
 
             const okName = matchesWordPrefixesInOrder(nameText, qName);
-            const okEmail = matchesWordPrefixesInOrder(emailText, qEmail);
+            const okEmail = matchesEmailContains(emailText, qEmail);
             const okCat = matchesCategoryName(row.dataset.categories || "", qCat);
 
             const match = okName && okEmail && okCat;
