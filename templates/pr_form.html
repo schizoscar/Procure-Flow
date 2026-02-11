@@ -137,9 +137,9 @@
                                             <div>
                                                 <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
                                                 <input class="form-control dimensions-input"
-                                                    type="text"
-                                                    inputmode="numeric"
-                                                    pattern="\d*"
+                                                    type="number"
+                                                    min="0"
+                                                    step="1"
                                                     autocomplete="off"
                                                     name="items[{{ loop.index0 }}][width]"
                                                     list="dim-width-list-{{ loop.index0 }}"
@@ -150,9 +150,9 @@
                                             <div>
                                                 <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
                                                 <input class="form-control dimensions-input"
-                                                    type="text"
-                                                    inputmode="numeric"
-                                                    pattern="\d*"
+                                                    type="number"
+                                                    min="0"
+                                                    step="1"
                                                     autocomplete="off"
                                                     name="items[{{ loop.index0 }}][length]"
                                                     list="dim-length-list-{{ loop.index0 }}"
@@ -163,9 +163,9 @@
                                             <div>
                                                 <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
                                                 <input class="form-control dimensions-input"
-                                                    type="text"
-                                                    inputmode="numeric"
-                                                    pattern="\d*"
+                                                    type="number"
+                                                    min="0"
+                                                    step="1"
                                                     autocomplete="off"
                                                     name="items[{{ loop.index0 }}][thickness]"
                                                     list="dim-thickness-list-{{ loop.index0 }}"
@@ -671,14 +671,22 @@
             row.querySelectorAll('.dims-section').forEach(section => {
                 section.style.display = 'none';
                 setSectionEnabled(section, false);
+                // Also remove required attribute when hidden
+                section.querySelectorAll('input').forEach(input => {
+                    input.removeAttribute('required');
+                });
             });
 
             // Show + enable chosen section
             if (category) {
                 const targetSection = row.querySelector('.dims-' + dimType);
                 if (targetSection) {
-                targetSection.style.display = 'block';
-                setSectionEnabled(targetSection, true);
+                    targetSection.style.display = 'block';
+                    setSectionEnabled(targetSection, true);
+                    // Set required attribute for the visible dimension inputs
+                    targetSection.querySelectorAll('input').forEach(input => {
+                        input.setAttribute('required', 'required');
+                    });
                 }
             }
 
@@ -688,6 +696,9 @@
             // Ensure dropdowns are populated (qty + dims)
             populateRowDatalists(row);
         });
+
+        // Re-attach integer enforcement to qty inputs in the new rows
+        enforceIntegerInputs();
     }
 
     function updateItemNumbersAndNames() {
@@ -717,11 +728,11 @@
     }
 
     function enforceIntegerInputs(scope = document) {
-        // Strip anything that is not 0-9
-        scope.querySelectorAll('.qty-input, .dimensions-input').forEach(inp => {
+        // Only apply to qty-input which is type="text"
+        scope.querySelectorAll('.qty-input').forEach(inp => {
             inp.addEventListener('input', () => {
-            const cleaned = inp.value.replace(/[^\d]/g, '');
-            if (inp.value !== cleaned) inp.value = cleaned;
+                const cleaned = inp.value.replace(/[^\d]/g, '');
+                if (inp.value !== cleaned) inp.value = cleaned;
             });
         });
     }
@@ -735,6 +746,9 @@
     }
 
     function buildRowHtml(index) {
+        // This function must return the HTML for a new row at the given index.
+        // We are changing the dimension inputs to type="number" and removing the pattern.
+        // Also, we are adding the required attribute to the brand input and to the dimension inputs (which will be set by updateAllRows).
         return `
         <tr class="item-row" data-index="${index}">
             <td style="white-space:nowrap;">
@@ -759,7 +773,8 @@
                 <input type="text"
                         class="form-control"
                         name="items[${index}][brand]"
-                        placeholder="Preferred brand / spec">
+                        placeholder="Preferred brand / spec"
+                        required>
             </td>
 
             <td>
@@ -794,9 +809,9 @@
                         <div>
                             <label class="form-label" style="font-size:0.85rem;">Width (mm)</label>
                             <input class="form-control dimensions-input"
-                                type="text"
-                                inputmode="numeric"
-                                pattern="\d*"
+                                type="number"
+                                min="0"
+                                step="1"
                                 autocomplete="off"
                                 name="items[${index}][width]"
                                 list="dim-width-list-${index}"
@@ -806,9 +821,9 @@
                         <div>
                             <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
                             <input class="form-control dimensions-input"
-                                type="text"
-                                inputmode="numeric"
-                                pattern="\d*"
+                                type="number"
+                                min="0"
+                                step="1"
                                 autocomplete="off"
                                 name="items[${index}][length]"
                                 list="dim-length-list-${index}"
@@ -818,9 +833,9 @@
                         <div>
                             <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
                             <input class="form-control dimensions-input"
-                                type="text"
-                                inputmode="numeric"
-                                pattern="\d*"
+                                type="number"
+                                min="0"
+                                step="1"
                                 autocomplete="off"
                                 name="items[${index}][thickness]"
                                 list="dim-thickness-list-${index}"
@@ -836,9 +851,9 @@
                         <div>
                             <label class="form-label" style="font-size:0.85rem;">A (mm)</label>
                             <input class="form-control dimensions-input"
-                                type="text"
-                                inputmode="numeric"
-                                pattern="\d*"
+                                type="number"
+                                min="0"
+                                step="1"
                                 autocomplete="off"
                                 name="items[${index}][dim_a]"
                                 list="dim-dim_a-list-${index}"
@@ -848,9 +863,9 @@
                         <div>
                             <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
                             <input class="form-control dimensions-input"
-                                type="text"
-                                inputmode="numeric"
-                                pattern="\d*"
+                                type="number"
+                                min="0"
+                                step="1"
                                 autocomplete="off"
                                 name="items[${index}][dim_b]"
                                 list="dim-dim_b-list-${index}"
@@ -860,9 +875,9 @@
                         <div>
                             <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
                             <input class="form-control dimensions-input"
-                                type="text"
-                                inputmode="numeric"
-                                pattern="\d*"
+                                type="number"
+                                min="0"
+                                step="1"
                                 autocomplete="off"
                                 name="items[${index}][length]"
                                 list="dim-length-list-${index}"
@@ -872,9 +887,9 @@
                         <div>
                             <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
                             <input class="form-control dimensions-input"
-                                type="text"
-                                inputmode="numeric"
-                                pattern="\d*"
+                                type="number"
+                                min="0"
+                                step="1"
                                 autocomplete="off"
                                 name="items[${index}][thickness]"
                                 list="dim-thickness-list-${index}"
@@ -890,9 +905,9 @@
                         <div>
                             <label class="form-label" style="font-size:0.85rem;">Diameter (mm)</label>
                             <input class="form-control dimensions-input"
-                                type="text"
-                                inputmode="numeric"
-                                pattern="\d*"
+                                type="number"
+                                min="0"
+                                step="1"
                                 autocomplete="off"
                                 name="items[${index}][diameter]"
                                 list="dim-diameter-list-${index}"
@@ -902,9 +917,9 @@
                         <div>
                             <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
                             <input class="form-control dimensions-input"
-                                type="text"
-                                inputmode="numeric"
-                                pattern="\d*"
+                                type="number"
+                                min="0"
+                                step="1"
                                 autocomplete="off"
                                 name="items[${index}][length]"
                                 list="dim-length-list-${index}"
@@ -939,6 +954,7 @@
         `;
     }
 
+
     document.addEventListener('DOMContentLoaded', function () {
         const globalCategorySelect = document.getElementById('globalCategory');
         const tbody = document.getElementById('itemsTbody');
@@ -960,12 +976,11 @@
 
         // Add row
         addBtn.addEventListener('click', function (e) {
-        e.preventDefault();
-        const newIndex = document.querySelectorAll('.item-row').length;
-        tbody.insertAdjacentHTML('beforeend', buildRowHtml(newIndex));
-        updateItemNumbersAndNames();
-        updateAllRows();
-        enforceIntegerInputs(document);
+            e.preventDefault();
+            const newIndex = document.querySelectorAll('.item-row').length;
+            tbody.insertAdjacentHTML('beforeend', buildRowHtml(newIndex));
+            updateItemNumbersAndNames();
+            updateAllRows(); // This will set the required attributes and attach event listeners for the new row.
         });
 
         // Remove row
