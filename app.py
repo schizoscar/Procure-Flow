@@ -1018,7 +1018,27 @@ def email_preview(task_id):
             if not email_content:
                 # Filter items for this template
                 template_items = [item for item in pr_items if not assigned_item_ids or item.id in assigned_item_ids]
-                email_content = generate_email_content(template_items, task.task_name)
+                # Convert PRItem objects to dictionaries
+                template_items_dicts = []
+                for item in template_items:
+                    template_items_dicts.append({
+                        'item_category': item.item_category,
+                        'item_name': item.item_name,
+                        'brand': item.brand,
+                        'quantity': item.quantity,
+                        'payment_terms': item.payment_terms,
+                        'width': item.width,
+                        'length': item.length,
+                        'thickness': item.thickness,
+                        'dim_a': item.dim_a,
+                        'dim_b': item.dim_b,
+                        'diameter': item.diameter,
+                        'uom_qty': item.uom_qty,
+                        'uom': item.uom,
+                        'our_remarks': item.our_remarks,
+                        'specification': None
+                    })
+                email_content = generate_email_content(template_items_dicts, task.task_name)
             
             email_templates[key] = {
                 'suppliers': [],

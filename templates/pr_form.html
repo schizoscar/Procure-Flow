@@ -98,7 +98,8 @@
                                             class="form-control"
                                             name="items[{{ loop.index0 }}][brand]"
                                             value="{{ item.brand or '' }}"
-                                            placeholder="Preferred brand / spec">
+                                            placeholder="Preferred brand / spec"
+                                            required>
                                 </td>
 
                                 <!-- Quantity -->
@@ -314,7 +315,8 @@
                                     <input type="text"
                                         class="form-control"
                                         name="items[0][brand]"
-                                        placeholder="Preferred brand / spec">
+                                        placeholder="Preferred brand / spec"
+                                        required>
                                 </td>
 
                                 <td>
