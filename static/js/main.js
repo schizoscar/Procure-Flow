@@ -77,6 +77,23 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 });
 
+document.addEventListener('DOMContentLoaded', function () {
+
+    const toggleBtn = document.getElementById('toggleAllSuppliers');
+    if (!toggleBtn) return;
+
+    toggleBtn.addEventListener('click', function () {
+
+        const checkboxes = document.querySelectorAll('.supplier-checkbox');
+        const allChecked = [...checkboxes].every(cb => cb.checked);
+
+        checkboxes.forEach(cb => cb.checked = !allChecked);
+
+        toggleBtn.textContent = allChecked ? 'Select All' : 'Deselect All';
+    });
+
+});
+
 // Form validation functions
 function validateEmail(email) {
     const pattern = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;

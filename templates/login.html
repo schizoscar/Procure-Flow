@@ -2,6 +2,25 @@
 <!DOCTYPE html>
 <html lang="en">
 
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const toggle = document.getElementById('togglePassword');
+    const password = document.getElementById('passwordInput');
+
+    if (toggle && password) {
+        toggle.addEventListener('click', function () {
+            const icon = toggle.querySelector('i');
+            const isHidden = password.type === 'password';
+
+            password.type = isHidden ? 'text' : 'password';
+
+            icon.classList.remove(isHidden ? 'fa-eye-slash' : 'fa-eye');
+            icon.classList.add(isHidden ? 'fa-eye' : 'fa-eye-slash');
+        });
+    }
+});
+</script>
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -43,7 +62,20 @@
                     <label class="form-label" for="password">
                         <i class="fas fa-lock"></i> Password
                     </label>
-                    <input type="password" class="form-control" id="password" name="password" required>
+                    <div style="position:relative;">
+                    <input type="password"
+                        name="password"
+                        id="passwordInput"
+                        class="form-control"
+                        style="padding-right:40px;"
+                        required>
+
+                    <span id="togglePassword"
+                        style="position:absolute; right:10px; top:50%; transform:translateY(-50%); cursor:pointer;">
+                        <i class="fa-solid fa-eye"></i>
+                    </span>
+                </div>
+
                 </div>
                 <button type="submit" class="login-btn">
                     <i class="fas fa-sign-in-alt"></i> Login

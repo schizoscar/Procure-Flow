@@ -339,6 +339,7 @@
                                                 type="text"
                                                 name="items[0][uom]"
                                                 list="uom-list"
+                                                style="width:100%;"
                                                 placeholder="UOM">
                                         </div>
                                     </div>
@@ -705,27 +706,35 @@
 
     function updateItemNumbersAndNames() {
         const rows = document.querySelectorAll('.item-row');
+
         rows.forEach((row, index) => {
-        row.setAttribute('data-index', index);
+            row.setAttribute('data-index', index);
 
-        // update visible #
-        const no = row.querySelector('.item-no');
-        if (no) no.textContent = String(index + 1);
+            const no = row.querySelector('.item-no');
+            if (no) no.textContent = String(index + 1);
 
-        // rename all inputs/selects to items[index][...]
-        row.querySelectorAll('input, select, textarea').forEach(el => {
-            const name = el.getAttribute('name');
-            if (!name) return;
-            const newName = name.replace(/items\[\d+\]/, `items[${index}]`);
-            el.setAttribute('name', newName);
+            row.querySelectorAll('input, select, textarea').forEach(el => {
+
+                // Update name
+                const name = el.getAttribute('name');
+                if (name) {
+                    const newName = name.replace(/items\[\d+\]/, `items[${index}]`);
+                    el.setAttribute('name', newName);
+                }
+
+                // 🔥 IMPORTANT FIX — update datalist reference
+                if (el.hasAttribute('list')) {
+                    const listName = el.getAttribute('list');
+                    const newList = listName.replace(/\d+$/, index);
+                    el.setAttribute('list', newList);
+                }
+            });
         });
-        });
-
         // If only 1 row, hide remove button; if >1 show remove
         const showRemove = rows.length > 1;
         rows.forEach(row => {
-        const btn = row.querySelector('.remove-item');
-        if (btn) btn.style.display = showRemove ? '' : 'none';
+            const btn = row.querySelector('.remove-item');
+            if (btn) btn.style.display = showRemove ? '' : 'none';
         });
     }
 
