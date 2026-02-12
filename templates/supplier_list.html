@@ -10,6 +10,10 @@
         </a>
     </div>
 
+<!-- Pagination -->
+<div id="paginationContainer" style="margin-top:16px; display:flex; justify-content:center; gap:6px; flex-wrap:wrap;">
+</div>
+
     <div class="card-body bg-light">
 
         <!-- Search bar row (below title, above table) -->
@@ -152,25 +156,31 @@
 
 <script>
 (function () {
+
+    const PAGE_SIZE = 50;
+
     const nameInput = document.getElementById("searchName");
     const emailInput = document.getElementById("searchEmail");
     const catSelect  = document.getElementById("searchCategory");
 
-    const rows = document.querySelectorAll("#suppliersTable tbody tr.supplier-row");
+    const rows = Array.from(document.querySelectorAll("#suppliersTable tbody tr.supplier-row"));
     const noResultsMsg = document.getElementById("noResultsMsg");
+    const paginationContainer = document.getElementById("paginationContainer");
+
+    let currentPage = 1;
+    let filteredRows = [...rows];
 
     function normalizeWords(s) {
         return (s || "")
-        .toLowerCase()
-        .replace(/&/g, " and ")
-        .replace(/[^\p{L}\p{N}]+/gu, " ") // punctuation -> space
-        .replace(/\s+/g, " ")
-        .trim()
-        .split(" ")
-        .filter(Boolean);
+            .toLowerCase()
+            .replace(/&/g, " and ")
+            .replace(/[^\p{L}\p{N}]+/gu, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .split(" ")
+            .filter(Boolean);
     }
 
-    // tokens must match START of words, in order (e.g. "aa t" matches "AA Technic...")
     function matchesWordPrefixesInOrder(text, query) {
         const tokens = normalizeWords(query);
         if (tokens.length === 0) return true;
@@ -193,83 +203,95 @@
         return true;
     }
 
-    function normalizeCat(s) {
-        return (s || "")
-            .toLowerCase()
-            .replace(/&/g, "and")     // optional consistency
-            .replace(/\s+/g, " ")
-            .trim();
-    }
-
     function matchesCategoryName(categoriesText, selectedName) {
-        const sel = normalizeCat(selectedName);
-        if (!sel) return true;
-
-        const hay = normalizeCat(categoriesText);
-
-        // since category names may contain commas, do NOT split by comma
-        return hay.includes(sel);
+        if (!selectedName) return true;
+        return (categoriesText || "").toLowerCase().includes(selectedName.toLowerCase());
     }
 
     function matchesEmailContains(emailText, query) {
-    if (!query) return true;
+        if (!query) return true;
+        return (emailText || "").toLowerCase().includes(query.toLowerCase());
+    }
 
-    return (emailText || "")
-        .toLowerCase()
-        .includes(query.toLowerCase().trim());
+    function renderPagination(totalItems) {
+        if (!paginationContainer) return;
+
+        paginationContainer.innerHTML = "";
+
+        const totalPages = Math.ceil(totalItems / PAGE_SIZE);
+        if (totalPages <= 1) return;
+
+        function createBtn(label, page) {
+            const btn = document.createElement("button");
+            btn.textContent = label;
+            btn.className = "btn btn-sm btn-secondary";
+            btn.style.minWidth = "36px";
+            if (page === currentPage) {
+                btn.className = "btn btn-sm btn-primary";
+            }
+            btn.addEventListener("click", () => {
+                currentPage = page;
+                renderTable();
+            });
+            return btn;
+        }
+
+        if (currentPage > 1) {
+            paginationContainer.appendChild(createBtn("«", currentPage - 1));
+        }
+
+        for (let i = 1; i <= totalPages; i++) {
+            paginationContainer.appendChild(createBtn(i, i));
+        }
+
+        if (currentPage < totalPages) {
+            paginationContainer.appendChild(createBtn("»", currentPage + 1));
+        }
+    }
+
+    function renderTable() {
+        rows.forEach(r => r.style.display = "none");
+
+        const start = (currentPage - 1) * PAGE_SIZE;
+        const end = start + PAGE_SIZE;
+
+        const pageRows = filteredRows.slice(start, end);
+
+        pageRows.forEach(r => r.style.display = "");
+
+        if (noResultsMsg) {
+            noResultsMsg.style.display = (filteredRows.length === 0) ? "" : "none";
+        }
+
+        renderPagination(filteredRows.length);
     }
 
     function filterRows() {
         const qName = (nameInput?.value || "").trim();
         const qEmail = (emailInput?.value || "").trim();
-        const qCat = (catSelect?.value || "").trim(); // dropdown
+        const qCat = (catSelect?.value || "").trim();
 
-        let visibleCount = 0;
-
-        rows.forEach(row => {
-            const nameText = row.dataset.name || "";
-            const emailText = row.dataset.email || "";
-            const catText = row.dataset.categories || "";
-
-            const okName = matchesWordPrefixesInOrder(nameText, qName);
-            const okEmail = matchesEmailContains(emailText, qEmail);
+        filteredRows = rows.filter(row => {
+            const okName = matchesWordPrefixesInOrder(row.dataset.name || "", qName);
+            const okEmail = matchesEmailContains(row.dataset.email || "", qEmail);
             const okCat = matchesCategoryName(row.dataset.categories || "", qCat);
-
-            const match = okName && okEmail && okCat;
-            row.style.display = match ? "" : "none";
-            if (match) visibleCount++;
+            return okName && okEmail && okCat;
         });
 
-        if (noResultsMsg) {
-            noResultsMsg.style.display = (rows.length > 0 && visibleCount === 0) ? "" : "none";
-        }
+        currentPage = 1;
+        renderTable();
     }
-
-    const btn = document.getElementById("scrollTopBtn");
-
-    function toggleScrollBtn() {
-        if (!btn) return;
-        // show after scrolling down a bit
-        btn.style.display = (window.scrollY > 200) ? "flex" : "none";
-    }
-
-    if (btn) {
-        btn.addEventListener("click", () => {
-            window.scrollTo({ top: 0, behavior: "smooth" });
-        });
-    }
-
-    window.addEventListener("scroll", toggleScrollBtn);
 
     [nameInput, emailInput, catSelect].forEach(el => {
-        if (el) el.addEventListener("input", filterRows);   // works for text inputs
-        if (el) el.addEventListener("change", filterRows);  // important for dropdown
+        if (el) el.addEventListener("input", filterRows);
+        if (el) el.addEventListener("change", filterRows);
     });
 
     filterRows();
-    toggleScrollBtn();
+
 })();
 </script>
+
 
 
 {% endblock %}
