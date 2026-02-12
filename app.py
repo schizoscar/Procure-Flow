@@ -1311,6 +1311,7 @@ def follow_up(task_id):
                        email_content=default_body)
 
 @app.route('/task/<int:task_id>/responses', methods=['GET', 'POST'])
+@app.route('/task/<int:task_id>/responses', methods=['GET', 'POST'])
 def task_responses(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -1320,26 +1321,51 @@ def task_responses(task_id):
         flash('Task not found', 'error')
         return redirect(url_for('task_list'))
 
+    # ---------- HANDLE POST (Mark Replied / Mark Pending) ----------
     if request.method == 'POST':
         action = request.form.get('action')
         supplier_id = request.form.get('supplier_id')
-        if action == 'mark_replied' and supplier_id:
-            task_supplier = db.session.query(TaskSupplier).filter_by(
-                task_id=task_id,
-                supplier_id=supplier_id
-            ).first()
-            if task_supplier:
-                task_supplier.replied_at = datetime.now()
-        elif action == 'mark_pending' and supplier_id:
-            task_supplier = db.session.query(TaskSupplier).filter_by(
-                task_id=task_id,
-                supplier_id=supplier_id
-            ).first()
-            if task_supplier:
-                task_supplier.replied_at = None
-        db.session.commit()
 
-    # Get suppliers with task info
+        # Validate supplier_id
+        if not supplier_id:
+            flash('No supplier specified.', 'error')
+            return redirect(url_for('task_responses', task_id=task_id))
+
+        try:
+            supplier_id = int(supplier_id)
+        except ValueError:
+            flash('Invalid supplier ID.', 'error')
+            return redirect(url_for('task_responses', task_id=task_id))
+
+        # Get or create TaskSupplier record
+        task_supplier = db.session.query(TaskSupplier).filter_by(
+            task_id=task_id,
+            supplier_id=supplier_id
+        ).first()
+
+        if not task_supplier:
+            # Create missing record (assume supplier is selected)
+            task_supplier = TaskSupplier(
+                task_id=task_id,
+                supplier_id=supplier_id,
+                is_selected=True
+            )
+            db.session.add(task_supplier)
+
+        # Update replied_at based on action
+        if action == 'mark_replied':
+            task_supplier.replied_at = datetime.now()
+            flash('Supplier marked as replied.', 'success')
+        elif action == 'mark_pending':
+            task_supplier.replied_at = None
+            flash('Supplier marked as pending.', 'success')
+        else:
+            flash('Unknown action.', 'error')
+
+        db.session.commit()
+        return redirect(url_for('task_responses', task_id=task_id))
+
+    # ---------- GET: display the table ----------
     suppliers_data = db.session.query(
         Supplier,
         TaskSupplier.assigned_items,
@@ -1366,10 +1392,10 @@ def task_responses(task_id):
             ).first()
             if task_supplier:
                 task_supplier.quote_form_token = token
-            db.session.commit()
+                db.session.commit()
 
         form_links[supplier.id] = public_url_for('supplier_quote_form', token=token)
-        
+
         suppliers_list.append({
             'id': supplier.id,
             'name': supplier.name,
@@ -1383,7 +1409,10 @@ def task_responses(task_id):
             'quote_form_token': token
         })
 
-    return render_template('responses.html', task=task, suppliers=suppliers_list, form_links=form_links)
+    return render_template('responses.html',
+                         task=task,
+                         suppliers=suppliers_list,
+                         form_links=form_links)
 
 def get_or_create_quote_form_link(task_id, supplier_id):
     """Get or create quote form token for a task-supplier pair."""
