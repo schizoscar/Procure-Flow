@@ -133,6 +133,8 @@
                             <tbody>
                                 {% for item in pr_items %}
                                 {% set cat = item.item_category %}
+                                {% set quote = quotes_map.get(item.id) if quotes_map else None %}
+
 
                                 <tr class="item-row" data-item-id="{{ item.id }}">
                                     <!-- Item info cell -->
@@ -203,6 +205,7 @@
                                             name="unit_price_{{ item.id }}"
                                             list="unit-price-list-{{ item.id }}"
                                             placeholder="Select or type (e.g. 12.50)"
+                                            value="{{ quote.unit_price if quote and quote.unit_price is not none else '' }}"
                                             required>
 
                                         <datalist id="unit-price-list-{{ item.id }}" class="unit-price-datalist"></datalist>
@@ -218,6 +221,7 @@
                                             name="lead_time_{{ item.id }}"
                                             list="lead-time-list-{{ item.id }}"
                                             placeholder="Select or type"
+                                            value="{{ quote.lead_time|int if quote and quote.lead_time is not none else '' }}"
                                             required>
 
                                         <datalist id="lead-time-list-{{ item.id }}"
@@ -228,11 +232,11 @@
                                     <!-- Stock availability dropdown -->
                                     <td>
                                         <select class="form-control form-select" 
-                                            name="stock_availability_{{ item.id }}" 
-                                            required>
+                                                name="stock_availability_{{ item.id }}" 
+                                                required>
                                             <option value="">Select</option>
-                                            <option value="In Stock">In Stock</option>
-                                            <option value="Out of Stock">Out of Stock</option>
+                                            <option value="In Stock" {% if quote and quote.stock_availability == 'In Stock' %}selected{% endif %}>In Stock</option>
+                                            <option value="Out of Stock" {% if quote and quote.stock_availability == 'Out of Stock' %}selected{% endif %}>Out of Stock</option>
                                         </select>
                                     </td>
 
@@ -240,20 +244,28 @@
                                     <td>
                                         <select class="form-control form-select" name="warranty_{{ item.id }}">
                                             <option value="">Select</option>
-                                            <!-- ✅ Warranty choices -->
-                                            <option value="No Warranty">No Warranty</option>
-                                            <option value="1 month">1 month</option>
-                                            <option value="3 months">3 months</option>
-                                            <option value="6 months">6 months</option>
-                                            <option value="1 year">1 year</option>
-                                            <option value="2 years">2 years</option>
-                                            <option value="3 years">3 years</option>
-                                            <option value="5 years">5 years</option>
+                                            <option value="No Warranty" {% if quote and quote.warranty == 'No Warranty' %}selected{% endif %}>No Warranty</option>
+                                            <option value="1 month" {% if quote and quote.warranty == '1 month' %}selected{% endif %}>1 month</option>
+                                            <option value="3 months" {% if quote and quote.warranty == '3 months' %}selected{% endif %}>3 months</option>
+                                            <option value="6 months" {% if quote and quote.warranty == '6 months' %}selected{% endif %}>6 months</option>
+                                            <option value="1 year" {% if quote and quote.warranty == '1 year' %}selected{% endif %}>1 year</option>
+                                            <option value="2 years" {% if quote and quote.warranty == '2 years' %}selected{% endif %}>2 years</option>
+                                            <option value="3 years" {% if quote and quote.warranty == '3 years' %}selected{% endif %}>3 years</option>
+                                            <option value="5 years" {% if quote and quote.warranty == '5 years' %}selected{% endif %}>5 years</option>
                                         </select>
                                     </td>
 
                                     <!-- COA -->
                                     <td>
+                                        {% if quote and quote.cert_file_id %}
+                                            <div style="margin-bottom: 0.5rem;">
+                                                <small class="text-success">
+                                                    <i class="fas fa-file-pdf"></i> Current file:
+                                                    <a href="{{ url_for('serve_file', file_id=quote.cert_file_id) }}" target="_blank">View</a>
+                                                </small>
+                                            </div>
+                                            <label class="form-label" style="font-size:0.85rem;">Replace file (optional)</label>
+                                        {% endif %}
                                         <input type="file" 
                                             class="form-control"
                                             name="cert_{{ item.id }}"
@@ -279,7 +291,9 @@
                                                         pattern="\d*"
                                                         name="ono_width_{{ item.id }}"
                                                         list="ono-width-list-{{ item.id }}"
-                                                        placeholder="Select or type">
+                                                        placeholder="Select or type"
+                                                        value="{{ quote.ono_width if quote and quote.ono_width is not none else '' }}">
+>
 
                                                     <datalist id="ono-width-list-{{ item.id }}"
                                                             class="integer-datalist"
@@ -294,7 +308,8 @@
                                                         pattern="\d*"
                                                         name="ono_length_{{ item.id }}"
                                                         list="ono-length-list-{{ item.id }}"
-                                                        placeholder="Select or type">
+                                                        placeholder="Select or type"
+                                                        value="{{ quote.ono_length if quote and quote.ono_length is not none else '' }}">
 
                                                     <datalist id="ono-length-list-{{ item.id }}"
                                                             class="integer-datalist"
@@ -309,7 +324,8 @@
                                                         pattern="\d*"
                                                         name="ono_thickness_{{ item.id }}"
                                                         list="ono-thickness-list-{{ item.id }}"
-                                                        placeholder="Select or type">
+                                                        placeholder="Select or type"
+                                                        value="{{ quote.ono_thickness if quote and quote.ono_thickness is not none else '' }}">
 
                                                     <datalist id="ono-thickness-list-{{ item.id }}"
                                                             class="integer-datalist"
@@ -318,7 +334,9 @@
                                             </div>
                                             <div style="margin-top:0.5rem;">
                                                 <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
-                                                <input type="text" class="form-control" name="ono_brand_{{ item.id }}">
+                                                <input type="text" class="form-control" name="ono_brand_{{ item.id }}"
+                                                       value="{{ quote.ono_brand if quote and quote.ono_brand else '' }}">
+
                                             </div>
 
                                         {% elif item.item_category == 'Angle Bar' %}
@@ -332,7 +350,8 @@
                                                         pattern="\d*"
                                                         name="ono_dim_a_{{ item.id }}"
                                                         list="ono-dim_a-list-{{ item.id }}"
-                                                        placeholder="Select or type">
+                                                        placeholder="Select or type"
+                                                        value="{{ quote.ono_dim_a if quote and quote.ono_dim_a is not none else '' }}">
 
                                                     <datalist id="ono-dim_a-list-{{ item.id }}"
                                                             class="integer-datalist"
@@ -347,7 +366,8 @@
                                                         pattern="\d*"
                                                         name="ono_dim_b_{{ item.id }}"
                                                         list="ono-dim_b-list-{{ item.id }}"
-                                                        placeholder="Select or type">
+                                                        placeholder="Select or type"
+                                                        value="{{ quote.ono_dim_b if quote and quote.ono_dim_b is not none else '' }}">
 
                                                     <datalist id="ono-dim_b-list-{{ item.id }}"
                                                             class="integer-datalist"
@@ -362,8 +382,8 @@
                                                         pattern="\d*"
                                                         name="ono_length_{{ item.id }}"
                                                         list="ono-length-list-{{ item.id }}"
-                                                        placeholder="Select or type">
-
+                                                        placeholder="Select or type"
+                                                        value="{{ quote.ono_length if quote and quote.ono_length is not none else '' }}">
                                                     <datalist id="ono-length-list-{{ item.id }}"
                                                             class="integer-datalist"
                                                             data-max="10000"></datalist>
@@ -377,7 +397,8 @@
                                                         pattern="\d*"
                                                         name="ono_thickness_{{ item.id }}"
                                                         list="ono-thickness-list-{{ item.id }}"
-                                                        placeholder="Select or type">
+                                                        placeholder="Select or type"
+                                                        value="{{ quote.ono_thickness if quote and quote.ono_thickness is not none else '' }}">
 
                                                     <datalist id="ono-thickness-list-{{ item.id }}"
                                                             class="integer-datalist"
@@ -400,8 +421,9 @@
                                                         pattern="\d*"
                                                         name="ono_diameter_{{ item.id }}"
                                                         list="ono-diameter-list-{{ item.id }}"
-                                                        placeholder="Select or type">
-
+                                                        placeholder="Select or type"
+                                                        value="{{ quote.ono_diameter if quote and quote.ono_diameter is not none else '' }}">
+   
                                                     <datalist id="ono-diameter-list-{{ item.id }}"
                                                             class="integer-datalist"
                                                             data-max="10000"></datalist>
@@ -415,7 +437,8 @@
                                                         pattern="\d*"
                                                         name="ono_length_{{ item.id }}"
                                                         list="ono-length-list-{{ item.id }}"
-                                                        placeholder="Select or type">
+                                                        placeholder="Select or type"
+                                                        value="{{ quote.ono_length if quote and quote.ono_length is not none else '' }}">
 
                                                     <datalist id="ono-length-list-{{ item.id }}"
                                                             class="integer-datalist"
@@ -435,7 +458,8 @@
                                                         type="text"
                                                         autocomplete="off"
                                                         name="ono_uom_qty_{{ item.id }}"
-                                                        placeholder="Type (e.g. 20 pcs/box, 5L, 1 roll)">
+                                                        placeholder="Type (e.g. 20 pcs/box, 5L, 1 roll)"
+                                                        value="{{ quote.ono_uom_qty if quote and quote.ono_uom_qty else '' }}">
                                                 </div>
                                             </div>
 
@@ -448,7 +472,9 @@
 
                                     <!-- Remarks -->
                                     <td>
-                                        <input type="text" class="form-control" name="notes_{{ item.id }}">
+                                        <input type="text" class="form-control" name="notes_{{ item.id }}"
+                                               value="{{ quote.ono_brand if quote and quote.ono_brand else '' }}">
+
                                     </td>
                                 </tr>
                                 {% endfor %}

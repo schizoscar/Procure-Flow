@@ -76,6 +76,20 @@
     </div>
 
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Convert all elements with class 'utc-datetime' to local time
+        document.querySelectorAll('.utc-datetime').forEach(el => {
+            const utcStr = el.getAttribute('data-utc');
+            if (utcStr) {
+                const date = new Date(utcStr + ' UTC'); // treat as UTC
+                if (!isNaN(date)) {
+                    el.textContent = date.toLocaleString(); // local format
+                }
+            }
+        });
+    });
+    </script>
     {% block scripts %}{% endblock %}
 </body>
 

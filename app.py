@@ -1311,7 +1311,6 @@ def follow_up(task_id):
                        email_content=default_body)
 
 @app.route('/task/<int:task_id>/responses', methods=['GET', 'POST'])
-@app.route('/task/<int:task_id>/responses', methods=['GET', 'POST'])
 def task_responses(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -1693,24 +1692,21 @@ def supplier_quote_form(token):
     except BadSignature:
         return "Invalid or expired link", 400
 
-    # Use db.session instead of get_db_connection()
     task = db.session.get(Task, task_id)
     supplier = db.session.get(Supplier, supplier_id)
-    
     if not task or not supplier:
         return "Task or supplier not found", 404
 
-    def form_last_nonempty(key: str):
-        vals = request.form.getlist(key)
-        for v in reversed(vals):
-            if v is None:
-                continue
-            s = str(v).strip()
-            if s != "":
-                return s
-        return None
+    # --- Load existing quotes for this task+supplier ---
+    existing_quotes = db.session.query(SupplierQuote).filter_by(
+        task_id=task_id,
+        supplier_id=supplier_id
+    ).all()
 
-    # Get TaskSupplier using SQLAlchemy
+    quotes_map = {q.pr_item_id: q for q in existing_quotes}
+    payment_terms_default = existing_quotes[0].payment_terms if existing_quotes else ''
+
+    # Get assigned items (if any)
     task_supplier = db.session.query(TaskSupplier).filter_by(
         task_id=task_id,
         supplier_id=supplier_id
@@ -1723,9 +1719,8 @@ def supplier_quote_form(token):
         except Exception:
             assigned_ids = None
 
-    # Get PR items using SQLAlchemy
+    # Get PR items (filtered by assignment)
     pr_items_query = db.session.query(PRItem).filter_by(task_id=task_id)
-    
     if assigned_ids:
         pr_items = pr_items_query.filter(PRItem.id.in_(assigned_ids)).all()
     else:
@@ -1863,12 +1858,40 @@ def supplier_quote_form(token):
             flash("We couldn't save your quotation due to a system issue. Please try again.", "error")
             # Fall through to re-render the form
 
-    # GET or failed POST -> show form again
+    # --- GET: render the form with pre-filled values ---
+    quotes_map_dict = {}
+    for pr_item_id, quote in quotes_map.items():
+        quotes_map_dict[pr_item_id] = {
+            'id': quote.id,
+            'task_id': quote.task_id,
+            'supplier_id': quote.supplier_id,
+            'pr_item_id': quote.pr_item_id,
+            'unit_price': quote.unit_price,
+            'stock_availability': quote.stock_availability,
+            'lead_time': quote.lead_time,
+            'warranty': quote.warranty,
+            'payment_terms': quote.payment_terms,
+            'notes': quote.notes,
+            'ono': quote.ono,
+            'ono_width': quote.ono_width,
+            'ono_length': quote.ono_length,
+            'ono_thickness': quote.ono_thickness,
+            'ono_dim_a': quote.ono_dim_a,
+            'ono_dim_b': quote.ono_dim_b,
+            'ono_diameter': quote.ono_diameter,
+            'ono_uom': quote.ono_uom,
+            'ono_uom_qty': quote.ono_uom_qty,
+            'ono_brand': quote.ono_brand,
+            'cert_file_id': quote.cert_file_id
+        }
+
     return render_template(
         'supplier_public_quote.html',
         task=task,
         supplier=supplier,
-        pr_items=pr_items
+        pr_items=pr_items,
+        quotes_map=quotes_map_dict,
+        payment_terms_default=payment_terms_default
     )
 
 @app.route('/debug/quotes/<int:task_id>/<int:supplier_id>', methods=['GET'])
