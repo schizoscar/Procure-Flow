@@ -321,7 +321,7 @@ def generate_email_content(pr_items, task_name):
     <html>
     <body>
         <h2>Procurement Inquiry</h2>
-        <p>Dear {{supplier_name}}{{contact_person}},</p>
+        <p>Dear {{contact_person}},</p>
 
         <p>We are inquiring about the following items for procurement:</p>
         
@@ -337,16 +337,19 @@ def generate_email_content(pr_items, task_name):
             <li>Mill Certificate / Certificate of Analysis (COA)</li>
         </ul>
         
-        <p>Please fill in the quotation in the link below:</p>
+        <p>Please submit your quotation using the link below:</p>
         <p>Supplier form:</p>
         <p>↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓</p>
         {{quote_form_link}}
         <p>↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑</p>
         
-        <p>We look forward to your prompt response.</p>
+        <p>We appreciate your prompt response and look forward to your quotation.</p>
         
         <p>Best regards,<br>
         Procurement Department</p>
+        <p style="margin-top: 25px;">
+        <strong>HERCULES Engineering (SEA) Sdn Bhd</strong><br>
+        <a href="https://hercules-engineering.com/">https://hercules-engineering.com/</a><br>
     </body>
     </html>
     """
