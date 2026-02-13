@@ -658,15 +658,25 @@ def delete_user(user_id):
         return redirect(url_for('user_list'))
 
     try:
-        # Check if user has created any tasks
-        task_count = db.session.query(Task).filter_by(user_id=user_id).count()
-        if task_count > 0:
-            flash(f'Cannot delete user "{user.username}" because they have created {task_count} task(s).', 'error')
-            return redirect(url_for('user_list'))
+        deleted_user = db.session.query(User).filter_by(username='[Deleted User]').first()
+        if not deleted_user:
+            deleted_user = User(
+                username='[Deleted User]',
+                email='deleted@system.local',
+                password_hash='DELETED_ACCOUNT',
+                role='deleted'
+            )
+            db.session.add(deleted_user)
+            db.session.flush()
+        
+        db.session.query(Task).filter_by(user_id=user_id).update(
+            {Task.user_id: deleted_user.id}
+        )
         
         db.session.delete(user)
         db.session.commit()
-        flash(f'User "{user.username}" has been deleted successfully.', 'success')
+        
+        flash(f'User "{user.username}" has been deleted. Their tasks now show as created by "[Deleted User]".', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Cannot delete this user: {str(e)}', 'error')
