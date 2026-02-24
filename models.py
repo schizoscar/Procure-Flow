@@ -65,7 +65,7 @@ class Task(db.Model):
     
     id = db.Column(db.Integer, primary_key=True)
     task_name = db.Column(db.String(500), nullable=False)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
+    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=True)  # ← Change to nullable=True
     status = db.Column(db.String(50), default='purchase_requisition')
     created_at = db.Column(db.DateTime, default=datetime.now)
     

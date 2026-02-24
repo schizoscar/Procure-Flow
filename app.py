@@ -321,7 +321,7 @@ def generate_email_content(pr_items, task_name):
     <html>
     <body>
         <h2>Procurement Inquiry</h2>
-        <p>Dear {{supplier_name}}{{contact_person}},</p>
+        <p>Dear {{contact_person}},</p>
 
         <p>We are inquiring about the following items for procurement:</p>
         
@@ -337,16 +337,19 @@ def generate_email_content(pr_items, task_name):
             <li>Mill Certificate / Certificate of Analysis (COA)</li>
         </ul>
         
-        <p>Please fill in the quotation in the link below:</p>
+        <p>Please submit your quotation using the link below:</p>
         <p>Supplier form:</p>
         <p>↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓↓</p>
         {{quote_form_link}}
         <p>↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑↑</p>
         
-        <p>We look forward to your prompt response.</p>
+        <p>We appreciate your prompt response and look forward to your quotation.</p>
         
         <p>Best regards,<br>
         Procurement Department</p>
+        <p style="margin-top: 25px;">
+        <strong>HERCULES Engineering (SEA) Sdn Bhd</strong><br>
+        <a href="https://hercules-engineering.com/">https://hercules-engineering.com/</a><br>
     </body>
     </html>
     """
@@ -655,15 +658,25 @@ def delete_user(user_id):
         return redirect(url_for('user_list'))
 
     try:
-        # Check if user has created any tasks
-        task_count = db.session.query(Task).filter_by(user_id=user_id).count()
-        if task_count > 0:
-            flash(f'Cannot delete user "{user.username}" because they have created {task_count} task(s).', 'error')
-            return redirect(url_for('user_list'))
+        deleted_user = db.session.query(User).filter_by(username='[Deleted User]').first()
+        if not deleted_user:
+            deleted_user = User(
+                username='[Deleted User]',
+                email='deleted@system.local',
+                password_hash='DELETED_ACCOUNT',
+                role='deleted'
+            )
+            db.session.add(deleted_user)
+            db.session.flush()
+        
+        db.session.query(Task).filter_by(user_id=user_id).update(
+            {Task.user_id: deleted_user.id}
+        )
         
         db.session.delete(user)
         db.session.commit()
-        flash(f'User "{user.username}" has been deleted successfully.', 'success')
+        
+        flash(f'User "{user.username}" has been deleted. Their tasks now show as created by "[Deleted User]".', 'success')
     except Exception as e:
         db.session.rollback()
         flash(f'Cannot delete this user: {str(e)}', 'error')
@@ -1094,6 +1107,10 @@ def email_confirmation(task_id):
         
         success_count = 0
         for supplier, assigned_items in selected_suppliers:
+            # 🔴 BLOCK INACTIVE SUPPLIER HERE
+            if not supplier.is_active:
+                flash(f"Cannot send email to inactive supplier: {supplier.name}", "error")
+                continue
             assigned_item_ids = None
             quote_form_link = get_or_create_quote_form_link(task_id, supplier.id)
 
@@ -1243,8 +1260,11 @@ def follow_up(task_id):
 
         sent = 0
         for supplier_info in pending_suppliers:
-            assigned_item_ids = None
-            quote_form_link = get_or_create_quote_form_link(task_id, supplier_info['id'])
+            # 🔴 BLOCK INACTIVE SUPPLIER HERE
+            supplier_obj = db.session.get(Supplier, supplier_info['id'])
+            if not supplier_obj or not supplier_obj.is_active:
+                flash(f"Cannot send follow-up to inactive supplier: {supplier_info['name']}", "error")
+                continue
 
             if supplier_info['assigned_items']:
                 try:
@@ -2844,11 +2864,19 @@ def export_comparison(task_id):
 def suppliers():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
-    # Get suppliers with their categories as comma-separated string
+
+    show_inactive = request.args.get('show') == 'inactive'
+
+    query = db.session.query(Supplier)
+
+    if show_inactive:
+        query = query.filter(Supplier.is_active == False)
+    else:
+        query = query.filter(Supplier.is_active == True)
+
+    all_suppliers = query.order_by(Supplier.name).all()
+
     suppliers_list = []
-    all_suppliers = db.session.query(Supplier).filter_by(is_active=True).all()
-    
     for supplier in all_suppliers:
         category_names = [cat.name for cat in supplier.categories]
         supplier_dict = {
@@ -2863,13 +2891,16 @@ def suppliers():
             'categories': ', '.join(category_names) if category_names else ''
         }
         suppliers_list.append(supplier_dict)
-    
+
     categories = db.session.query(Category).all()
 
-    return render_template('supplier_list.html', 
-                         suppliers=suppliers_list, 
-                         categories=categories,
-                         user_role=session['role'])
+    return render_template(
+        'supplier_list.html',
+        suppliers=suppliers_list,
+        categories=categories,
+        user_role=session['role'],
+        show_inactive=show_inactive
+    )
 
 @app.route('/edit-supplier/<int:supplier_id>', methods=['GET', 'POST'])
 def edit_supplier(supplier_id):
@@ -3314,7 +3345,7 @@ def supplier_selection(task_id):
                          selected_supplier_ids=selected_supplier_ids,
                          categories=categories)
 
-@app.route('/delete-supplier/<int:supplier_id>')
+@app.route('/delete-supplier/<int:supplier_id>', methods=['POST'])
 def delete_supplier(supplier_id):
     if 'user_id' not in session or session.get('role') != 'admin':
         flash('Access denied', 'error')
@@ -3336,6 +3367,28 @@ def delete_supplier(supplier_id):
         flash(f'Error deleting supplier: {str(e)}', 'error')
     
     return redirect(url_for('suppliers'))
+
+@app.route('/reactivate-supplier/<int:supplier_id>', methods=['POST'])
+def reactivate_supplier(supplier_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('suppliers'))
+
+    supplier = db.session.get(Supplier, supplier_id)
+    if not supplier:
+        flash('Supplier not found', 'error')
+        return redirect(url_for('suppliers', show='inactive'))
+
+    supplier.is_active = True
+
+    try:
+        db.session.commit()
+        flash('Supplier reactivated successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error reactivating supplier: {str(e)}', 'error')
+
+    return redirect(url_for('suppliers', show='inactive'))
 
 # Add route for categories management (view for all, edit for admin)
 @app.route('/categories')
