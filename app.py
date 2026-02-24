@@ -34,6 +34,7 @@ import math
 from decimal import Decimal, InvalidOperation
 from sqlalchemy import func, text, desc, and_, or_, cast, String, Integer, Float, DateTime, Boolean
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import case, func
 import sqlalchemy.dialects.postgresql.pg8000
 
 # Load .env file for local development
@@ -1179,22 +1180,35 @@ def task_list():
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
+    # Subquery: count replied suppliers per task
+    replied_subq = db.session.query(
+        TaskSupplier.task_id,
+        func.count(TaskSupplier.id).label('reply_count')
+    ).filter(
+        TaskSupplier.replied_at.isnot(None)
+    ).group_by(
+        TaskSupplier.task_id
+    ).subquery()
+
     all_tasks = db.session.query(
         Task,
         User.username.label('created_by'),
-        func.count(PRItem.id).label('item_count')  # Use func.count
+        func.count(PRItem.id).label('item_count'),
+        func.coalesce(replied_subq.c.reply_count, 0).label('reply_count')
     ).join(
         User, Task.user_id == User.id
     ).outerjoin(
         PRItem, Task.id == PRItem.task_id
+    ).outerjoin(
+        replied_subq, Task.id == replied_subq.c.task_id
     ).group_by(
-        Task.id, User.username
+        Task.id, User.username, replied_subq.c.reply_count
     ).order_by(
         Task.created_at.desc()
     ).all()
 
     tasks_list = []
-    for task, created_by, item_count in all_tasks:
+    for task, created_by, item_count, reply_count in all_tasks:
         tasks_list.append({
             'id': task.id,
             'task_name': task.task_name,
@@ -1202,7 +1216,8 @@ def task_list():
             'status': task.status,
             'created_at': task.created_at,
             'created_by': created_by,
-            'item_count': item_count
+            'item_count': item_count,
+            'reply_count': reply_count
         })
 
     return render_template('task_list.html', all_tasks=tasks_list)

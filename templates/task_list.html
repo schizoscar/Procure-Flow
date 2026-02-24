@@ -24,9 +24,15 @@
                     <td>{{ task.task_name }}</td>
                     <td>{{ task.created_by or 'N/A' }}</td>
                     <td>
-                        <span class="status-badge status-{{ task.status }}">
-                            {{ task.status.replace('_', ' ').title() }}
-                        </span>
+                        {% if task.reply_count and task.reply_count > 0 %}
+                            <span class="status-badge status-replied">
+                                Replied
+                            </span>
+                        {% else %}
+                            <span class="status-badge status-{{ task.status }}">
+                                {{ task.status.replace('_', ' ').title() }}
+                            </span>
+                        {% endif %}
                     </td>
                     <td>{{ task.created_at|format_date if task.created_at else "N/A" }}</td>
                     <td>

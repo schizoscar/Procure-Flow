@@ -367,6 +367,11 @@ body {
     font-weight: 500;
 }
 
+.status-replied {
+    background: #77d78d;
+    color: white;
+}
+
 .status-purchase_requisition {
     background: #E3F2FD;
     color: #1976D2;
