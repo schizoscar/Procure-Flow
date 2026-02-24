@@ -1249,7 +1249,7 @@ def task_list():
             'item_names': item_names or ''
         })
 
-    return render_template('task_list.html', all_tasks=all_tasks)
+    return render_template('task_list.html', all_tasks=tasks_list)
 
 @app.route('/task/<int:task_id>/follow-up', methods=['GET', 'POST'])
 def follow_up(task_id):
