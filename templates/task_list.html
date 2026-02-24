@@ -8,9 +8,35 @@
     </div>
     <div class="card-body bg-light">
         {% if all_tasks %}
+        <div class="filter-bar">
+            <div class="filter-search">
+                <i class="fas fa-search search-icon"></i>
+                <input type="text"
+                    id="taskSearch"
+                    class="form-control"
+                    placeholder="Enter supplier or item name">
+            </div>
+            <div class="filter-status">
+                <label class="filter-label">Status:</label>
+
+                <label class="status-option">
+                    <input type="checkbox" class="statusFilter" value="purchase_requisition">
+                    Purchase Requisition
+                </label>
+
+                <label class="status-option">
+                    <input type="checkbox" class="statusFilter" value="confirm_email">
+                    Confirm Email
+                </label>
+
+                <label class="status-option">
+                    <input type="checkbox" class="statusFilter" value="replied">
+                    Replied
+                </label>
+            </div>
+        </div>
         <table class="table">
             <thead>
-                <tr>
                     <th>Task Name</th>
                     <th>Created By</th>
                     <th>Status</th>
@@ -20,7 +46,10 @@
             </thead>
             <tbody>
                 {% for task in all_tasks %}
-                <tr>
+                <tr class="task-row"
+                    data-suppliers="{{ task.supplier_names|lower }}"
+                    data-items="{{ task.item_names|lower }}"
+                    data-status="{{ ('replied' if task.reply_count and task.reply_count > 0 else task.status)|lower }}">
                     <td>{{ task.task_name }}</td>
                     <td>{{ task.created_by or 'N/A' }}</td>
                     <td>
@@ -71,4 +100,44 @@
         {% endif %}
     </div>
 </div>
+<script>
+(function(){
+
+    const searchInput = document.getElementById("taskSearch");
+    const statusFilters = document.querySelectorAll(".statusFilter");
+    const rows = document.querySelectorAll(".task-row");
+
+    function getCheckedStatuses() {
+        return Array.from(statusFilters)
+                    .filter(cb => cb.checked)
+                    .map(cb => cb.value);
+    }
+
+    function filterTasks() {
+
+        const query = searchInput.value.toLowerCase().trim();
+        const selectedStatuses = getCheckedStatuses();
+
+        rows.forEach(row => {
+
+            const suppliers = row.dataset.suppliers || "";
+            const items = row.dataset.items || "";
+            const status = row.dataset.status || "";
+
+            const matchSearch = !query ||
+                suppliers.includes(query) ||
+                items.includes(query);
+
+            const matchStatus = selectedStatuses.length === 0 ||
+                selectedStatuses.includes(status);
+
+            row.style.display = (matchSearch && matchStatus) ? "" : "none";
+        });
+    }
+
+    searchInput.addEventListener("input", filterTasks);
+    statusFilters.forEach(cb => cb.addEventListener("change", filterTasks));
+
+})();
+</script>
 {% endblock %}

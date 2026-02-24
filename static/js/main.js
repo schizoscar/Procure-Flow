@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', function () {
     const hamburger = document.getElementById('hamburger');
     const sidebar = document.getElementById('sidebar');
     const mainContent = document.getElementById('mainContent');
+    const rows = document.querySelectorAll("tbody .task-row");
 
     if (hamburger && sidebar) {
         hamburger.addEventListener('click', function () {

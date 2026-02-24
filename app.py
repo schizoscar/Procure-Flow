@@ -384,7 +384,7 @@ def dashboard():
         item_count_subq, Task.id == item_count_subq.c.task_id
     ).order_by(
         Task.created_at.desc()
-    ).limit(10).all()
+    ).limit(5).all()
 
     # Convert to list of dictionaries
     recent_tasks = []
@@ -1190,37 +1190,66 @@ def task_list():
         TaskSupplier.task_id
     ).subquery()
 
+    # Aggregate supplier names per task
+    supplier_subq = db.session.query(
+        TaskSupplier.task_id,
+        func.string_agg(Supplier.name, ', ').label('supplier_names')
+    ).join(
+        Supplier, Supplier.id == TaskSupplier.supplier_id
+    ).group_by(TaskSupplier.task_id).subquery()
+
+    # Aggregate item names per task
+    item_subq = db.session.query(
+        PRItem.task_id,
+        func.string_agg(PRItem.item_name, ', ').label('item_names')
+    ).group_by(PRItem.task_id).subquery()
+
     all_tasks = db.session.query(
         Task,
         User.username.label('created_by'),
         func.count(PRItem.id).label('item_count'),
-        func.coalesce(replied_subq.c.reply_count, 0).label('reply_count')
+        func.coalesce(replied_subq.c.reply_count, 0).label('reply_count'),
+        supplier_subq.c.supplier_names,
+        item_subq.c.item_names
     ).join(
         User, Task.user_id == User.id
     ).outerjoin(
         PRItem, Task.id == PRItem.task_id
     ).outerjoin(
         replied_subq, Task.id == replied_subq.c.task_id
+    ).outerjoin(
+        supplier_subq, Task.id == supplier_subq.c.task_id
+    ).outerjoin(
+        item_subq, Task.id == item_subq.c.task_id
     ).group_by(
-        Task.id, User.username, replied_subq.c.reply_count
+        Task.id,
+        User.username,
+        replied_subq.c.reply_count,
+        supplier_subq.c.supplier_names,
+        item_subq.c.item_names
     ).order_by(
         Task.created_at.desc()
     ).all()
 
     tasks_list = []
-    for task, created_by, item_count, reply_count in all_tasks:
+    for task, created_by, item_count, reply_count, supplier_names, item_names in all_tasks:
+
+        display_status = "replied" if reply_count > 0 else task.status
+
         tasks_list.append({
             'id': task.id,
             'task_name': task.task_name,
-            'user_id': task.user_id,
             'status': task.status,
+            'display_status': display_status,
             'created_at': task.created_at,
             'created_by': created_by,
             'item_count': item_count,
-            'reply_count': reply_count
+            'reply_count': reply_count,
+            'supplier_names': supplier_names or '',
+            'item_names': item_names or ''
         })
 
-    return render_template('task_list.html', all_tasks=tasks_list)
+    return render_template('task_list.html', all_tasks=all_tasks)
 
 @app.route('/task/<int:task_id>/follow-up', methods=['GET', 'POST'])
 def follow_up(task_id):
