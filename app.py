@@ -1,6 +1,6 @@
 # app.py
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file, abort, g
-from models import db, User, Supplier, Category, CategoryItem, Task, PRItem, TaskSupplier, SupplierQuote, FileAsset, EmailLog
+from models import db, User, Supplier, Category, CategoryItem, Task, PRItem, TaskSupplier, SupplierQuote, FileAsset, EmailLog, supplier_categories
 import re
 from datetime import datetime
 import json
@@ -3389,27 +3389,73 @@ def supplier_selection(task_id):
                          selected_supplier_ids=selected_supplier_ids,
                          categories=categories)
 
-@app.route('/delete-supplier/<int:supplier_id>', methods=['POST'])
-def delete_supplier(supplier_id):
-    if 'user_id' not in session or session.get('role') != 'admin':
+@app.route('/hard-delete-supplier/<int:supplier_id>', methods=['POST'])
+def hard_delete_supplier(supplier_id):
+    if 'user_id' not in session:
         flash('Access denied', 'error')
-        return redirect(url_for('suppliers'))
-    
+        return redirect(url_for('login'))
+
     supplier = db.session.get(Supplier, supplier_id)
+
+    if not supplier:
+        flash('Supplier not found', 'error')
+        return redirect(url_for('suppliers', show='inactive'))
+
+    try:
+        # 1️⃣ Delete supplier quotes
+        SupplierQuote.query.filter_by(supplier_id=supplier_id).delete()
+
+        # 2️⃣ Delete task supplier links
+        TaskSupplier.query.filter_by(supplier_id=supplier_id).delete()
+
+        # 3️⃣ Delete email logs
+        EmailLog.query.filter_by(supplier_id=supplier_id).delete()
+
+        # 4️⃣ Delete file assets
+        FileAsset.query.filter_by(supplier_id=supplier_id).delete()
+
+        # 5️⃣ Delete category association
+        db.session.execute(
+            supplier_categories.delete().where(
+                supplier_categories.c.supplier_id == supplier_id
+            )
+        )
+
+        # 6️⃣ Finally delete supplier
+        db.session.delete(supplier)
+
+        db.session.commit()
+
+        flash('Supplier permanently deleted.', 'success')
+        return redirect(url_for('suppliers', show='inactive'))
+
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception("Hard delete failed for supplier_id=%s", supplier_id)
+        flash(f'Error deleting supplier: {str(e)}', 'error')
+        return redirect(url_for('suppliers', show='inactive'))
+
+@app.route('/deactivate-supplier/<int:supplier_id>', methods=['POST'])
+def deactivate_supplier(supplier_id):
+    if 'user_id' not in session:
+        flash('Access denied', 'error')
+        return redirect(url_for('login'))
+
+    supplier = db.session.get(Supplier, supplier_id)
+
     if not supplier:
         flash('Supplier not found', 'error')
         return redirect(url_for('suppliers'))
-    
-    # Soft delete by setting is_active to 0
+
     supplier.is_active = False
-    
+
     try:
         db.session.commit()
-        flash('Supplier deleted successfully!', 'success')
+        flash('Supplier deactivated successfully.', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error deleting supplier: {str(e)}', 'error')
-    
+        flash(f'Error deactivating supplier: {str(e)}', 'error')
+
     return redirect(url_for('suppliers'))
 
 @app.route('/reactivate-supplier/<int:supplier_id>', methods=['POST'])

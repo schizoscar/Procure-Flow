@@ -86,9 +86,7 @@
                         <th style="width: 300px;">Email</th>
                         <th style="width: 170px;">Phone</th>
                         <th style="width: 220px;">Categories</th>
-                        {% if user_role == 'admin' %}
-                        <th>Actions</th>
-                        {% endif %}
+                        <th style="width:140px; white-space:nowrap;">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -106,29 +104,44 @@
                         <td class="supplier-name col-name">{{ supplier.email }}</td>
                         <td class="supplier-name col-name">{{ supplier.contact_number or 'N/A' }}</td>
                         <td class="supplier-name col-name">{{ supplier.categories or 'N/A' }}</td>
-                        {% if user_role == 'admin' %}
-                        <td>
-                            <div class="d-flex gap-1">
-                                <a href="{{ url_for('edit_supplier', supplier_id=supplier.id) }}" class="btn btn-secondary btn-sm">
-                                    <i class="fas fa-edit"></i> Edit
-                                </a>
+                        <td style="white-space:nowrap;">
+                            <div style="display:flex; flex-direction:column; gap:6px;">
+
                                 {% if not show_inactive %}
+                                    <!-- ACTIVE SUPPLIERS -->
                                     <form method="POST"
-                                        action="{{ url_for('delete_supplier', supplier_id=supplier.id) }}"
-                                        style="display:inline;"
+                                        action="{{ url_for('deactivate_supplier', supplier_id=supplier.id) }}"
                                         onsubmit="return confirm('Deactivate this supplier?')">
-                                        <button class="btn btn-warning btn-sm">Deactivate</button>
+                                        <button class="btn btn-warning btn-sm w-100">
+                                            Deactivate
+                                        </button>
                                     </form>
+
                                 {% else %}
+                                    <!-- INACTIVE SUPPLIERS -->
+
+                                    <!-- Reactivate (Admin + User) -->
                                     <form method="POST"
-                                        action="{{ url_for('reactivate_supplier', supplier_id=supplier.id) }}"
-                                        style="display:inline;">
-                                        <button class="btn btn-success btn-sm">Reactivate</button>
+                                        action="{{ url_for('reactivate_supplier', supplier_id=supplier.id) }}">
+                                        <button class="btn btn-success btn-sm w-100">
+                                            Reactivate
+                                        </button>
                                     </form>
+
+                                    <!-- Hard Delete (Admin Only) -->
+                                    {% if user_role == 'admin' %}
+                                    <form method="POST"
+                                        action="{{ url_for('hard_delete_supplier', supplier_id=supplier.id) }}"
+                                        onsubmit="return confirm('This will permanently delete this supplier and ALL related records. Continue?')">
+                                        <button class="btn btn-danger btn-sm w-100">
+                                            Delete Permanently
+                                        </button>
+                                    </form>
+                                    {% endif %}
                                 {% endif %}
+
                             </div>
                         </td>
-                        {% endif %}
                     </tr>
                     {% endfor %}
                 </tbody>
