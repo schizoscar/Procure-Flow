@@ -49,6 +49,14 @@ if not secret:
     raise RuntimeError("APP_SECRET_KEY is not set")
 app.secret_key = secret
 
+@app.after_request
+def add_no_cache_headers(response):
+    if 'user_id' in session:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 # File upload configuration
 UPLOADS_DIR = os.path.join('uploads', 'certificates')
 ALLOWED_EXTENSIONS = {'pdf'}  # PDF only
