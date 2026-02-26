@@ -104,44 +104,52 @@
                         <td class="supplier-name col-name">{{ supplier.email }}</td>
                         <td class="supplier-name col-name">{{ supplier.contact_number or 'N/A' }}</td>
                         <td class="supplier-name col-name">{{ supplier.categories or 'N/A' }}</td>
-                        <td style="white-space:nowrap;">
-                            <div style="display:flex; flex-direction:column; gap:6px;">
-
+                            <td style="white-space:nowrap;">
                                 {% if not show_inactive %}
-                                    <!-- ACTIVE SUPPLIERS -->
-                                    <form method="POST"
-                                        action="{{ url_for('deactivate_supplier', supplier_id=supplier.id) }}"
-                                        onsubmit="return confirm('Deactivate this supplier?')">
-                                        <button class="btn btn-warning btn-sm w-100">
-                                            Deactivate
-                                        </button>
-                                    </form>
+                                    <!-- ACTIVE SUPPLIERS (Side by Side) -->
+                                    <div style="display:flex; gap:6px; justify-content:center;">
+
+                                        <!-- Edit (Blue) -->
+                                        <a href="{{ url_for('edit_supplier', supplier_id=supplier.id) }}"
+                                        class="btn btn-primary btn-sm">
+                                            Edit
+                                        </a>
+
+                                        <!-- Deactivate (Orange) -->
+                                        <form method="POST"
+                                            action="{{ url_for('deactivate_supplier', supplier_id=supplier.id) }}"
+                                            onsubmit="return confirm('Deactivate this supplier?')">
+                                            <button class="btn btn-warning btn-sm">
+                                                Deactivate
+                                            </button>
+                                        </form>
+
+                                    </div>
 
                                 {% else %}
-                                    <!-- INACTIVE SUPPLIERS -->
+                                    <!-- INACTIVE SUPPLIERS (Stacked) -->
+                                    <div style="display:flex; flex-direction:column; gap:6px;">
 
-                                    <!-- Reactivate (Admin + User) -->
-                                    <form method="POST"
-                                        action="{{ url_for('reactivate_supplier', supplier_id=supplier.id) }}">
-                                        <button class="btn btn-success btn-sm w-100">
-                                            Reactivate
-                                        </button>
-                                    </form>
+                                        <form method="POST"
+                                            action="{{ url_for('reactivate_supplier', supplier_id=supplier.id) }}">
+                                            <button class="btn btn-success btn-sm w-100">
+                                                Reactivate
+                                            </button>
+                                        </form>
 
-                                    <!-- Hard Delete (Admin Only) -->
-                                    {% if user_role == 'admin' %}
-                                    <form method="POST"
-                                        action="{{ url_for('hard_delete_supplier', supplier_id=supplier.id) }}"
-                                        onsubmit="return confirm('This will permanently delete this supplier and ALL related records. Continue?')">
-                                        <button class="btn btn-danger btn-sm w-100">
-                                            Delete Permanently
-                                        </button>
-                                    </form>
-                                    {% endif %}
+                                        {% if user_role == 'admin' %}
+                                        <form method="POST"
+                                            action="{{ url_for('hard_delete_supplier', supplier_id=supplier.id) }}"
+                                            onsubmit="return confirm('This will permanently delete this supplier and ALL related records. Continue?')">
+                                            <button class="btn btn-danger btn-sm w-100">
+                                                Delete Permanently
+                                            </button>
+                                        </form>
+                                        {% endif %}
+
+                                    </div>
                                 {% endif %}
-
-                            </div>
-                        </td>
+                            </td>
                     </tr>
                     {% endfor %}
                 </tbody>
