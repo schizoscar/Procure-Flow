@@ -1243,7 +1243,9 @@ def task_list():
     for task, created_by, item_count, reply_count, supplier_names, item_names in all_tasks:
 
         display_status = "replied" if reply_count > 0 else task.status
-
+        item_names = [item.item_name for item in task.pr_items]
+        all_item_names_str = ', '.join(item_names) if item_names else ''
+        
         tasks_list.append({
             'id': task.id,
             'task_name': task.task_name,
@@ -1254,7 +1256,12 @@ def task_list():
             'item_count': item_count,
             'reply_count': reply_count,
             'supplier_names': supplier_names or '',
-            'item_names': item_names or ''
+            # For display in the table (first two items)
+            'display_items': item_names[:2],
+            # All item names as a clean string for data attribute
+            'all_item_names_str': all_item_names_str,
+            # Keep full list if needed elsewhere
+            'all_item_names': item_names
         })
 
     return render_template('task_list.html', all_tasks=tasks_list)

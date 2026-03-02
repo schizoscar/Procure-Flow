@@ -38,7 +38,7 @@
         <table class="table">
             <thead>
                     <th>Task Name</th>
-                    <th>Created By</th>
+                    <th>Item Name</th>
                     <th>Status</th>
                     <th>Created Date</th>
                     <th>Actions</th>
@@ -48,10 +48,17 @@
                 {% for task in all_tasks %}
                 <tr class="task-row"
                     data-suppliers="{{ task.supplier_names|lower }}"
-                    data-items="{{ task.item_names|lower }}"
+                    data-items="{{ task.all_item_names_str|lower }}"
                     data-status="{{ ('replied' if task.reply_count and task.reply_count > 0 else task.status)|lower }}">
                     <td>{{ task.task_name }}</td>
-                    <td>{{ task.created_by or 'N/A' }}</td>
+                    <td class="task-items">
+                        {% for item in task.display_items %}
+                            <div class="item-name">{{ item }}</div>
+                        {% endfor %}
+                        {% if task.all_item_names|length > 2 %}
+                            <small style="opacity:0.6;">+ more</small>
+                        {% endif %}
+                    </td>
                     <td>
                         {% if task.reply_count and task.reply_count > 0 %}
                             <span class="status-badge status-replied">
@@ -113,6 +120,13 @@
                     .map(cb => cb.value);
     }
 
+    function highlightMatch(text, query) {
+        if (!query) return text;
+
+        const regex = new RegExp(`(${query})`, "gi");
+        return text.replace(regex, '<span class="highlight">$1</span>');
+    }
+
     function filterTasks() {
 
         const query = searchInput.value.toLowerCase().trim();
@@ -120,18 +134,52 @@
 
         rows.forEach(row => {
 
-            const suppliers = row.dataset.suppliers || "";
-            const items = row.dataset.items || "";
+            const itemsData = row.dataset.items || "";
             const status = row.dataset.status || "";
 
-            const matchSearch = !query ||
-                suppliers.includes(query) ||
-                items.includes(query);
-
+            const matchSearch = !query || itemsData.includes(query);
             const matchStatus = selectedStatuses.length === 0 ||
-                selectedStatuses.includes(status);
+                                selectedStatuses.includes(status);
 
-            row.style.display = (matchSearch && matchStatus) ? "" : "none";
+            if (matchSearch && matchStatus) {
+
+                row.style.display = "";
+
+                const itemContainer = row.querySelector(".task-items");
+                const allItems = itemsData.split(",");
+
+                itemContainer.innerHTML = "";
+
+                if (query) {
+                    // Show ONLY matching items when searching
+                    allItems.forEach(item => {
+                        if (item.includes(query)) {
+                            const div = document.createElement("div");
+                            div.classList.add("item-name");
+                            div.innerHTML = highlightMatch(item, query);
+                            itemContainer.appendChild(div);
+                        }
+                    });
+                } else {
+                    // Default view → first 2 items only
+                    allItems.slice(0, 2).forEach(item => {
+                        const div = document.createElement("div");
+                        div.classList.add("item-name");
+                        div.textContent = item;
+                        itemContainer.appendChild(div);
+                    });
+
+                    if (allItems.length > 2) {
+                        const more = document.createElement("small");
+                        more.style.opacity = "0.6";
+                        more.textContent = "+ more";
+                        itemContainer.appendChild(more);
+                    }
+                }
+
+            } else {
+                row.style.display = "none";
+            }
         });
     }
 

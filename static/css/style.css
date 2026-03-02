@@ -407,6 +407,12 @@ body {
     width: 340px;
 }
 
+.highlight {
+    background-color: #98b0ca;
+    padding: 2px 4px;
+    border-radius: 4px;
+}
+
 .filter-search input {
     padding-left: 36px;
 }
