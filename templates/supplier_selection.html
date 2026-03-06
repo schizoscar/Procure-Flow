@@ -95,7 +95,8 @@
                                     <input type="checkbox" class="supplier-checkbox" 
                                            name="suppliers" value="{{ supplier.id }}" 
                                            id="supplier-{{ supplier.id }}"
-                                           {% if supplier.id|string in selected_supplier_ids %}checked{% endif %}>
+                                           {% if supplier.id|string in selected_supplier_ids %}checked{% endif %}
+                                           {% if not supplier.is_active %} disabled {% endif %}>
                                     <label for="supplier-{{ supplier.id }}" class="supplier-name">
                                         <strong>{{ supplier.name }}</strong>
                                     </label>

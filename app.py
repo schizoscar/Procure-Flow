@@ -1,6 +1,6 @@
 # app.py
 from flask import Flask, render_template, request, jsonify, session, redirect, url_for, flash, send_file, abort, g
-from models import db, User, Supplier, Category, CategoryItem, Task, PRItem, TaskSupplier, SupplierQuote, FileAsset, EmailLog
+from models import db, User, Supplier, Category, CategoryItem, Task, PRItem, TaskSupplier, SupplierQuote, FileAsset, EmailLog, supplier_categories
 import re
 from datetime import datetime
 import json
@@ -34,6 +34,7 @@ import math
 from decimal import Decimal, InvalidOperation
 from sqlalchemy import func, text, desc, and_, or_, cast, String, Integer, Float, DateTime, Boolean
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy import case, func
 import sqlalchemy.dialects.postgresql.pg8000
 
 # Load .env file for local development
@@ -47,6 +48,14 @@ secret = os.getenv("APP_SECRET_KEY")
 if not secret:
     raise RuntimeError("APP_SECRET_KEY is not set")
 app.secret_key = secret
+
+@app.after_request
+def add_no_cache_headers(response):
+    if 'user_id' in session:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 
 # File upload configuration
 UPLOADS_DIR = os.path.join('uploads', 'certificates')
@@ -383,7 +392,7 @@ def dashboard():
         item_count_subq, Task.id == item_count_subq.c.task_id
     ).order_by(
         Task.created_at.desc()
-    ).limit(10).all()
+    ).limit(5).all()
 
     # Convert to list of dictionaries
     recent_tasks = []
@@ -1107,6 +1116,10 @@ def email_confirmation(task_id):
         
         success_count = 0
         for supplier, assigned_items in selected_suppliers:
+            # 🔴 BLOCK INACTIVE SUPPLIER HERE
+            if not supplier.is_active:
+                flash(f"Cannot send email to inactive supplier: {supplier.name}", "error")
+                continue
             assigned_item_ids = None
             quote_form_link = get_or_create_quote_form_link(task_id, supplier.id)
 
@@ -1175,30 +1188,80 @@ def task_list():
     if 'user_id' not in session:
         return redirect(url_for('login'))
 
+    # Subquery: count replied suppliers per task
+    replied_subq = db.session.query(
+        TaskSupplier.task_id,
+        func.count(TaskSupplier.id).label('reply_count')
+    ).filter(
+        TaskSupplier.replied_at.isnot(None)
+    ).group_by(
+        TaskSupplier.task_id
+    ).subquery()
+
+    # Aggregate supplier names per task
+    supplier_subq = db.session.query(
+        TaskSupplier.task_id,
+        func.string_agg(Supplier.name, ', ').label('supplier_names')
+    ).join(
+        Supplier, Supplier.id == TaskSupplier.supplier_id
+    ).group_by(TaskSupplier.task_id).subquery()
+
+    # Aggregate item names per task
+    item_subq = db.session.query(
+        PRItem.task_id,
+        func.string_agg(PRItem.item_name, ', ').label('item_names')
+    ).group_by(PRItem.task_id).subquery()
+
     all_tasks = db.session.query(
         Task,
         User.username.label('created_by'),
-        func.count(PRItem.id).label('item_count')  # Use func.count
+        func.count(PRItem.id).label('item_count'),
+        func.coalesce(replied_subq.c.reply_count, 0).label('reply_count'),
+        supplier_subq.c.supplier_names,
+        item_subq.c.item_names
     ).join(
         User, Task.user_id == User.id
     ).outerjoin(
         PRItem, Task.id == PRItem.task_id
+    ).outerjoin(
+        replied_subq, Task.id == replied_subq.c.task_id
+    ).outerjoin(
+        supplier_subq, Task.id == supplier_subq.c.task_id
+    ).outerjoin(
+        item_subq, Task.id == item_subq.c.task_id
     ).group_by(
-        Task.id, User.username
+        Task.id,
+        User.username,
+        replied_subq.c.reply_count,
+        supplier_subq.c.supplier_names,
+        item_subq.c.item_names
     ).order_by(
         Task.created_at.desc()
     ).all()
 
     tasks_list = []
-    for task, created_by, item_count in all_tasks:
+    for task, created_by, item_count, reply_count, supplier_names, item_names in all_tasks:
+
+        display_status = "replied" if reply_count > 0 else task.status
+        item_names = [item.item_name for item in task.pr_items]
+        all_item_names_str = ', '.join(item_names) if item_names else ''
+        
         tasks_list.append({
             'id': task.id,
             'task_name': task.task_name,
-            'user_id': task.user_id,
             'status': task.status,
+            'display_status': display_status,
             'created_at': task.created_at,
             'created_by': created_by,
-            'item_count': item_count
+            'item_count': item_count,
+            'reply_count': reply_count,
+            'supplier_names': supplier_names or '',
+            # For display in the table (first two items)
+            'display_items': item_names[:2],
+            # All item names as a clean string for data attribute
+            'all_item_names_str': all_item_names_str,
+            # Keep full list if needed elsewhere
+            'all_item_names': item_names
         })
 
     return render_template('task_list.html', all_tasks=tasks_list)
@@ -1256,8 +1319,11 @@ def follow_up(task_id):
 
         sent = 0
         for supplier_info in pending_suppliers:
-            assigned_item_ids = None
-            quote_form_link = get_or_create_quote_form_link(task_id, supplier_info['id'])
+            # 🔴 BLOCK INACTIVE SUPPLIER HERE
+            supplier_obj = db.session.get(Supplier, supplier_info['id'])
+            if not supplier_obj or not supplier_obj.is_active:
+                flash(f"Cannot send follow-up to inactive supplier: {supplier_info['name']}", "error")
+                continue
 
             if supplier_info['assigned_items']:
                 try:
@@ -2857,11 +2923,19 @@ def export_comparison(task_id):
 def suppliers():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
-    # Get suppliers with their categories as comma-separated string
+
+    show_inactive = request.args.get('show') == 'inactive'
+
+    query = db.session.query(Supplier)
+
+    if show_inactive:
+        query = query.filter(Supplier.is_active == False)
+    else:
+        query = query.filter(Supplier.is_active == True)
+
+    all_suppliers = query.order_by(Supplier.name).all()
+
     suppliers_list = []
-    all_suppliers = db.session.query(Supplier).filter_by(is_active=True).all()
-    
     for supplier in all_suppliers:
         category_names = [cat.name for cat in supplier.categories]
         supplier_dict = {
@@ -2876,13 +2950,16 @@ def suppliers():
             'categories': ', '.join(category_names) if category_names else ''
         }
         suppliers_list.append(supplier_dict)
-    
+
     categories = db.session.query(Category).all()
 
-    return render_template('supplier_list.html', 
-                         suppliers=suppliers_list, 
-                         categories=categories,
-                         user_role=session['role'])
+    return render_template(
+        'supplier_list.html',
+        suppliers=suppliers_list,
+        categories=categories,
+        user_role=session['role'],
+        show_inactive=show_inactive
+    )
 
 @app.route('/edit-supplier/<int:supplier_id>', methods=['GET', 'POST'])
 def edit_supplier(supplier_id):
@@ -3327,28 +3404,96 @@ def supplier_selection(task_id):
                          selected_supplier_ids=selected_supplier_ids,
                          categories=categories)
 
-@app.route('/delete-supplier/<int:supplier_id>')
-def delete_supplier(supplier_id):
-    if 'user_id' not in session or session.get('role') != 'admin':
+@app.route('/hard-delete-supplier/<int:supplier_id>', methods=['POST'])
+def hard_delete_supplier(supplier_id):
+    if 'user_id' not in session:
         flash('Access denied', 'error')
-        return redirect(url_for('suppliers'))
-    
+        return redirect(url_for('login'))
+
     supplier = db.session.get(Supplier, supplier_id)
+
+    if not supplier:
+        flash('Supplier not found', 'error')
+        return redirect(url_for('suppliers', show='inactive'))
+
+    try:
+        # 1️⃣ Delete supplier quotes
+        SupplierQuote.query.filter_by(supplier_id=supplier_id).delete()
+
+        # 2️⃣ Delete task supplier links
+        TaskSupplier.query.filter_by(supplier_id=supplier_id).delete()
+
+        # 3️⃣ Delete email logs
+        EmailLog.query.filter_by(supplier_id=supplier_id).delete()
+
+        # 4️⃣ Delete file assets
+        FileAsset.query.filter_by(supplier_id=supplier_id).delete()
+
+        # 5️⃣ Delete category association
+        db.session.execute(
+            supplier_categories.delete().where(
+                supplier_categories.c.supplier_id == supplier_id
+            )
+        )
+
+        # 6️⃣ Finally delete supplier
+        db.session.delete(supplier)
+
+        db.session.commit()
+
+        flash('Supplier permanently deleted.', 'success')
+        return redirect(url_for('suppliers', show='inactive'))
+
+    except Exception as e:
+        db.session.rollback()
+        app.logger.exception("Hard delete failed for supplier_id=%s", supplier_id)
+        flash(f'Error deleting supplier: {str(e)}', 'error')
+        return redirect(url_for('suppliers', show='inactive'))
+
+@app.route('/deactivate-supplier/<int:supplier_id>', methods=['POST'])
+def deactivate_supplier(supplier_id):
+    if 'user_id' not in session:
+        flash('Access denied', 'error')
+        return redirect(url_for('login'))
+
+    supplier = db.session.get(Supplier, supplier_id)
+
     if not supplier:
         flash('Supplier not found', 'error')
         return redirect(url_for('suppliers'))
-    
-    # Soft delete by setting is_active to 0
+
     supplier.is_active = False
-    
+
     try:
         db.session.commit()
-        flash('Supplier deleted successfully!', 'success')
+        flash('Supplier deactivated successfully.', 'success')
     except Exception as e:
         db.session.rollback()
-        flash(f'Error deleting supplier: {str(e)}', 'error')
-    
+        flash(f'Error deactivating supplier: {str(e)}', 'error')
+
     return redirect(url_for('suppliers'))
+
+@app.route('/reactivate-supplier/<int:supplier_id>', methods=['POST'])
+def reactivate_supplier(supplier_id):
+    if 'user_id' not in session or session.get('role') != 'admin':
+        flash('Access denied', 'error')
+        return redirect(url_for('suppliers'))
+
+    supplier = db.session.get(Supplier, supplier_id)
+    if not supplier:
+        flash('Supplier not found', 'error')
+        return redirect(url_for('suppliers', show='inactive'))
+
+    supplier.is_active = True
+
+    try:
+        db.session.commit()
+        flash('Supplier reactivated successfully!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        flash(f'Error reactivating supplier: {str(e)}', 'error')
+
+    return redirect(url_for('suppliers', show='inactive'))
 
 # Add route for categories management (view for all, edit for admin)
 @app.route('/categories')
