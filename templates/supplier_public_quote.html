@@ -364,7 +364,8 @@
                                             </div>
                                             <div style="margin-top:0.5rem;">
                                                 <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
-                                                <input type="text" class="form-control" name="ono_brand_{{ item.id }}">
+                                                <input type="text" class="form-control" name="ono_brand_{{ item.id }}"
+                                                       value="{{ quote.ono_brand if quote and quote.ono_brand else '' }}">
                                             </div>
 
                                         {% elif item.item_category in ['Bolts, Fasteners','Rebar','Nuts'] %}
@@ -394,7 +395,8 @@
                                             </div>
                                             <div style="margin-top:0.5rem;">
                                                 <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
-                                                <input type="text" class="form-control" name="ono_brand_{{ item.id }}">
+                                                <input type="text" class="form-control" name="ono_brand_{{ item.id }}"
+                                                       value="{{ quote.ono_brand if quote and quote.ono_brand else '' }}">
                                             </div>
 
                                         {% else %}
@@ -412,7 +414,8 @@
 
                                             <div style="margin-top:0.5rem;">
                                                 <label class="form-label" style="font-size:0.85rem;">Brand / Specification</label>
-                                                <input type="text" class="form-control" name="ono_brand_{{ item.id }}">
+                                                <input type="text" class="form-control" name="ono_brand_{{ item.id }}"
+                                                       value="{{ quote.ono_brand if quote and quote.ono_brand else '' }}">
                                             </div>
                                         {% endif %}
                                     </td>
@@ -420,7 +423,7 @@
                                     <!-- Remarks -->
                                     <td>
                                         <input type="text" class="form-control" name="notes_{{ item.id }}"
-                                               value="{{ quote.ono_brand if quote and quote.ono_brand else '' }}">
+                                               value="{{ quote.notes if quote and quote.notes else '' }}">
 
                                     </td>
                                 </tr>
