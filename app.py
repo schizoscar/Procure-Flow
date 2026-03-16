@@ -36,6 +36,8 @@ from sqlalchemy import func, text, desc, and_, or_, cast, String, Integer, Float
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import case, func
 import sqlalchemy.dialects.postgresql.pg8000
+from functools import wraps
+from flask import session, redirect, url_for, request
 
 # Load .env file for local development
 load_dotenv()
@@ -48,6 +50,14 @@ secret = os.getenv("APP_SECRET_KEY")
 if not secret:
     raise RuntimeError("APP_SECRET_KEY is not set")
 app.secret_key = secret
+
+@app.before_request
+def require_login():
+    allowed = ['login', 'supplier_quote_form', 'static']
+    
+    if request.endpoint not in allowed:
+        if 'user_id' not in session:
+            return redirect(url_for('login'))
 
 @app.after_request
 def add_no_cache_headers(response):
@@ -65,6 +75,13 @@ MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 app.config["PUBLIC_BASE_URL"] = PUBLIC_BASE_URL
 
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SECURE=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    PERMANENT_SESSION_LIFETIME=1800  # 30 minutes
+)
+
 # Ensure uploads directory exists
 os.makedirs(UPLOADS_DIR, exist_ok=True)
 
@@ -73,6 +90,15 @@ logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s"
 )
+
+#for security purposes
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if 'user_id' not in session:
+            return redirect(url_for('login', next=request.url))
+        return f(*args, **kwargs)
+    return decorated_function
 
 def allowed_file(filename):
     """Check if file extension is allowed."""
@@ -124,7 +150,10 @@ def public_url_for(endpoint: str, **values) -> str:
         return urljoin(PUBLIC_BASE_URL + "/", path.lstrip("/"))
     return url_for(endpoint, _external=True, **values)
 
+
+
 @app.route('/file/<int:file_id>')
+@login_required
 def serve_file(file_id):
     """Serve a file from the database."""
     file_asset = db.session.get(FileAsset, file_id)
@@ -370,6 +399,7 @@ def index():
     return redirect(url_for('dashboard'))
 
 @app.route('/dashboard')
+@login_required
 def dashboard():
     """Main dashboard showing recent tasks and stats."""
     if 'user_id' not in session:
@@ -419,6 +449,7 @@ def dashboard():
     return render_template('dashboard.html', recent_tasks=recent_tasks, stats=stats)
 
 @app.route('/purchase-requisitions')
+@login_required
 def purchase_requisitions():
     """Show saved Purchase Requisitions that haven't been sent to suppliers yet."""
     if 'user_id' not in session:
@@ -456,6 +487,7 @@ def purchase_requisitions():
     return render_template('purchase_requisitions.html', prs=prs_list)
 
 @app.route('/uploads/certificates/<path:filepath>')
+@login_required
 def download_certificate(filepath):
     """Serve uploaded certificate files."""
     if 'user_id' not in session:
@@ -498,6 +530,7 @@ def login():
     return render_template('login.html')
 
 @app.route('/create-user', methods=['GET', 'POST'])
+@login_required
 def create_user():
     if 'user_id' not in session or session.get('role') != 'admin':
         flash('Access denied', 'error')
@@ -584,6 +617,7 @@ def create_user():
     return render_template('create_user.html')
 
 @app.route('/user-list')
+@login_required
 def user_list():
     """Display all users for admin management."""
     if 'user_id' not in session or session.get('role') != 'admin':
@@ -595,6 +629,7 @@ def user_list():
     return render_template('user_list.html', users=users)
 
 @app.route('/user/<int:user_id>/edit', methods=['GET', 'POST'])
+@login_required
 def edit_user(user_id):
     """Edit user details (admin only)."""
     if 'user_id' not in session or session.get('role') != 'admin':
@@ -649,6 +684,7 @@ def edit_user(user_id):
     return render_template('edit_user.html', user=user)
 
 @app.route('/user/<int:user_id>/delete', methods=['POST'])
+@login_required
 def delete_user(user_id):
     """Delete a user (admin only)."""
     if 'user_id' not in session or session.get('role') != 'admin':
@@ -797,6 +833,7 @@ def parse_decimal_field(val, field_name):
 
 @app.route('/new-task', methods=['GET', 'POST'])
 @app.route('/edit-task/<int:task_id>', methods=['GET', 'POST'])
+@login_required
 def new_task(task_id=None):
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -949,6 +986,7 @@ def new_task(task_id=None):
                          category_items_map=category_items_map)
 
 @app.route('/task/<int:task_id>/edit')
+@login_required
 def edit_task(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -978,6 +1016,7 @@ def edit_task(task_id):
         return redirect(next_url) if next_url else redirect(url_for('task_list'))
 
 @app.route('/task/<int:task_id>/email-preview', methods=['GET', 'POST'])
+@login_required
 def email_preview(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -1083,6 +1122,7 @@ def email_preview(task_id):
                          email_subject=email_subject)
 
 @app.route('/task/<int:task_id>/confirm-email', methods=['GET', 'POST'])
+@login_required
 def email_confirmation(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -1184,6 +1224,7 @@ def email_confirmation(task_id):
                          pr_items=pr_items)
 
 @app.route('/task-list')
+@login_required
 def task_list():
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -1267,6 +1308,7 @@ def task_list():
     return render_template('task_list.html', all_tasks=tasks_list)
 
 @app.route('/task/<int:task_id>/follow-up', methods=['GET', 'POST'])
+@login_required
 def follow_up(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -1390,6 +1432,7 @@ def follow_up(task_id):
                        email_content=default_body)
 
 @app.route('/task/<int:task_id>/responses', methods=['GET', 'POST'])
+@login_required
 def task_responses(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -1542,6 +1585,7 @@ def get_optional_cert_file_id(request, task_id, supplier_id, pr_item_id, uid, ol
 
 
 @app.route('/task/<int:task_id>/quotes/<int:supplier_id>', methods=['GET', 'POST'])
+@login_required
 def capture_quotes(task_id, supplier_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -1974,6 +2018,7 @@ def supplier_quote_form(token):
     )
 
 @app.route('/debug/quotes/<int:task_id>/<int:supplier_id>', methods=['GET'])
+@login_required
 def debug_quotes(task_id, supplier_id):
     """Return JSON dump of supplier_quotes for debugging (task+supplier)."""
     if 'user_id' not in session:
@@ -2013,6 +2058,7 @@ def debug_quotes(task_id, supplier_id):
     return jsonify(quotes_list)
 
 @app.route('/task/<int:task_id>/export-comparison')
+@login_required
 def export_comparison(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -2920,6 +2966,7 @@ def export_comparison(task_id):
     )
 
 @app.route('/suppliers')
+@login_required
 def suppliers():
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -2962,6 +3009,7 @@ def suppliers():
     )
 
 @app.route('/edit-supplier/<int:supplier_id>', methods=['GET', 'POST'])
+@login_required
 def edit_supplier(supplier_id):
     if 'user_id' not in session or session.get('role') != 'admin':
         flash('Access denied', 'error')
@@ -3019,6 +3067,7 @@ def edit_supplier(supplier_id):
                          supplier_category_ids=supplier_category_ids)
 
 @app.route('/add-supplier', methods=['GET', 'POST'])
+@login_required
 def add_supplier():
     if 'user_id' not in session:
         flash('Access denied', 'error')
@@ -3088,6 +3137,7 @@ def add_supplier():
     return render_template('edit_supplier.html', categories=categories)
 
 @app.route('/delete-task/<int:task_id>', methods=['POST'])
+@login_required
 def delete_task(task_id):
     if 'user_id' not in session:
         flash('Access denied', 'error')
@@ -3336,6 +3386,7 @@ def send_procurement_email(supplier_email, supplier_name, pr_items, task_name, a
         return False
 
 @app.route('/task/<int:task_id>/suppliers', methods=['GET', 'POST'])
+@login_required
 def supplier_selection(task_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -3405,6 +3456,7 @@ def supplier_selection(task_id):
                          categories=categories)
 
 @app.route('/hard-delete-supplier/<int:supplier_id>', methods=['POST'])
+@login_required
 def hard_delete_supplier(supplier_id):
     if 'user_id' not in session:
         flash('Access denied', 'error')
@@ -3451,6 +3503,7 @@ def hard_delete_supplier(supplier_id):
         return redirect(url_for('suppliers', show='inactive'))
 
 @app.route('/deactivate-supplier/<int:supplier_id>', methods=['POST'])
+@login_required
 def deactivate_supplier(supplier_id):
     if 'user_id' not in session:
         flash('Access denied', 'error')
@@ -3474,6 +3527,7 @@ def deactivate_supplier(supplier_id):
     return redirect(url_for('suppliers'))
 
 @app.route('/reactivate-supplier/<int:supplier_id>', methods=['POST'])
+@login_required
 def reactivate_supplier(supplier_id):
     if 'user_id' not in session or session.get('role') != 'admin':
         flash('Access denied', 'error')
@@ -3497,6 +3551,7 @@ def reactivate_supplier(supplier_id):
 
 # Add route for categories management (view for all, edit for admin)
 @app.route('/categories')
+@login_required
 def categories():
     if 'user_id' not in session:
         flash('Please login first', 'error')
@@ -3509,6 +3564,7 @@ def categories():
     return render_template('categories.html', categories=categories_list, can_edit=can_edit)
 
 @app.route('/add-category', methods=['POST'])
+@login_required
 def add_category():
     if 'user_id' not in session:
         return jsonify({'error': 'Access denied'}), 403
@@ -3536,6 +3592,7 @@ def add_category():
     return redirect(url_for('categories'))
 
 @app.route('/delete-category/<int:category_id>')
+@login_required
 def delete_category(category_id):
     if 'user_id' not in session or session.get('role') != 'admin':
         flash('Access denied', 'error')
@@ -3565,6 +3622,7 @@ def delete_category(category_id):
     return redirect(url_for('categories'))
 
 @app.route('/category/<int:category_id>/items')
+@login_required
 def category_items(category_id):
     if 'user_id' not in session:
         flash('Please login first', 'error')
@@ -3582,6 +3640,7 @@ def category_items(category_id):
     return render_template('category_items.html', category=category, items=items, can_edit=can_edit)
 
 @app.route('/category/<int:category_id>/add-item', methods=['POST'])
+@login_required
 def add_category_item(category_id):
     if 'user_id' not in session:
         return redirect(url_for('index'))
@@ -3609,6 +3668,7 @@ def env_banner():
     )
     
 @app.route('/delete-category-item/<int:item_id>')
+@login_required
 def delete_category_item(item_id):
     if 'user_id' not in session or session.get('role') != 'admin':
         return redirect(url_for('index'))
