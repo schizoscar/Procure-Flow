@@ -135,9 +135,10 @@
         rows.forEach(row => {
 
             const itemsData = row.dataset.items || "";
+            const suppliersData = row.dataset.suppliers || "";
             const status = row.dataset.status || "";
 
-            const matchSearch = !query || itemsData.includes(query);
+            const matchSearch = !query || itemsData.includes(query) || suppliersData.includes(query);
             const matchStatus = selectedStatuses.length === 0 ||
                                 selectedStatuses.includes(status);
 
