@@ -66,7 +66,8 @@ PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 app.config["PUBLIC_BASE_URL"] = PUBLIC_BASE_URL
 
 # Ensure uploads directory exists
-os.makedirs(UPLOADS_DIR, exist_ok=True)
+if not os.path.exists(UPLOADS_DIR) and os.environ.get("VERCEL") is None:
+    os.makedirs(UPLOADS_DIR, exist_ok=True)
 
 # Basic logging setup (works for dev + prod)
 logging.basicConfig(
