@@ -487,6 +487,21 @@ def login():
     
     return render_template('login.html')
 
+with app.app_context():
+    db.create_all()
+
+    existing = User.query.filter_by(username="admin1272").first()
+
+    if not existing:
+        admin = User(
+            username="admin1272",
+            password_hash=generate_password_hash("herculesadmin"),
+            role="admin"
+        )
+        db.session.add(admin)
+        db.session.commit()
+        print("Admin user created")
+
 @app.route('/create-user', methods=['GET', 'POST'])
 def create_user():
     if 'user_id' not in session or session.get('role') != 'admin':
