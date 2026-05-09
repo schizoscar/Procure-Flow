@@ -58,30 +58,22 @@ def add_no_cache_headers(response):
     return response
 
 # File upload configuration
-UPLOADS_DIR = os.path.join('uploads', 'certificates')
 ALLOWED_EXTENSIONS = {'pdf'}  # PDF only
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 
 PUBLIC_BASE_URL = os.environ.get("PUBLIC_BASE_URL", "").rstrip("/")
 app.config["PUBLIC_BASE_URL"] = PUBLIC_BASE_URL
 
-# Ensure uploads directory exists
-if not os.path.exists(UPLOADS_DIR) and os.environ.get("VERCEL") is None:
-    os.makedirs(UPLOADS_DIR, exist_ok=True)
-
-# Basic logging setup (works for dev + prod)
+# Basic logging setup
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     format="%(asctime)s %(levelname)s %(name)s: %(message)s"
 )
 
-def allowed_file(filename):
-    """Check if file extension is allowed."""
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
-
 def save_uploaded_file(file_obj, task_id, supplier_id, pr_item_id):
     """
     Store uploaded file into DB and return file_assets.id
+    (No filesystem usage — Vercel-safe)
     """
     filename = secure_filename(file_obj.filename or "document.pdf")
     mime_type = file_obj.mimetype or "application/pdf"
@@ -95,9 +87,9 @@ def save_uploaded_file(file_obj, task_id, supplier_id, pr_item_id):
         mime_type=mime_type,
         data=data
     )
-    
+
     db.session.add(file_asset)
-    db.session.flush()  # Get the ID without committing
+    db.session.flush()
     return file_asset.id
 
 def public_url(endpoint: str, **values) -> str:
