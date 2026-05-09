@@ -203,12 +203,9 @@
                                             pattern="^\d+(\.\d{0,2})?$"
                                             title="Numbers only (up to 2 decimal places). Example: 12.50"
                                             name="unit_price_{{ item.id }}"
-                                            list="unit-price-list-{{ item.id }}"
                                             placeholder="Select or type (e.g. 12.50)"
                                             value="{{ quote.unit_price if quote and quote.unit_price is not none else '' }}"
                                             required>
-
-                                        <datalist id="unit-price-list-{{ item.id }}" class="unit-price-datalist"></datalist>
                                     </td>
 
                                     <!-- Lead time dropdown -->
@@ -219,14 +216,9 @@
                                             autocomplete="off"
                                             pattern="\d*"
                                             name="lead_time_{{ item.id }}"
-                                            list="lead-time-list-{{ item.id }}"
                                             placeholder="Select or type"
                                             value="{{ quote.lead_time|int if quote and quote.lead_time is not none else '' }}"
                                             required>
-
-                                        <datalist id="lead-time-list-{{ item.id }}"
-                                                    class="integer-datalist"
-                                                    data-max="1000"></datalist>
                                     </td>
 
                                     <!-- Stock availability dropdown -->
@@ -290,14 +282,8 @@
                                                         autocomplete="off"
                                                         pattern="\d*"
                                                         name="ono_width_{{ item.id }}"
-                                                        list="ono-width-list-{{ item.id }}"
                                                         placeholder="Select or type"
                                                         value="{{ quote.ono_width if quote and quote.ono_width is not none else '' }}">
->
-
-                                                    <datalist id="ono-width-list-{{ item.id }}"
-                                                            class="integer-datalist"
-                                                            data-max="10000"></datalist>
                                                 </div>
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
@@ -307,13 +293,8 @@
                                                         autocomplete="off"
                                                         pattern="\d*"
                                                         name="ono_length_{{ item.id }}"
-                                                        list="ono-length-list-{{ item.id }}"
                                                         placeholder="Select or type"
                                                         value="{{ quote.ono_length if quote and quote.ono_length is not none else '' }}">
-
-                                                    <datalist id="ono-length-list-{{ item.id }}"
-                                                            class="integer-datalist"
-                                                            data-max="10000"></datalist>
                                                 </div>
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
@@ -323,13 +304,8 @@
                                                         autocomplete="off"
                                                         pattern="\d*"
                                                         name="ono_thickness_{{ item.id }}"
-                                                        list="ono-thickness-list-{{ item.id }}"
                                                         placeholder="Select or type"
                                                         value="{{ quote.ono_thickness if quote and quote.ono_thickness is not none else '' }}">
-
-                                                    <datalist id="ono-thickness-list-{{ item.id }}"
-                                                            class="integer-datalist"
-                                                            data-max="10000"></datalist>
                                                 </div>
                                             </div>
                                             <div style="margin-top:0.5rem;">
@@ -349,13 +325,8 @@
                                                         autocomplete="off"
                                                         pattern="\d*"
                                                         name="ono_dim_a_{{ item.id }}"
-                                                        list="ono-dim_a-list-{{ item.id }}"
                                                         placeholder="Select or type"
                                                         value="{{ quote.ono_dim_a if quote and quote.ono_dim_a is not none else '' }}">
-
-                                                    <datalist id="ono-dim_a-list-{{ item.id }}"
-                                                            class="integer-datalist"
-                                                            data-max="10000"></datalist>
                                                 </div>
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">B (mm)</label>
@@ -365,13 +336,8 @@
                                                         autocomplete="off"
                                                         pattern="\d*"
                                                         name="ono_dim_b_{{ item.id }}"
-                                                        list="ono-dim_b-list-{{ item.id }}"
                                                         placeholder="Select or type"
                                                         value="{{ quote.ono_dim_b if quote and quote.ono_dim_b is not none else '' }}">
-
-                                                    <datalist id="ono-dim_b-list-{{ item.id }}"
-                                                            class="integer-datalist"
-                                                            data-max="10000"></datalist>
                                                 </div>
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
@@ -381,12 +347,8 @@
                                                         autocomplete="off"
                                                         pattern="\d*"
                                                         name="ono_length_{{ item.id }}"
-                                                        list="ono-length-list-{{ item.id }}"
                                                         placeholder="Select or type"
                                                         value="{{ quote.ono_length if quote and quote.ono_length is not none else '' }}">
-                                                    <datalist id="ono-length-list-{{ item.id }}"
-                                                            class="integer-datalist"
-                                                            data-max="10000"></datalist>
                                                 </div>
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">Thickness (mm)</label>
@@ -396,13 +358,8 @@
                                                         autocomplete="off"
                                                         pattern="\d*"
                                                         name="ono_thickness_{{ item.id }}"
-                                                        list="ono-thickness-list-{{ item.id }}"
                                                         placeholder="Select or type"
                                                         value="{{ quote.ono_thickness if quote and quote.ono_thickness is not none else '' }}">
-
-                                                    <datalist id="ono-thickness-list-{{ item.id }}"
-                                                            class="integer-datalist"
-                                                            data-max="10000"></datalist>
                                                 </div>
                                             </div>
                                             <div style="margin-top:0.5rem;">
@@ -420,13 +377,8 @@
                                                         autocomplete="off"
                                                         pattern="\d*"
                                                         name="ono_diameter_{{ item.id }}"
-                                                        list="ono-diameter-list-{{ item.id }}"
                                                         placeholder="Select or type"
                                                         value="{{ quote.ono_diameter if quote and quote.ono_diameter is not none else '' }}">
-   
-                                                    <datalist id="ono-diameter-list-{{ item.id }}"
-                                                            class="integer-datalist"
-                                                            data-max="10000"></datalist>
                                                 </div>
                                                 <div>
                                                     <label class="form-label" style="font-size:0.85rem;">Length (mm)</label>
@@ -436,13 +388,8 @@
                                                         autocomplete="off"
                                                         pattern="\d*"
                                                         name="ono_length_{{ item.id }}"
-                                                        list="ono-length-list-{{ item.id }}"
                                                         placeholder="Select or type"
                                                         value="{{ quote.ono_length if quote and quote.ono_length is not none else '' }}">
-
-                                                    <datalist id="ono-length-list-{{ item.id }}"
-                                                            class="integer-datalist"
-                                                            data-max="10000"></datalist>
                                                 </div>
                                             </div>
                                             <div style="margin-top:0.5rem;">
@@ -641,7 +588,7 @@
 
                 datalist.innerHTML = '';
 
-                const addRange = (start, end, step) => {
+                const addRange = (start, end, step) => {        
                     for (let v = start; v <= end; v += step) {
                         const opt = document.createElement('option');
                         opt.value = String(v);
