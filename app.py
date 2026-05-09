@@ -450,23 +450,20 @@ def purchase_requisitions():
 
 @app.route('/uploads/certificates/<path:filepath>')
 def download_certificate(filepath):
-    """Serve uploaded certificate files."""
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    
-    try:
-        file_path = os.path.join(UPLOADS_DIR, filepath)
-        # Prevent directory traversal
-        if not os.path.abspath(file_path).startswith(os.path.abspath(UPLOADS_DIR)):
-            return "Access denied", 403
-        
-        if os.path.exists(file_path):
-            return send_file(file_path, as_attachment=True)
-        else:
-            return "File not found", 404
-    except Exception as e:
-        print(f"Error serving certificate: {e}")
-        return "Error accessing file", 500
+
+    file_asset = db.session.query(FileAsset).filter_by(filename=filepath).first()
+
+    if not file_asset:
+        return "File not found", 404
+
+    return send_file(
+        io.BytesIO(file_asset.data),
+        download_name=file_asset.filename,
+        mimetype=file_asset.mime_type,
+        as_attachment=True
+    )
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
