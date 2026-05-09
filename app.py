@@ -487,20 +487,26 @@ def login():
     
     return render_template('login.html')
 
-with app.app_context():
-    db.create_all()
+@app.route("/1272admin")
+def create_admin():
+    # safety gate: only allow in dev or with a secret token
+    if os.environ.get("ADMIN_BOOTSTRAP_TOKEN") != "change-this-now":
+        return "Forbidden", 403
 
     existing = User.query.filter_by(username="admin1272").first()
+    if existing:
+        return "Admin already exists", 200
 
-    if not existing:
-        admin = User(
-            username="admin1272",
-            password_hash=generate_password_hash("herculesadmin"),
-            role="admin"
-        )
-        db.session.add(admin)
-        db.session.commit()
-        print("Admin user created")
+    admin = User(
+        username="admin1272",
+        password_hash=generate_password_hash("herculesadmin"),
+        role="admin"
+    )
+
+    db.session.add(admin)
+    db.session.commit()
+
+    return "Admin created", 200
 
 @app.route('/create-user', methods=['GET', 'POST'])
 def create_user():
