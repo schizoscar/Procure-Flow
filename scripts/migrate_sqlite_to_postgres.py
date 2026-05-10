@@ -24,7 +24,7 @@ def create_postgres_app():
     if pg_url.startswith("postgres://"):
         pg_url = pg_url.replace("postgres://", "postgresql+pg8000://", 1)
     elif pg_url.startswith("postgresql://"):
-        pg_url = pg_url.replace("postgresql://", "postgresql+pg8000://", 1)
+        pg_url = pg_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 
     app.config["SQLALCHEMY_DATABASE_URI"] = pg_url
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
@@ -85,7 +85,7 @@ def fix_postgres_sequences(db_session):
 def migrate_all_data():
     """Complete migration from SQLite to SQLAlchemy models."""
     
-    app = create_app()
+    app = create_postgres_app()
     
     with app.app_context():
         print("Starting migration process...")
