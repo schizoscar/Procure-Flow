@@ -36,6 +36,7 @@ from sqlalchemy import func, text, desc, and_, or_, cast, String, Integer, Float
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy import case, func
 import sqlalchemy.dialects.postgresql.pg8000
+import ssl
 
 # Load .env file for local development
 load_dotenv()
@@ -178,9 +179,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     "pool_recycle": 300,
     "pool_pre_ping": True,
-    "connect_args": {
-        "ssl_context": ssl.create_default_context()
-    }
 }
 
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
