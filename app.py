@@ -151,19 +151,38 @@ def generate_temp_password(length: int = 10) -> str:
 
 # Database configuration
 database_url = os.getenv('DATABASE_URL')
+
+# DEFAULT: local SQLite
 if not database_url:
     database_url = 'sqlite:///database/procure_flow.db'
-else:
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql+pg8000://", 1)
-    elif database_url.startswith("postgresql://"):
-        database_url = database_url.replace("postgresql://", "postgresql+pg8000://", 1)
+
+# If PostgreSQL is used
+elif database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql+pg8000://", 1)
+
+elif database_url.startswith("postgresql://"):
+    database_url = database_url.replace("postgresql://", "postgresql+pg8000://", 1)
+
+
+# DEV vs PROD handling
+if database_url.startswith("postgresql+pg8000://"):
+    # only add SSL handling in production environments
+    if os.getenv("ENV") == "production":
+        pass  # Render handles SSL automatically
+    else:
+        # local dev: prevent SSL issues
+        database_url += ""
 
 app.config['SQLALCHEMY_DATABASE_URI'] = database_url
+
 app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
     "pool_recycle": 300,
     "pool_pre_ping": True,
+    "connect_args": {
+        "ssl_context": ssl.create_default_context()
+    }
 }
+
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
@@ -486,25 +505,6 @@ def login():
             flash('Invalid credentials', 'error')
     
     return render_template('login.html')
-
-@app.route("/1272admin")
-def create_admin():
-
-    existing = User.query.filter_by(username="admin1272").first()
-    if existing:
-        return "Admin already exists", 200
-
-    admin = User(
-        username="admin1272",
-        email="admin1272@local.admin",
-        password_hash=generate_password_hash("herculesadmin"),
-        role="admin"
-    )
-
-    db.session.add(admin)
-    db.session.commit()
-
-    return "Admin created", 200
 
 @app.route('/create-user', methods=['GET', 'POST'])
 def create_user():
