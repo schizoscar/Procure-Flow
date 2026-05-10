@@ -2,85 +2,146 @@
   <img src="assets/logo.png" alt="ProcureFlow Logo" width="300"/>
 </p>
 
-<h1 align="center">Auto Procurement System</h1>
+<h1 align="center">ProcureFlow</h1>
 
 <p align="center">
-  <strong>Web-Based Business Procurement & Workflow Automation Platform</strong>
+  <strong>Web-Based Procurement & Workflow Automation System</strong>
 </p>
 
 <p align="center">
-  Built with Python, Flask, MySQL, and deployed on Vercel
+  Built with Flask, Python, PostgreSQL, and deployed on Render
 </p>
 
 ---
 
-## About the Project
+## Overview
 
-**Auto Procurement System** is a web-based business automation platform designed to streamline procurement workflows, reduce repetitive administrative tasks, and centralize purchasing operations into a single system.
+**ProcureFlow** is a web-based procurement automation system designed to replace manual, spreadsheet-driven purchasing workflows with a centralized, structured, and scalable platform.
 
-The platform automates common procurement activities such as:
+It streamlines the end-to-end procurement lifecycle — from purchase requisition creation to supplier coordination, quotation handling, and approval tracking — within a single system.
 
-- Purchase request submissions  
-- Approval workflows  
-- Supplier tracking  
-- Inventory monitoring  
-- Procurement record management  
-
-Instead of relying on spreadsheets, emails, or manual tracking, businesses can manage procurement operations through a centralized dashboard accessible from anywhere.
+The goal is to reduce operational friction, improve traceability, and automate repetitive procurement tasks commonly found in business environments.
 
 ---
 
 ## Key Features
 
-- **Role-Based Authentication System**  
-- **Procurement Request Management**  
-- **Approval Workflow Automation**  
-- **Supplier & Vendor Tracking**  
-- **Inventory Monitoring**  
-- **Search & Filtering Functions**  
-- **Centralized Procurement Records**  
-- **Responsive Web-Based Interface**  
-- **Secure Session Management**  
-- **MySQL Database Integration**
+### Procurement Workflow Automation
+- Create and manage Purchase Requisitions (PRs)
+- Structured multi-item PR creation with dynamic fields
+- Automated task-based workflow generation
+
+### Supplier Management
+- Centralized supplier database
+- Category-based supplier classification
+- Supplier assignment per procurement task
+
+### Quotation & Comparison System
+- Capture supplier quotations
+- Store and manage response data
+- Support structured price comparison workflows
+
+### Email Automation
+- Automated supplier email distribution
+- Follow-up tracking system
+- Email logging for audit purposes
+
+### File & Document Handling
+- Upload and attach supporting documents
+- Store supplier quotations and certificates
+- Link files to tasks, suppliers, and PR items
+
+### Role-Based Access Control
+- Secure authentication system
+- Multi-user role separation (admin/user)
+- Session-based access control
+
+### Data Management
+- Full CRUD operations for procurement entities
+- Relational database structure (PostgreSQL)
+- Historical procurement tracking
 
 ---
 
-## Technologies Used
-
-### Backend
-- Python  
-- Flask  
-
-### Frontend
-- HTML  
-- CSS  
-- JavaScript  
-
-### Database
-- MySQL  
-
-### Deployment
-- Vercel  
-
----
-
-## System Workflow
+## System Architecture
 
 ```text
-Create Purchase Requisition
-            │
-            ▼
-Assign & Select Suppliers
-            │
-            ▼
+User Login
+    │
+    ▼
+Create Purchase Requisition (PR)
+    │
+    ▼
+Add Items & Specifications
+    │
+    ▼
+Assign Suppliers by Category
+    │
+    ▼
 Automated Email Distribution
-            │
-            ▼
-Capture Supplier Responses
-            │
-            ▼
-Generate Price Comparisons
-            │
-            ▼
-Export Procurement Reports
+    │
+    ▼
+Supplier Responses & Quotations
+    │
+    ▼
+Comparison & Evaluation
+    │
+    ▼
+Procurement Record Storage
 ```
+---
+
+## Tech Stack
+
+**Backend**
+- Python
+- Flask
+- SQLAlchemy
+
+**Frontend**
+- HTML
+- CSS
+- JavaScript
+
+**Database**
+- PostgreSQL
+
+**Infrastructure**
+- Render (Web Service + Managed PostgreSQL)
+
+---
+
+## Core Modules
+
+- Authentication & Session Management
+- Procurement Request System
+- Supplier Management System
+- Email Automation Engine
+- File Management System
+- Task & Workflow Engine
+- Reporting & Data Tracking
+
+---
+
+## Problem It Solves
+
+Traditional procurement processes often rely on:
+- Excel spreadsheets
+- Email chains
+- Manual supplier tracking
+- Lack of centralized audit trails
+
+ProcureFlow solves this by:
+- Centralizing procurement data
+- Automating supplier communication
+- Structuring approval workflows
+- Improving traceability and accountability
+
+---
+
+## Deployment
+
+Live system deployed on Render:
+- Backend: Flask Web Service
+- Database: Managed PostgreSQL
+- Environment-based configuration (dev / production)
